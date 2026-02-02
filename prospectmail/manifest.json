@@ -1,0 +1,15 @@
+{
+    "name": "prospectmail.mathias",
+    "description": "prospectmail",
+    "architecture": "@CLICK_ARCH@",
+    "title": "prospect",
+    "hooks": {
+        "prospectmail": {
+            "apparmor": "prospectmail.apparmor",
+            "desktop":  "prospectmail.desktop"
+        }
+    },
+    "version": "1.0.0",
+    "maintainer": "mathias <email@domain.org>",
+    "framework" : "@CLICK_FRAMEWORK@"
+}

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=ProspectMail
+Exec=./launcher.sh
+Icon=assets/logo.svg
+Terminal=false
+Type=Application
+X-Lomiri-Touch=true
