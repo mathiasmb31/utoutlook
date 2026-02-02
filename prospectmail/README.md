@@ -2,12 +2,8 @@
 
 prospectmail
 
-## Godot Instructions
+## First try to integrate prospect mail to UT
 
-Following the instructions on the
-[Godot Documentation](https://docs.godotengine.org/en/stable/getting_started/workflow/export/exporting_pcks.html#generating-pck-files),
-export your project as a PCK called "prospectmail.pck" and
-adapt the clickable.yaml to install that one instead of the demo package.
 
 ## License
 
