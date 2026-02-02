@@ -25,5 +25,7 @@ this program. If not, see <http://www.gnu.org/licenses/>.
 
 ## Compile
 $ cd prospectmail
+
 $ clickable build
+
 $ clickable install # install to phone
