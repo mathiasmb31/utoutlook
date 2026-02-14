@@ -1,6 +1,6 @@
 #!/bin/bash -e
 
-
+set -x
 
 ##############################
 # GTK launcher specific part #
@@ -29,5 +29,6 @@ if [ "$SNAP_DESKTOP_COMPONENTS_NEED_UPDATE" = "true" ]; then
     "$SNAP_DESKTOP_RUNTIME/usr/lib/$SNAP_DESKTOP_ARCH_TRIPLET/libgtk2.0-0/gtk-query-immodules-2.0" > "$GTK_IM_MODULE_FILE"
   fi
 fi
-
+echo "--------------------------------------------------"
+echo "init DONE :) "
 exec "$@"
