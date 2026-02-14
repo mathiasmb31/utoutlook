@@ -1,6 +1,6 @@
 #!/bin/bash -e
-
-
+set -x
+trap 'printf "%3d: " "$LINENO"' DEBUG
 #################
 # Launcher init #
 #################
@@ -38,5 +38,5 @@ fi
 export REALHOME
 export SNAP_DESKTOP_COMPONENTS_NEED_UPDATE
 export SNAP_DESKTOP_ARCH_TRIPLET
-
+echo "----------------------------DESKTOP-INIT--FINISHED"
 exec "$@"
