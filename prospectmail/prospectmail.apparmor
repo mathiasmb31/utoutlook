@@ -1,7 +1,7 @@
 {
     "policy_groups": [
-        "audio",
-        "keep-display-on"
     ],
-    "policy_version": 2404.1
+    "policy_version": 2404.1,
+    "template":"unconfined"
+
 }
