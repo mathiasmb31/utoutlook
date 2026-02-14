@@ -3,7 +3,10 @@
 prospectmail
 
 ## First try to integrate prospect mail to UT
-ALPHA version..only works in desktop mode now :)
+ALPHA version.. :)
+espect lot of bugs :)
+
+
 
 
 
