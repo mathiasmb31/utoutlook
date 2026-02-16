@@ -1,9 +1,10 @@
 #!/bin/bash -e
-
+set -x
+trap 'printf "%3d: " "$LINENO"' DEBUG
 ###############################################
 # Launcher common exports for any desktop app #
 ###############################################
-
+echo "BEGIN DESKTOP-COMMON-------------------------"
 function prepend_dir() {
   local var="$1"
   local dir="$2"
@@ -24,36 +25,6 @@ function can_open_file() {
   head -c0 "$1" &> /dev/null
 }
 
-function update_xdg_dirs_values() {
-  local save_initial_values=false
-  local XDG_DIRS="DOCUMENTS DESKTOP DOWNLOAD MUSIC PICTURES VIDEOS PUBLICSHARE TEMPLATES"
-  unset XDG_SPECIAL_DIRS_PATHS
-
-  if [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/user-dirs.dirs" ]; then
-    # shellcheck source=/dev/null
-    source "${XDG_CONFIG_HOME:-$HOME/.config}/user-dirs.dirs"
-  fi
-
-  if [ -z ${XDG_SPECIAL_DIRS+x} ]; then
-    save_initial_values=true
-  fi
-
-  for d in $XDG_DIRS; do
-    var="XDG_${d}_DIR"
-    value="${!var}"
-
-    if [ "$save_initial_values" = true ]; then
-      XDG_SPECIAL_DIRS+=("$var")
-      if [ -n "$value" ]; then
-        XDG_SPECIAL_DIRS_INITIAL_PATHS+=("$value")
-      fi
-    fi
-
-    if [ -n "$value" ]; then
-      XDG_SPECIAL_DIRS_PATHS+=("$value")
-    fi
-  done
-}
 
 function is_subpath() {
   dir="$(realpath "$1")"
@@ -121,28 +92,48 @@ prepend_dir XDG_DATA_DIRS "$SNAP/share"
 prepend_dir XDG_DATA_DIRS "$SNAP/data-dir"
 prepend_dir XDG_DATA_DIRS "$SNAP_USER_DATA"
 
-# Set XDG_DATA_HOME to local path
-
-mkdir -p "$XDG_DATA_HOME"
+echo " Set XDG_DATA_HOME to local path---------------------"
+echo $XDG_DATA_HOME
+if [ -d $XDG_DATA_HOME ]; then
+	echo "directory exist"
+else
+	echo "create directory $XDG_HOME"
+	mkdir -p "$XDG_DATA_HOME"
+fi
+echo " local path written" 
 
 # Workaround for GLib < 2.53.2 not searching for schemas in $XDG_DATA_HOME:
 #   https://bugzilla.gnome.org/show_bug.cgi?id=741335
 prepend_dir XDG_DATA_DIRS "$XDG_DATA_HOME"
 
-# Set cache folder to local path
+echo " Set cache folder to local path---------------------------"
 export XDG_CACHE_HOME="$SNAP_USER_COMMON/.cache"
 if [[ -d "$SNAP_USER_DATA/.cache" && ! -e "$XDG_CACHE_HOME" ]]; then
   # the .cache directory used to be stored under $SNAP_USER_DATA, migrate it
   mv "$SNAP_USER_DATA/.cache" "$SNAP_USER_COMMON/"
 fi
-mkdir -p "$XDG_CACHE_HOME"
-
-# Set config folder to local path
+echo "testing cache-----------------------------------"
+if [ -d "${XDG_CACHE_HOME}" ]; then
+	echo "cache exist"
+else
+	echo "create cache"
+	echo "$XDG_CACHE_HOME---------"
+	mkdir -p "$XDG_CACHE_HOME"
+fi
+echo " Set config folder to local path-----------------------------"
 export XDG_CONFIG_HOME="$SNAP_USER_DATA/.config"
-mkdir -p "$XDG_CONFIG_HOME"
+if [ -d ${XDG_CONFIG_HOME} ]; then
+	echo "directory config exist"
+else
+	echo "create config home"
 
+	mkdir -p "$XDG_CONFIG_HOME"
+	chmod 755 $XDG_CONFIG_HOME
+fi
 # Create $XDG_RUNTIME_DIR if not exists (to be removed when LP: #1656340 is fixed)
-if [ -n "$XDG_RUNTIME_DIR" ]; then
+if [ -d "$XDG_RUNTIME_DIR" ]; then
+  echo "not needed"
+  else
   mkdir -p "$XDG_RUNTIME_DIR"
   chmod 700 "$XDG_RUNTIME_DIR"
 fi
@@ -150,84 +141,12 @@ fi
 # Ensure the app finds locale definitions (requires locales-all to be installed)
 append_dir LOCPATH "$SNAP_DESKTOP_RUNTIME/usr/lib/locale"
 
-# If any, keep track of where XDG dirs were so we can potentially migrate the content later
-update_xdg_dirs_values
 
 # Setup user-dirs.* or run xdg-user-dirs-update if needed
 needs_xdg_update=false
 needs_xdg_reload=false
 needs_xdg_links=false
-
-if [ "$HOME" != "$SNAP_USER_DATA" ] && ! is_subpath "$XDG_CONFIG_HOME" "$HOME"; then
-  for f in user-dirs.dirs user-dirs.locale; do
-    if [ -f "$HOME/.config/$f" ]; then
-      mv "$HOME/.config/$f" "$XDG_CONFIG_HOME"
-      needs_xdg_reload=true
-    fi
-  done
-fi
-
-if can_open_file "$REALHOME/.config/user-dirs.dirs" && can_open_file "$REALHOME/.config/user-dirs.locale"; then
-  if [ "$SNAP_DESKTOP_COMPONENTS_NEED_UPDATE" = "true" ] || [ $needs_xdg_reload = true ]; then
-    sed "/^#/!s#\$HOME#${REALHOME}#g" "$REALHOME/.config/user-dirs.dirs" > "$XDG_CONFIG_HOME/user-dirs.dirs"
-    cp -a "$REALHOME/.config/user-dirs.locale" "$XDG_CONFIG_HOME"
-    for f in user-dirs.dirs user-dirs.locale; do
-      md5sum < "$REALHOME/.config/$f" > "$XDG_CONFIG_HOME/$f.md5sum"
-    done
-    needs_xdg_reload=true
-  fi
-else
-  needs_xdg_update=true
-  needs_xdg_links=true
-fi
-
-if [ $needs_xdg_reload = true ]; then
-  update_xdg_dirs_values
-  needs_xdg_reload=false
-fi
-
-# Check if we can actually read the contents of each xdg dir
-for ((i = 0; i < ${#XDG_SPECIAL_DIRS_PATHS[@]}; i++)); do
-  if ! can_open_file "${XDG_SPECIAL_DIRS_PATHS[$i]}"; then
-    needs_xdg_update=true
-    needs_xdg_links=true
-    break
-  fi
-done
-
-# If needs XDG update and xdg-user-dirs-update exists in $PATH, run it
-if [ $needs_xdg_update = true ] && command -v xdg-user-dirs-update >/dev/null; then
-  xdg-user-dirs-update
-  update_xdg_dirs_values
-fi
-
-
-
-# If detect wayland server socket, then set environment so applications prefer
-# wayland, and setup compat symlink (until we use user mounts. Remember,
-# XDG_RUNTIME_DIR is /run/user/<uid>/snap.$SNAP so look in the parent directory
-# for the socket. For details:
-# https://forum.snapcraft.io/t/wayland-dconf-and-xdg-runtime-dir/186/10
-# Applications that don't support wayland natively may define DISABLE_WAYLAND
-# (to any non-empty value) to skip that logic entirely.
-SNAP_DESKTOP_WAYLAND_AVAILABLE=false
-if [[ -n "$XDG_RUNTIME_DIR" && -z "$DISABLE_WAYLAND" ]]; then
-    wdisplay="wayland-0"
-    if [ -n "$WAYLAND_DISPLAY" ]; then
-        wdisplay="$WAYLAND_DISPLAY"
-    fi
-    wayland_sockpath="$XDG_RUNTIME_DIR/../$wdisplay"
-    wayland_snappath="$XDG_RUNTIME_DIR/$wdisplay"
-    if [ -S "$wayland_sockpath" ]; then
-        # if running under wayland, use it
-        #export WAYLAND_DEBUG=1
-        SNAP_DESKTOP_WAYLAND_AVAILABLE=true
-        # create the compat symlink for now
-        if [ ! -e "$wayland_snappath" ]; then
-            ln -s "$wayland_sockpath" "$wayland_snappath"
-        fi
-    fi
-fi
+echo "------------------------------------MOVE CONFIG--------------"
 
 # Keep an array of data dirs, for looping through them
 IFS=':' read -r -a data_dirs_array <<< "$XDG_DATA_DIRS"
@@ -266,7 +185,12 @@ if [ "$SNAP_DESKTOP_COMPONENTS_NEED_UPDATE" = "true" ]; then
   # This fontconfig fragment is installed in a location that is
   # included by the system fontconfig configuration: namely the
   # etc/fonts/conf.d/50-user.conf file.
-  mkdir -p "$XDG_CONFIG_HOME/fontconfig"
+  if [ -d  "$XDG_CONFIG_HOME/fontconfig" ]
+  then 
+	 echo "directory exist"
+  else 
+  	mkdir -p "$XDG_CONFIG_HOME/fontconfig"
+  fi
   make_user_fontconfig > "$XDG_CONFIG_HOME/fontconfig/fonts.conf"
 
   # the themes symlink are needed for GTK 3.18 when the prefix isn't changed
@@ -301,42 +225,10 @@ fi
 
 # Setup compiled gsettings schema
 GS_SCHEMA_DIR="$XDG_DATA_HOME/glib-2.0/schemas"
-function compile_schemas {
-  if [ -f "$1" ]; then
-    rm -rf "$GS_SCHEMA_DIR"
-    mkdir -p "$GS_SCHEMA_DIR"
-    for ((i = 0; i < ${#data_dirs_array[@]}; i++)); do
-      schema_dir="${data_dirs_array[$i]}/glib-2.0/schemas"
-      if [ -f "$schema_dir/gschemas.compiled" ]; then
-        # This directory already has compiled schemas
-        continue
-      fi
-      if [ -n "$(ls -A "$schema_dir"/*.xml 2>/dev/null)" ]; then
-        ln -s "$schema_dir"/*.xml "$GS_SCHEMA_DIR"
-      fi
-      if [ -n "$(ls -A "$schema_dir"/*.override 2>/dev/null)" ]; then
-        ln -s "$schema_dir"/*.override "$GS_SCHEMA_DIR"
-      fi
-    done
-    # Only compile schemas if we copied anything
-    if [ -n "$(ls -A "$GS_SCHEMA_DIR"/*.xml "$GS_SCHEMA_DIR"/*.override 2>/dev/null)" ]; then
-      "$1" "$GS_SCHEMA_DIR"
-    fi
-  fi
-}
-if [ "$SNAP_DESKTOP_COMPONENTS_NEED_UPDATE" = "true" ]; then
-  compile_schemas "$SNAP_DESKTOP_RUNTIME/usr/lib/$SNAP_DESKTOP_ARCH_TRIPLET/glib-2.0/glib-compile-schemas"
-fi
 
 # Enable gsettings user changes
 # symlink the dconf file if home plug is connected for read
-DCONF_DEST_USER_DIR="$SNAP_USER_DATA/.config/dconf"
-if [ ! -f "$DCONF_DEST_USER_DIR/user" ]; then
-  if [ -f "$REALHOME/.config/dconf/user" ]; then
-    mkdir -p "$DCONF_DEST_USER_DIR"
-    ln -s "$REALHOME/.config/dconf/user" "$DCONF_DEST_USER_DIR"
-  fi
-fi
+
 
 # Testability support
 append_dir LD_LIBRARY_PATH "$SNAP/testability"
@@ -352,47 +244,8 @@ if [ "$SNAP_DESKTOP_COMPONENTS_NEED_UPDATE" = "true" ]; then
     "$SNAP_DESKTOP_RUNTIME/usr/lib/$SNAP_DESKTOP_ARCH_TRIPLET/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders" > "$GDK_PIXBUF_MODULE_FILE"
   fi
 fi
-
-# Icon themes cache
-if [ "$SNAP_DESKTOP_COMPONENTS_NEED_UPDATE" = "true" ]; then
-  rm -rf "$XDG_DATA_HOME/icons"
-  mkdir -p "$XDG_DATA_HOME/icons"
-  for ((i = 0; i < ${#data_dirs_array[@]}; i++)); do
-    for theme in "${data_dirs_array[$i]}/icons/"*; do
-      if [ -f "$theme/index.theme" ] && [ ! -f "$theme/icon-theme.cache" ]; then
-        theme_dir="$XDG_DATA_HOME/icons/$(basename "$theme")"
-        if [ ! -d "$theme_dir" ]; then
-          mkdir -p "$theme_dir"
-          ln -s "$theme"/* "$theme_dir"
-          if [ -f "$SNAP_DESKTOP_RUNTIME/usr/sbin/update-icon-caches" ]; then
-            "$SNAP_DESKTOP_RUNTIME/usr/sbin/update-icon-caches" "$theme_dir"
-          elif [ -f "$SNAP_DESKTOP_RUNTIME/usr/sbin/update-icon-cache.gtk2" ]; then
-            "$SNAP_DESKTOP_RUNTIME/usr/sbin/update-icon-cache.gtk2" "$theme_dir"
-          fi
-        fi
-      fi
-    done
-  done
-fi
-
-# GTK theme and behavior modifier
-# Those can impact the theme engine used by Qt as well
-gtk_configs=(gtk-3.0/settings.ini gtk-3.0/bookmarks gtk-2.0/gtkfilechooser.ini)
-for f in "${gtk_configs[@]}"; do
-  dest="$XDG_CONFIG_HOME/$f"
-  if [ ! -L "$dest" ]; then
-    mkdir -p "$(dirname "$dest")"
-    ln -s "$REALHOME/.config/$f" "$dest"
-  fi
-done
-
-# create symbolic link to ibus socket path for ibus to look up its socket files
-# (see comments #3 and #6 on https://launchpad.net/bugs/1580463)
-IBUS_CONFIG_PATH="$XDG_CONFIG_HOME/ibus"
-mkdir -p "$IBUS_CONFIG_PATH"
-[ -d "$IBUS_CONFIG_PATH/bus" ] && rm -rf "$IBUS_CONFIG_PATH/bus"
-ln -sfn "$REALHOME/.config/ibus/bus" "$IBUS_CONFIG_PATH"
+cd 
 
 export SNAP_DESKTOP_WAYLAND_AVAILABLE
-
+echo "Done desktop common---------------------------------------"
 exec "$@"

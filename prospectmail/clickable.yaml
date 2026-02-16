@@ -1,11 +1,14 @@
 clickable_minimum_required: 8.4.0
 builder: custom
-kill: prospect_mail
+
+skip_review: true
+kill: 
+  killprospect.sh
 build:
 
 - rm -rf ${ROOT}/squashfs-root/
 - echo '-----Compile maliit patches'
-- ${ROOT}/malit.sh
+- ${ROOT}/maliit.sh
 - echo 'Going to download ProspectMail...'
 - ${ROOT}/get.sh            
 - echo '------install dir-------'
@@ -24,10 +27,10 @@ build:
 - cp /usr/lib/aarch64-linux-gnu/libfuse.so.2 $INSTALL_DIR/lib/aarch64-linux-gnu/libfuse.so
 install_root_data:
 - manifest.json
-- launcher.sh
+- launcher_prospect.sh
 - prospectmail.apparmor
 - prospectmail.desktop
 - assets
-dependencies_host: ["jq","libgtk2.0-dev","libgtk-3-dev","libmaliit-glib-dev","build-essential","meson","libtool","m4","automake","squashfs-tools","qemu-user-static" , "tree" , "patchelf", "git", "jq", "curl", "build-essential", "python3", "python3-pip", "libudev-dev", "dpkg", "moreutils","libssl-dev", "libsqlite3-dev", "libcrypto++-dev", "libsqlcipher-dev", "npm", "git-lfs", "execstack", "imagemagick", "librsvg2-bin", "debhelper-compat", "xauth", "xvfb",'squashfs-tools']
+dependencies_host: ["g++","jq","libgtk2.0-dev","libgtk-3-dev","libmaliit-glib-dev","build-essential","meson","libtool","m4","automake","squashfs-tools","qemu-user-static" , "tree" , "patchelf", "git", "jq", "curl", "build-essential", "python3", "python3-pip", "libudev-dev", "dpkg", "moreutils","libssl-dev", "libsqlite3-dev", "libcrypto++-dev", "libsqlcipher-dev", "npm", "git-lfs", "execstack", "imagemagick", "librsvg2-bin", "debhelper-compat", "xauth", "xvfb",'squashfs-tools']
 
-dependencies_target: ["qemu-user-static", "fuse", "zlib1g","libfuse2","squashfs-tools","libgtk2.0-dev","libgtk-3-dev","libmaliit-glib-dev"]
+dependencies_target: ["qemu-user-static","g++", "fuse", "zlib1g","libfuse2","squashfs-tools","libgtk2.0-dev","libgtk-3-dev","libmaliit-glib-dev"]
