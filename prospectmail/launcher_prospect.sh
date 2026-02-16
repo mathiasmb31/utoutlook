@@ -4,7 +4,7 @@ export SNAP=$PWD/bin/
 export SNAP_DESKTOP_LAST_REVISION="3"
 export SNAP_REVISION="3"
 
-export GDK_SCALE=10
+export GDK_SCALE=3
 export GTK_IM_MODULE=Maliit
 export GTK_IM_MODULE_FILE=$PWD/lib/aarch64-linux-gnu/gtk-3.0/3.0.0/immodules/immodules.cache
 export GDK_BACKEND=x11 
