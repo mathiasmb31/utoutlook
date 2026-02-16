@@ -27,10 +27,10 @@ export DISPLAY=:0.0
 #export QTWEBENGINE_CHROMIUM_FLAGS=--enable-gpu-rasterization --enable-accelerated-video-decode --enable-features=MojoVideoDecoder
 #export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/32011/bus
 scale=$(./utils/get-scale.sh 2>/dev/null )
-dpioptions="--high-dpi-support=1 --force-device-scale-factor=1 "
+dpioptions="--high-dpi-support=1 --force-device-scale-factor=1.3 --grid-unit-px=1"
 sandboxoptions="--no-sandbox"
-#gpuoptions="--use-gl=egl --enable-gpu-rasterization --enable-zero-copy --ignore-gpu-blocklist --enable-features=UseSkiaRenderer,VaapiVideoDecoder --disable-frame-rate-limit --disable-gpu-vsync --enable-oop-rasterization"
-gpuoptions="--use-gl=egl"
+gpuoptions="--use-gl=egl --enable-gpu-rasterization --enable-zero-copy --ignore-gpu-blocklist --enable-features=UseSkiaRenderer,VaapiVideoDecoder --disable-frame-rate-limit --disable-gpu-vsync --enable-oop-rasterization"
+#gpuoptions="--use-gl=egl"
 echo "------------------------------------------------------------------"
 #exec "$SNAP/desktop-init.sh" "$SNAP/desktop-common.sh" "$SNAP/desktop-gnome-specific.sh" "$SNAP/app/prospect-mail $dpioptions $sandboxoptions $gpuoptions "
 exec $SNAP/app/prospect-mail $dpioptions $sandboxoptions $gpuoptions
