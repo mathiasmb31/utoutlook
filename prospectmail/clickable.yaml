@@ -2,12 +2,13 @@ clickable_minimum_required: 8.4.0
 builder: custom
 
 skip_review: true
-kill: prospect_mail
+kill: 
+  killprospect.sh
 build:
 
 - rm -rf ${ROOT}/squashfs-root/
 - echo '-----Compile maliit patches'
-- ${ROOT}/malit.sh
+- ${ROOT}/maliit.sh
 - echo 'Going to download ProspectMail...'
 - ${ROOT}/get.sh            
 - echo '------install dir-------'
@@ -26,7 +27,7 @@ build:
 - cp /usr/lib/aarch64-linux-gnu/libfuse.so.2 $INSTALL_DIR/lib/aarch64-linux-gnu/libfuse.so
 install_root_data:
 - manifest.json
-- launcher.sh
+- launcher_prospect.sh
 - prospectmail.apparmor
 - prospectmail.desktop
 - assets
