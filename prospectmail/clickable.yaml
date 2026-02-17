@@ -28,6 +28,8 @@ build:
 install_root_data:
 - manifest.json
 - launcher_prospect.sh
+- kill_prospect.sh
+- zoom.sh
 - prospectmail.apparmor
 - prospectmail.desktop
 - assets
