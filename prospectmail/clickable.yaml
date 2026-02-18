@@ -3,7 +3,7 @@ builder: custom
 
 skip_review: true
 kill: 
-  killprospect.sh
+  kill_prospect.sh
 build:
 
 - rm -rf ${ROOT}/squashfs-root/
