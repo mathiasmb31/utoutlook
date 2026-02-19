@@ -33,5 +33,5 @@ sandboxoptions="--no-sandbox"
 gpuoptions="--use-gl=egl --disable-dev-shm-usage"
 echo "------------------------------------------------------------------"
 #exec "$SNAP/desktop-init.sh" "$SNAP/desktop-common.sh" "$SNAP/desktop-gnome-specific.sh" "$SNAP/app/prospect-mail $dpioptions $sandboxoptions $gpuoptions "
-exec $SNAP/app/prospect-mail $dpioptions $sandboxoptions $gpuoptions 
+$SNAP/app/prospect-mail $dpioptions $sandboxoptions $gpuoptions 
 

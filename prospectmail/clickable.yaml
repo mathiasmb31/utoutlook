@@ -2,8 +2,8 @@ clickable_minimum_required: 8.4.0
 builder: custom
 
 skip_review: false
-kill: 
-  kill_prospect.sh
+kill: prospect-mail
+
 build:
 
 - rm -rf ${ROOT}/squashfs-root/
