@@ -3,7 +3,6 @@
 set -x
 trap 'printf "%3d: " "$LINENO"' DEBUG
 echo $SNAP
-pkill prospect-mail
 echo "Going to launch"
 echo "GRID UNIT PX"$GRID_UNIT_PX
 #export QT_QUICK_CONTROLS_STYLE=Suru
@@ -27,6 +26,8 @@ export DISPLAY=:0.0
 #PATH=${PATH}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
 #export QTWEBENGINE_CHROMIUM_FLAGS=--enable-gpu-rasterization --enable-accelerated-video-decode --enable-features=MojoVideoDecoder
 #export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/32011/bus
+
+./utils/kill_prospect.sh
 scale=$(./utils/get-scale.sh 2>/dev/null )
 dpioptions="--high-dpi-support=1 --force-device-scale-factor=1 --grid-unit-px=1"
 sandboxoptions="--no-sandbox"

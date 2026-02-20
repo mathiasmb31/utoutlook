@@ -2,7 +2,7 @@ clickable_minimum_required: 8.4.0
 builder: custom
 
 skip_review: false
-kill: prospect-mail
+kill: kill_prospect.sh
 
 build:
 
@@ -28,11 +28,11 @@ build:
 install_root_data:
 - manifest.json
 - launcher_prospect.sh
-- kill_prospect.sh
 - zoom.sh
 - prospectmail.apparmor
 - prospectmail.desktop
 - assets
-dependencies_host: ["xdotool","g++","jq","libgtk2.0-dev","libgtk-3-dev","libmaliit-glib-dev","build-essential","meson","libtool","m4","automake","squashfs-tools","qemu-user-static" , "tree" , "patchelf", "git", "jq", "curl", "build-essential", "python3", "python3-pip", "libudev-dev", "dpkg", "moreutils","libssl-dev", "libsqlite3-dev", "libcrypto++-dev", "libsqlcipher-dev", "npm", "git-lfs", "execstack", "imagemagick", "librsvg2-bin", "debhelper-compat", "xauth", "xvfb",'squashfs-tools']
+- utils
+dependencies_host: ["xdotool","psmisc","g++","jq","libgtk2.0-dev","libgtk-3-dev","libmaliit-glib-dev","build-essential","meson","libtool","m4","automake","squashfs-tools","qemu-user-static" , "tree" , "patchelf", "git", "jq", "curl", "build-essential", "python3", "python3-pip", "libudev-dev", "dpkg", "moreutils","libssl-dev", "libsqlite3-dev", "libcrypto++-dev", "libsqlcipher-dev", "npm", "git-lfs", "execstack", "imagemagick", "librsvg2-bin", "debhelper-compat", "xauth", "xvfb",'squashfs-tools']
 
-dependencies_target: ["xdotool","qemu-user-static","g++", "fuse", "zlib1g","libfuse2","squashfs-tools","libgtk2.0-dev","libgtk-3-dev","libmaliit-glib-dev"]
+dependencies_target: ["psmisc","xdotool","qemu-user-static","g++", "fuse", "zlib1g","libfuse2","squashfs-tools","libgtk2.0-dev","libgtk-3-dev","libmaliit-glib-dev"]
