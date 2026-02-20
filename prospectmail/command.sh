@@ -3,6 +3,7 @@
 set -x
 trap 'printf "%3d: " "$LINENO"' DEBUG
 echo $SNAP
+pkill prospect-mail
 echo "Going to launch"
 echo "GRID UNIT PX"$GRID_UNIT_PX
 #export QT_QUICK_CONTROLS_STYLE=Suru
