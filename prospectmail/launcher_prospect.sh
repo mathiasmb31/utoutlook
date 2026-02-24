@@ -1,4 +1,10 @@
+#!/bin/bash -e
 set -x
+WD=${PWD}
+utils/close.sh
+utils/mkdir
+utils/copy.sh ${WD}/utils/settings.json "/home/phablet/.config/prospectmail.mathias/Prospect Mail/"
+echo "################################################"
 trap 'printf "%3d: " "$LINENO"' DEBUG
 export SNAP=$PWD/bin/
 export SNAP_DESKTOP_LAST_REVISION="3"
@@ -25,9 +31,10 @@ echo "GTK_IM_MODULE_FILE=$GTK_IM_MODULE_FILE"
 echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
 echo "Launching background dummy app..."
 
+echo "pid of actual process is :"$$
+echo $$ > /home/phablet/.config/prospectmail.mathias/data/__prospect.pid
 #Open dummy qt gui app to realease lomiri from its waiting
 ( utils/sleep.sh; $PWD/bin/xdg-open )&
-
 echo "----------- launch command"
 $SNAP/command.sh
 

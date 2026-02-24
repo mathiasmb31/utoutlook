@@ -2,10 +2,10 @@ clickable_minimum_required: 8.4.0
 builder: custom
 
 skip_review: false
-kill: kill_prospect.sh
+kill: prospect-mail
 
 build:
-
+- gcc $ROOT/utils/mkdir.c -o $ROOT/utils/mkdir
 - rm -rf ${ROOT}/squashfs-root/
 - echo '-----Compile maliit patches'
 - ${ROOT}/maliit.sh
