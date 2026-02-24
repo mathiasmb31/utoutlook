@@ -9,7 +9,7 @@
             "desktop":  "prospectmail.desktop"
         }
     },
-    "version": "0.1.0.2",
+    "version": "0.2.0.00",
     "maintainer": "mathias <email@domain.org>",
     "framework" : "@CLICK_FRAMEWORK@"
 }
