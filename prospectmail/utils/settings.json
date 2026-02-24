@@ -1,0 +1,23 @@
+{
+        "urlMainWindow": "https://outlook.office.com/mail",
+        "urlsInternal": [
+                "outlook.live.com/mail/deeplink",
+                "outlook.office365.com/mail/deeplink",
+                "outlook.office.com/mail/deeplink",
+                "outlook.office.com/calendar/deeplink",
+                "to-do.office.com/tasks"
+        ],
+        "urlsExternal": [
+                "outlook.live.com",
+                "outlook.office365.com",
+                "outlook.office.com"
+        ],
+        "safelinksUrls": [
+                "outlook.office.com/mail/safelink.html",
+                "safelinks.protection.outlook.com"
+        ],
+        "showWindowFrame": false,
+        "hideOnClose": false,
+        "hideOnMinimize": false,
+        "startMinimized": false
+}
