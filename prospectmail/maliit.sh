@@ -1,8 +1,5 @@
 #!/bin/bash
-set -e  # Exit immediately on error
-
-
-
+set -e # Exit immediately on error
 
 # ===================================
 # STEP 4: BUILD THE FAKE xdg-open
@@ -23,12 +20,12 @@ echo "[5/9] Install dependencies..."
 cd ${BUILD_DIR}
 DEPENDENCIES="libhybris-utils xdotool libmaliit-glib2 libxdo3 x11-utils"
 
-for dep in $DEPENDENCIES ; do
-    apt download $dep:arm64
-    mv ${dep}_*.deb ${dep}.deb
-    rm -rvf "${dep}.deb_extract_chsdjksd" || true
-    mkdir "${dep}.deb_extract_chsdjksd"
-    dpkg-deb -x "${dep}.deb" "${dep}.deb_extract_chsdjksd"
+for dep in $DEPENDENCIES; do
+          apt download $dep:arm64
+          mv ${dep}_*.deb ${dep}.deb
+          rm -rvf "${dep}.deb_extract_chsdjksd" || true
+          mkdir "${dep}.deb_extract_chsdjksd"
+          dpkg-deb -x "${dep}.deb" "${dep}.deb_extract_chsdjksd"
 done
 
 # =================================================
@@ -37,13 +34,10 @@ done
 
 echo "[6/9] Building maliit-inputcontext-gtk3 and download dependencies..."
 
-
 PKGNAME="maliit-inputcontext-gtk"
 VERSION="0.99.1+git20151116.72d7576"
 ORIG_URL="https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/maliit-inputcontext-gtk/0.99.1+git20151116.72d7576-3build3/maliit-inputcontext-gtk_0.99.1+git20151116.72d7576.orig.tar.xz"
 DEBIAN_URL="https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/maliit-inputcontext-gtk/0.99.1+git20151116.72d7576-3build3/maliit-inputcontext-gtk_0.99.1+git20151116.72d7576-3build3.debian.tar.xz"
-
-
 
 WORKDIR_MALIIT="${PKGNAME}-${VERSION}"
 rm -rvf $WORKDIR_MALIIT/ || true
@@ -63,15 +57,14 @@ tar -xf "${PKGNAME}_${VERSION}.debian.tar.xz" -C "$SRC_DIR_MALIIT"
 
 echo "Apply patch..."
 cd ${BUILD_DIR}/$SRC_DIR_MALIIT/maliit-inputcontext-gtk-$VERSION/
-patch ${BUILD_DIR}/$SRC_DIR_MALIIT/maliit-inputcontext-gtk-$VERSION/gtk-input-context/client-gtk/client-imcontext-gtk.c  ${ROOT}/patches/maliit-inputcontext-gtk/client-imcontext-gtk.c.patch
+patch ${BUILD_DIR}/$SRC_DIR_MALIIT/maliit-inputcontext-gtk-$VERSION/gtk-input-context/client-gtk/client-imcontext-gtk.c ${ROOT}/patches/maliit-inputcontext-gtk/client-imcontext-gtk.c.patch
 echo "${ROOT}/patches/maliit-inputcontext-gtk/client-imcontext-gtk.c.patch"
 
 echo "Compile..."
 EDITOR=true dpkg-source --commit . fix-keyboard
 DEB_BUILD_OPTIONS=nocheck dpkg-buildpackage -us -uc -a arm64
 
-echo "[7/9] Copying files..." 
-
+echo "[7/9] Copying files..."
 
 echo "Copying dependencies..."
 cd ${BUILD_DIR}
@@ -79,9 +72,9 @@ cd ${BUILD_DIR}
 rm -rvf $INSTALL_DIR/lib
 mkdir -p "$INSTALL_DIR/lib/aarch64-linux-gnu/gtk-3.0/3.0.0/immodules/"
 for DIR in *_extract_chsdjksd; do
-    if [ -d "$DIR/usr/lib/aarch64-linux-gnu/" ]; then
-        cp -r "$DIR/usr/lib/aarch64-linux-gnu/"* "$INSTALL_DIR/lib/aarch64-linux-gnu/"
-    fi
+          if [ -d "$DIR/usr/lib/aarch64-linux-gnu/" ]; then
+                    cp -r "$DIR/usr/lib/aarch64-linux-gnu/"* "$INSTALL_DIR/lib/aarch64-linux-gnu/"
+          fi
 done
 
 echo "done"
@@ -96,14 +89,9 @@ echo "Copying maliit-input-context..."
 cp ${ROOT}/patches/maliit-inputcontext-gtk/immodules.cache $INSTALL_DIR/lib/aarch64-linux-gnu/gtk-3.0/3.0.0/immodules/
 cp ${BUILD_DIR}/$WORKDIR_MALIIT/maliit-inputcontext-gtk-$VERSION/builddir/gtk3/gtk-3.0/im-maliit.so $INSTALL_DIR/lib/aarch64-linux-gnu/gtk-3.0/3.0.0/immodules/
 
-
 mkdir -p "$INSTALL_DIR/utils/"
 cp ${ROOT}/utils/sleep.sh "$INSTALL_DIR/utils/"
 cp ${ROOT}/utils/get-scale.sh "$INSTALL_DIR/utils/"
 cp ${BUILD_DIR}/xdg-open/build/xdg-open-test $INSTALL_DIR/bin/
 
-
-
 chmod +x $INSTALL_DIR/utils/sleep.sh
-
- 
