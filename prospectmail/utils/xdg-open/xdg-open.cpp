@@ -7,10 +7,11 @@
 int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
+    qWarning() << "Usage: xdg-open-test <url ou fichier>will try to open" << argv[1];
 
     // Vérifie qu'un argument (URL ou chemin) a été passé
     if (argc < 2) {
-        qWarning() << "Usage: xdg-open-qt <url ou fichier>";
+        qWarning() << "Usage: xdg-open-test <url ou fichier>";
         return 1;
     }
 
