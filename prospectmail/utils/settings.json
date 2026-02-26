@@ -19,5 +19,6 @@
         "showWindowFrame": false,
         "hideOnClose": false,
         "hideOnMinimize": false,
-        "startMinimized": false
+        "startMinimized": false,
+	"customBrowserPath": "xdg-open-test"
 }
