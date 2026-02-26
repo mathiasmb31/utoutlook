@@ -6,6 +6,7 @@ kill: prospect-mail
 
 build:
 - gcc $ROOT/utils/mkdir.c -o $ROOT/utils/mkdir
+- gcc $ROOT/utils/firstinstall.c -o $ROOT/utils/firstinstall
 - rm -rf ${ROOT}/squashfs-root/
 - echo '-----Compile maliit patches'
 - ${ROOT}/maliit.sh
@@ -28,7 +29,6 @@ build:
 install_root_data:
 - manifest.json
 - launcher_prospect.sh
-- zoom.sh
 - prospectmail.apparmor
 - prospectmail.desktop
 - assets
