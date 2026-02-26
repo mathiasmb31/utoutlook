@@ -100,7 +100,7 @@ cp ${BUILD_DIR}/$WORKDIR_MALIIT/maliit-inputcontext-gtk-$VERSION/builddir/gtk3/g
 mkdir -p "$INSTALL_DIR/utils/"
 cp ${ROOT}/utils/sleep.sh "$INSTALL_DIR/utils/"
 cp ${ROOT}/utils/get-scale.sh "$INSTALL_DIR/utils/"
-cp ${BUILD_DIR}/xdg-open/build/xdg-open $INSTALL_DIR/bin/
+cp ${BUILD_DIR}/xdg-open/build/xdg-open-test $INSTALL_DIR/bin/
 
 
 
