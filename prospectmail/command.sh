@@ -35,5 +35,7 @@ echo "------------------------------------------------------------------"
 #exec "$SNAP/desktop-init.sh" "$SNAP/desktop-common.sh" "$SNAP/desktop-gnome-specific.sh" "$SNAP/app/prospect-mail $dpioptions $sandboxoptions $gpuoptions "
 echo $$ >> /home/phablet/.config/prospectmail.mathias/data/__prospect.pid
 ( utils/shortsleep.sh;utils/auto_zoom.sh )&
+export PATH=$PWD/bin:$PATH
+echo $PATH
 $SNAP/app/prospect-mail $dpioptions $sandboxoptions $gpuoptions 
 
