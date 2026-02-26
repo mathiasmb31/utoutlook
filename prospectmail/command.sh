@@ -3,6 +3,7 @@
 set -x
 trap 'printf "%3d: " "$LINENO"' DEBUG
 echo $SNAP
+export WD=${PWD}
 echo "Going to launch"
 echo "GRID UNIT PX"$GRID_UNIT_PX
 #export QT_QUICK_CONTROLS_STYLE=Suru
@@ -20,7 +21,7 @@ echo "GRID UNIT PX"$GRID_UNIT_PX
 export DISPLAY=:0.0
 #export SHLVL=1
 #export XDG_SESSION_ID=c119
-#export QT_FILE_SELECTORS=ubuntu-touch
+export QT_FILE_SELECTORS=ubuntu-touch
 #export XDG_RUNTIME_DIR=/run/user/32011
 #export XDG_DATA_DIRS=/usr/local/share:/usr/share:/var/lib/snapd/desktop
 #PATH=${PATH}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
@@ -33,5 +34,6 @@ gpuoptions="--use-gl=egl --disable-dev-shm-usage"
 echo "------------------------------------------------------------------"
 #exec "$SNAP/desktop-init.sh" "$SNAP/desktop-common.sh" "$SNAP/desktop-gnome-specific.sh" "$SNAP/app/prospect-mail $dpioptions $sandboxoptions $gpuoptions "
 echo $$ >> /home/phablet/.config/prospectmail.mathias/data/__prospect.pid
+( utils/shortsleep.sh;utils/auto_zoom.sh )&
 $SNAP/app/prospect-mail $dpioptions $sandboxoptions $gpuoptions 
 
