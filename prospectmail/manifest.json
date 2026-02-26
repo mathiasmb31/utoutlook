@@ -9,11 +9,7 @@
             "desktop":  "prospectmail.desktop"
         }
     },
-<<<<<<< HEAD
-    "version": "0.4.0.5",
-=======
-    "version": "0.4.0.0",
->>>>>>> ed130aa (manifest.json new version)
+    "version": "0.5.0.0",
     "maintainer": "mathias <email@domain.org>",
     "framework" : "@CLICK_FRAMEWORK@"
 }
