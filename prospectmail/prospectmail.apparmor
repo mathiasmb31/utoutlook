@@ -1,6 +1,7 @@
 {
     "policy_groups": [
 	 "networking",
+	 "connectivity",
          "audio",
          "video",
          "webview",
