@@ -13,8 +13,8 @@ export SNAP_REVISION="3"
 export GDK_SCALE=1
 export GTK_IM_MODULE=Maliit
 export GTK_IM_MODULE_FILE=$PWD/lib/aarch64-linux-gnu/gtk-3.0/3.0.0/immodules/immodules.cache
-export GDK_BACKEND=x11 
-export DISABLE_WAYLAND=1 
+export GDK_BACKEND=x11
+export DISABLE_WAYLAND=1
 export DCONF_PROFILE=/nonexistent
 export XDG_CONFIG_HOME=/home/phablet/.config/prospectmail.mathias/
 export LD_LIBRARY_PATH=$PWD/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH
@@ -32,9 +32,11 @@ echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
 echo "Launching background dummy app..."
 
 echo "pid of actual process is :"$$
-echo $$ > /home/phablet/.config/prospectmail.mathias/data/__prospect.pid
+echo $$ >/home/phablet/.config/prospectmail.mathias/data/__prospect.pid
 #Open dummy qt gui app to realease lomiri from its waiting
-( utils/sleep.sh; $PWD/bin/xdg-open )&
+(
+          utils/sleep.sh
+          $PWD/bin/xdg-open
+) &
 echo "----------- launch command"
 $SNAP/command.sh
-
