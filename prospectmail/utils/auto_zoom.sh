@@ -26,16 +26,15 @@ fi
 
 
 if [ -f /home/phablet/.config/prospectmail.mathias/zoomtodo ]; then
-
-${WD}/utils/rm.sh /home/phablet/.config/prospectmail.mathias/zoomtodo
 loop=`${WD}/utils/cat.sh /home/phablet/.config/prospectmail.mathias/zoomtodo`
+echo "--------------------LOOP IS -------------------"$loop
+${WD}/utils/rm.sh /home/phablet/.config/prospectmail.mathias/zoomtodo
  for i in {1..10}; do # you can also use {0..9}
                     echo "waiting before zoom"
                     ${WD}/utils/shortsleep.sh
           done
-for i in {0..${loop}}
-do
-  echo "I AM ZOOMING WITH FLAG autozoom"
+for (( i=1; i<=$loop; i++ )); do
+		echo "I AM ZOOMING WITH FLAG autozoom"
           ${WD}/utils/zoom.sh
 done
 	
