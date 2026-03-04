@@ -1,4 +1,4 @@
-#prospect
+#prospectmail for ut
 
 prospectmail package from https://github.com/julian-alarcon/prospect-mail?tab=readme-ov-file#readme
 
