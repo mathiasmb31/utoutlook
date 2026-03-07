@@ -14,10 +14,7 @@ sandboxoptions="--no-sandbox"
 gpuoptions="--use-gl=egl --disable-dev-shm-usage"
 echo "------------------------------------------------------------------"
 echo $$ >>/home/phablet/.config/prospectmail.mathias/data/__prospect.pid
-(
-          utils/shortsleep.sh
-          utils/auto_zoom.sh
-) &
+utils/auto_zoom.sh &
 export PATH=$PWD/bin:$PATH
 echo $PATH
 $SNAP/app/prospect-mail $dpioptions $sandboxoptions $gpuoptions

@@ -36,7 +36,10 @@ echo $$ >/home/phablet/.config/prospectmail.mathias/data/__prospect.pid
 #Open dummy qt gui app to realease lomiri from its waiting
 (
           utils/sleep.sh
-          $PWD/bin/xdg-open
+          $PWD/bin/xdg-open-qt
 ) &
-echo "----------- launch command"
+echo "----------- launch firstinstall"
+utils/verify_flag.sh
+echo " start prospect-mail"
+
 $SNAP/command.sh
