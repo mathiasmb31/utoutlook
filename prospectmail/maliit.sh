@@ -18,7 +18,7 @@ make
 echo "[5/9] Install dependencies..."
 
 cd ${BUILD_DIR}
-DEPENDENCIES="libhybris-utils xdotool libmaliit-glib2 libxdo3 x11-utils"
+DEPENDENCIES="libhybris-utils notify-osd xdotool libmaliit-glib2 libxdo3 x11-utils"
 
 for dep in $DEPENDENCIES; do
           apt download $dep:arm64
