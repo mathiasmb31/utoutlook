@@ -137,7 +137,7 @@ MainView {
         }
         Rectangle {
             y:100
-            height: units.gu(3)
+            height: units.gu(30)
             color: "orange"
             border.color: "transparent"
             border.width: 100
@@ -152,7 +152,7 @@ MainView {
                 anchors.margins: 5
                 id: userInputField
                 focus: true
-                font.pointSize: 10
+                font.pointSize: 20
                 font.bold: true
                 font.family: "Times New Roman"
                 cursorVisible: true
