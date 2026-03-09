@@ -23,7 +23,7 @@
 #include <QDebug>
 #include <QJsonArray>
 
-#define PUSH_APP_ID "notify.pparent_notify"
+#define PUSH_APP_ID "prospectmail.mathias_prospectmail"
 #define PUSH_SERVICE "com.lomiri.PushNotifications"
 #define POSTAL_SERVICE "com.lomiri.Postal"
 #define PUSH_PATH "/com/lomiri/PushNotifications"
@@ -50,7 +50,7 @@ PushClient::PushClient(QObject *parent) : QObject(parent),
 QJsonObject PushClient::buildSummaryMessage(const QString &msg) {
 
 
-    QString icon = QString("/opt/click.ubuntu.com/notify.pparent/current/icon.png");
+    QString icon = QString("/opt/click.ubuntu.com/prospectmail.mathias/current/assets/logo.png");
 
     QJsonObject c;
     c["summary"] = msg;
@@ -58,7 +58,7 @@ QJsonObject PushClient::buildSummaryMessage(const QString &msg) {
     c["persist"] = true;
     c["icon"] = icon;
     QJsonArray actions = QJsonArray();
-    QString actionUri = QStringLiteral("appid://notify.pparent/notify/current-user-version");
+    QString actionUri = QStringLiteral("appid://prospectmail.mathias/prospectmail/current-user-version");
     actions.append(actionUri);
     c["actions"] = actions;
 
