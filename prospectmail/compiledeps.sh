@@ -1,10 +1,19 @@
 #!/bin/bash
 set -e # Exit immediately on error
-
 # ===================================
-# STEP 4: BUILD THE FAKE xdg-open
+# STEP 1: BUILD THE FAKE xdg-open
 # ===================================
-echo "[4/10] Building fake xdg-open ..."
+echo "[1/4] Building notify ..."
+cp -r ${ROOT}/notifysrc ${BUILD_DIR}/
+cd ${BUILD_DIR}/notifysrc/
+mkdir -p build
+cd build
+cmake ../CMakeLists.txt
+make
+# ===================================
+# STEP 2: BUILD THE FAKE xdg-open
+# ===================================
+echo "[2/4] Building fake xdg-open ..."
 cp -r ${ROOT}/utils/xdg-open/ ${BUILD_DIR}/
 cd ${BUILD_DIR}/xdg-open/
 mkdir -p build
@@ -13,9 +22,9 @@ cmake ..
 make
 
 # ===================================
-# STEP 4: Install DEPENDENCIES
+# STEP 3: Install DEPENDENCIES
 # ===================================
-echo "[5/9] Install dependencies..."
+echo "[3/4] Install dependencies..."
 
 cd ${BUILD_DIR}
 DEPENDENCIES="libhybris-utils notify-osd xdotool libmaliit-glib2 libxdo3 x11-utils"
@@ -29,10 +38,10 @@ for dep in $DEPENDENCIES; do
 done
 
 # =================================================
-# STEP 6: Downloading maliit-inputcontext-gtk3
+# STEP 4: Downloading maliit-inputcontext-gtk3
 # =================================================
 
-echo "[6/9] Building maliit-inputcontext-gtk3 and download dependencies..."
+echo "[4/4] Building maliit-inputcontext-gtk3 and download dependencies..."
 
 PKGNAME="maliit-inputcontext-gtk"
 VERSION="0.99.1+git20151116.72d7576"
@@ -93,5 +102,5 @@ mkdir -p "$INSTALL_DIR/utils/"
 cp ${ROOT}/utils/sleep.sh "$INSTALL_DIR/utils/"
 cp ${ROOT}/utils/get-scale.sh "$INSTALL_DIR/utils/"
 cp ${BUILD_DIR}/xdg-open/build/xdg-open-test $INSTALL_DIR/bin/
-
+cp ${BUILD_DIR}/notifysrc/build/notify $INSTALL_DIR/bin/
 chmod +x $INSTALL_DIR/utils/sleep.sh
