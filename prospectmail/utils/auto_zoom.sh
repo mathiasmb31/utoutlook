@@ -1,6 +1,5 @@
 #!/bin/bash
-
-pwd
+export QML_XHR_ALLOW_FILE_WRITE=1
 
 if [ -d /home/phablet/.config/prospectmail.mathias/FIRSTINSTALL ]; then
           echo " already zoomed"
@@ -9,7 +8,9 @@ else
           echo "file found....waiting 30s"
           for i in {1..8}; do # you can also use {0..9}
                     echo "waiting before zoom"
+                     ${WD}/bin/notify  `expr $i \* 5`" secondes before zooming page"
                     ${WD}/utils/shortsleep.sh
+		   
           done
 
           echo "I AM ZOOMING"
@@ -27,7 +28,9 @@ echo "--------------------LOOP IS -------------------"$loop
 ${WD}/utils/rm.sh /home/phablet/.config/prospectmail.mathias/zoomtodo
  for i in {1..10}; do # you can also use {0..9}
                     echo "waiting before zoom"
+                      ${WD}/bin/notify  `expr ${i} \* 5`" secondes before zooming second page"
                     ${WD}/utils/shortsleep.sh
+                  
           done
 for (( i=1; i<=$loop; i++ )); do
 		echo "I AM ZOOMING WITH FLAG autozoom"
