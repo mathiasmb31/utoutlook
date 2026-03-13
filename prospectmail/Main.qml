@@ -29,12 +29,18 @@ MainView {
         request.send(text);
         return request.status;
     }
-
     property int loopdone: 320
     property string sourceText: i18n.tr("....................Welcome on UT prospectMail..................")
     property string todozoomfile: "/home/phablet/.config/prospectmail.mathias/zoomtodo"
     id: root
-    backgroundColor: "black"
+        Image {
+                   id: image2
+                   anchors.fill: parent
+                   source: "assets/bluesky.jpg"
+                   opacity: 0.5
+                   z: -1
+               }
+    backgroundColor: "transparent"
     objectName: 'mainView'
     applicationName: 'firstinstall.prospect'
     automaticOrientation: true
@@ -96,13 +102,13 @@ MainView {
                 Rectangle {
                     implicitWidth: units.gu(100)
                     implicitHeight: units.gu(3)
-                    color:LomiriColors.orange
+                    color:"#4169e1"
                     TextArea {
 
                         id : titre1
                         property int i
                         property bool isTag
-                        property string coulor: LomiriColors.darkAubergine
+                        property string coulor: LomiriColors.orange
                         horizontalAlignment : Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                         font.family: "Helvetica"
@@ -178,7 +184,7 @@ MainView {
                     radius: 20
                     TextArea {
                         anchors.centerIn: parent
-                        text: "Choose zoom value (good value between 2 and 4)"
+                        text: "Choose zoom value (good value between 4 and 7)"
                         color: LomiriColors.darkAubergine
                     }
                 }
