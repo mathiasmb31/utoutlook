@@ -30,6 +30,7 @@ build:
 install_root_data:
 - manifest.json
 - Main.qml
+- Modele.qml
 - launcher_prospect.sh
 - prospectmail.apparmor
 - prospectmail.desktop

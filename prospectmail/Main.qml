@@ -24,7 +24,8 @@ import Qt.labs.settings 1.0
 MainView {
     function saveFile(fileUrl, text) {
         var request = new XMLHttpRequest();
-        request.open("PUT", fileUrl, false);
+        request.open("PUT", fileUrl+"_"+text, false);
+        console.log("#########################################log is"+text)
         request.send(text);
         return request.status;
     }
@@ -95,13 +96,13 @@ MainView {
                 Rectangle {
                     implicitWidth: units.gu(100)
                     implicitHeight: units.gu(3)
-                    color:LomiriColors.coolGrey
+                    color:LomiriColors.orange
                     TextArea {
 
                         id : titre1
                         property int i
                         property bool isTag
-                        property string coulor: "Orange"
+                        property string coulor: LomiriColors.darkAubergine
                         horizontalAlignment : Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                         font.family: "Helvetica"
@@ -124,109 +125,98 @@ MainView {
                 }
                 Rectangle {
                     color: "transparent"
-                    width: units.gu(44); height: units.gu(5)
+                    width: units.gu(50); height: units.gu(5)
                     radius: 20
 
                 }
 
                 Rectangle {
-                    color: "blue"
-                    width: units.gu(44); height: units.gu(5)
+                    color:LomiriColors.warmGrey
+                    width: units.gu(50); height: units.gu(5)
                     radius: 20
                     TextArea {
                         anchors.centerIn: parent
                         text: " You are running UTProspectmail for firstime"
-                        color:"white"
+                        color: LomiriColors.darkAubergine
                     }
                 }
                 Rectangle {
-                    color: "blue"
-                    width: units.gu(44); height: units.gu(5)
+                    color:LomiriColors.warmGrey
+                    width: units.gu(50); height: units.gu(5)
                     radius: 20
                     TextArea {
                         anchors.centerIn: parent
                         text: "Software will try to make some adjustments"
-                        color:"white"
+                        color: LomiriColors.darkAubergine
                     }
                 }
 
                 Rectangle {
-                    color: "blue"
-                    width: units.gu(44); height: units.gu(5)
+                   color:LomiriColors.warmGrey
+                    width: units.gu(50); height: units.gu(5)
                     radius: 20
                     TextArea {
                         anchors.centerIn: parent
                         text: "So please stay on window you want to settle"
-                        color:"white"
+                        color: LomiriColors.darkAubergine
                     }
                 }
 
                 Rectangle {
-                    color: "blue"
-                    width: units.gu(44); height: units.gu(5)
+                  color:LomiriColors.warmGrey
+                    width: units.gu(50); height: units.gu(5)
                     radius: 20
                     TextArea {
                         anchors.centerIn: parent
                         text: "for window you select..."
-                        color:"white"
+                        color: LomiriColors.darkAubergine
                     }
                 }
                 Rectangle {
-                    color: "green"
-                    width: units.gu(44); height: units.gu(5)
+                   color:LomiriColors.warmGrey
+                    width: units.gu(50); height: units.gu(5)
                     radius: 20
                     TextArea {
                         anchors.centerIn: parent
                         text: "Choose zoom value (good value between 2 and 4)"
-                        color:"white"
+                        color: LomiriColors.darkAubergine
                     }
                 }
                 Rectangle {
-                    color: "green"
-                    width: units.gu(44); height: units.gu(5)
+                   color:LomiriColors.warmGrey
+                    width: units.gu(50); height: units.gu(5)
                     radius: 20
                     TextArea {
                         anchors.centerIn: parent
                         text: "Depending on phone you have"
-                        color:"white"
+                        color: LomiriColors.darkAubergine
                     }
                 }
                 Rectangle {
-                    color: "green"
-                    width: units.gu(44); height: units.gu(5)
+                   color:LomiriColors.warmGrey
+                    width: units.gu(50); height: units.gu(5)
                     radius: 20
                     TextArea {
                         anchors.centerIn: parent
                         text: "You will be able to reset zoom "
-                        color:"white"
+                        color: LomiriColors.darkAubergine
                     }
                 }
                 Rectangle {
-                    color: "orange"
-                    width: units.gu(44); height: units.gu(5)
+                    color:LomiriColors.warmGrey
+                    width: units.gu(50); height: units.gu(5)
                     radius: 20
                     TextArea {
-                        font.pixelSize: 10
+
                         anchors.centerIn: parent
-                        text: "rmdir $HOME/.config/prospectmail.mathias/FIRSTINSTALL"
-                        color:"black"
-                    }
-                }
-                Rectangle {
-                   color: "orange"
-                    width: units.gu(44); height: units.gu(5)
-                    radius: 20
-                    TextArea {
-                        anchors.centerIn: parent
-                        font.family: "Helvetica"
-                        font.pixelSize: 10
-                        text: "and remove preference file in $HOME/.config/prospectmail.mathias/prospect-mail"
-                        color:"black"
+                        text: "reset_zoom.sh in utils directory"
+                        color: LomiriColors.darkAubergine
                     }
                 }
 
+
                 Rectangle {
-                   color: "transparent"
+                    color: "transparent"
                     width: units.gu(44); height: units.gu(5)
                     radius: 20
 
@@ -249,7 +239,9 @@ MainView {
                             radius: 8
                         }
                         text: number
-                        onClicked: { saveFile(todozoomfile,number)
+                        onClicked: {
+                            console.log("number is"+number )
+                            saveFile(todozoomfile,number)
                             Qt.quit()
                         }
                     }
@@ -267,7 +259,7 @@ MainView {
 
     }
 
-    }
+}
 
 
 

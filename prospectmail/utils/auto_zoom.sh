@@ -8,7 +8,8 @@ else
           echo "file found....waiting 30s"
           for i in {1..8}; do # you can also use {0..9}
                     echo "waiting before zoom"
-                     ${WD}/bin/notify  `expr $i \* 5`" secondes before zooming page"
+		    a=$((45-$i * 5))
+                     ${WD}/bin/notify  "${a} secondes before zooming first page"
                     ${WD}/utils/shortsleep.sh
 		   
           done
@@ -20,23 +21,33 @@ else
           ${WD}/utils/zoom.sh
           ${WD}/utils/firstinstall
 fi
+cd /home/phablet/.config/prospectmail.mathias/
+file=`${WD}/utils/ls.sh "zoomtodo*"`
+echo "----------------------------------------------------------------"
+echo $file
+if [[ $file == "zoomtodo"* ]]; then
 
 
-if [ -f /home/phablet/.config/prospectmail.mathias/zoomtodo ]; then
-loop=`${WD}/utils/cat.sh /home/phablet/.config/prospectmail.mathias/zoomtodo`
-echo "--------------------LOOP IS -------------------"$loop
-${WD}/utils/rm.sh /home/phablet/.config/prospectmail.mathias/zoomtodo
- for i in {1..10}; do # you can also use {0..9}
+loop=${file:0-1}
+
+
+for i in {1..10}; do # you can also use {0..9}
                     echo "waiting before zoom"
-                      ${WD}/bin/notify  `expr ${i} \* 5`" secondes before zooming second page"
+			a=$((50-$i * 5))
+
+                      ${WD}/bin/notify  "${a} secondes before zooming second page"
                     ${WD}/utils/shortsleep.sh
-                  
-          done
-for (( i=1; i<=$loop; i++ )); do
+                  ${WD}/utils/rm.sh "/home/phablet/.config/prospectmail.mathias/zoomtodo_${i}"
+done
+
+echo $loop
+echo "--------------------LOOP IS -------------------"$loop
+
+for (( i=1; i<=${loop}; i++ )); do
 		echo "I AM ZOOMING WITH FLAG autozoom"
           ${WD}/utils/zoom.sh
 done
-	
+${WD}/bin/notify  "finished zooming :) to reset in utils/reset_zoom.sh"
 fi
 
 echo "done"
