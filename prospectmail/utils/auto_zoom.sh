@@ -49,7 +49,7 @@ if [[ $file == "zoomtodo"* ]]; then
 	${WD}/utils/shortsleep.sh
 	${WD}/utils/shortsleep.sh
 	done="1"
-	${WD}/bin/notify "finished zooming :) to reset in utils/reset_zoom.sh"
+	${WD}/bin/notify "finished zooming :) to reset touch .config/prospectmail.mathias/reset"
 fi
 if [[ $done == "1"* ]]; then
 echo "done"
