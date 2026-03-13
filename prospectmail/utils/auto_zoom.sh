@@ -6,10 +6,10 @@ if [ -d /home/phablet/.config/prospectmail.mathias/FIRSTINSTALL ]; then
 else
 	rm -f "/home/phablet/.config/prospectmail.mathias/prospect-mail/Preferences"
 	echo "file found....waiting 30s"
-	for i in {1..8}; do # you can also use {0..9}
+	for i in {1..6}; do # you can also use {0..9}
 		echo "waiting before zoom"
-		a=$((45 - $i * 5))
-		${WD}/bin/notify "${a} secondes before zooming first page"
+		a=$((35 - $i * 5))
+		${WD}/bin/notify "${a} secondes before zooming connection page"
 		${WD}/utils/shortsleep.sh
 
 	done
@@ -29,9 +29,9 @@ if [[ $file == "zoomtodo"* ]]; then
 
 	loop=${file:0-1}
 
-	for i in {1..10}; do # you can also use {0..9}
+	for i in {1..11}; do # you can also use {0..9}
 		echo "waiting before zoom"
-		a=$((50 - $i * 5))
+		a=$((55 - $i * 5))
 
 		${WD}/bin/notify "${a} secondes before zooming second page"
 		${WD}/utils/shortsleep.sh
@@ -45,7 +45,8 @@ if [[ $file == "zoomtodo"* ]]; then
 		echo "I AM ZOOMING WITH FLAG autozoom"
 		${WD}/utils/zoom.sh
 	done
+	${WD}/utils/shortsleep.sh
+	${WD}/utils/shortsleep.sh
 	${WD}/bin/notify "finished zooming :) to reset in utils/reset_zoom.sh"
 fi
-
 echo "done"
