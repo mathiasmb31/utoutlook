@@ -1,6 +1,6 @@
 #!/bin/bash
 export QML_XHR_ALLOW_FILE_WRITE=1
-
+done="0"
 if [ -d /home/phablet/.config/prospectmail.mathias/FIRSTINSTALL ]; then
 	echo " already zoomed"
 else
@@ -20,6 +20,7 @@ else
 	${WD}/utils/zoom.sh
 	${WD}/utils/zoom.sh
 	${WD}/utils/firstinstall
+	done="1"
 fi
 cd /home/phablet/.config/prospectmail.mathias/
 file=$(${WD}/utils/ls.sh "zoomtodo*")
@@ -47,6 +48,10 @@ if [[ $file == "zoomtodo"* ]]; then
 	done
 	${WD}/utils/shortsleep.sh
 	${WD}/utils/shortsleep.sh
+	done="1"
 	${WD}/bin/notify "finished zooming :) to reset in utils/reset_zoom.sh"
 fi
+if [[ $done == "1"* ]]; then
 echo "done"
+qmlscene ${WD}/Ok.qml &
+fi
