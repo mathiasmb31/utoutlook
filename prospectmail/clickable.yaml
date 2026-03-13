@@ -36,6 +36,7 @@ install_root_data:
 - prospectmail.desktop
 - assets
 - utils
+- Ok.qml
 - push-apparmor.json
 - push.json
 - pushexec
