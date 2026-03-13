@@ -8,8 +8,8 @@ build:
 - gcc $ROOT/utils/mkdir.c -o $ROOT/utils/mkdir
 - gcc $ROOT/utils/firstinstall.c -o $ROOT/utils/firstinstall
 - rm -rf ${ROOT}/squashfs-root/
-- echo '-----Compile maliit patches'
-- ${ROOT}/maliit.sh
+- echo '-----Compile debs and patches'
+- ${ROOT}/compiledeps.sh
 - echo 'Going to download ProspectMail...'
 - ${ROOT}/get.sh            
 - echo '------install dir-------'
@@ -30,11 +30,15 @@ build:
 install_root_data:
 - manifest.json
 - Main.qml
+- Modele.qml
 - launcher_prospect.sh
 - prospectmail.apparmor
 - prospectmail.desktop
 - assets
 - utils
+- push-apparmor.json
+- push.json
+- pushexec
 dependencies_host: ["libnotify-bin","notify-osd","xdotool","psmisc","g++","jq","libgtk2.0-dev","libgtk-3-dev","libmaliit-glib-dev","build-essential","meson","libtool","m4","automake","squashfs-tools","qemu-user-static" , "tree" , "patchelf", "git", "jq", "curl", "build-essential", "python3", "python3-pip", "libudev-dev", "dpkg", "moreutils","libssl-dev", "libsqlite3-dev", "libcrypto++-dev", "libsqlcipher-dev", "npm", "git-lfs", "execstack", "imagemagick", "librsvg2-bin", "debhelper-compat", "xauth", "xvfb",'squashfs-tools']
 
 dependencies_target: ["notify-osd","libnotify-bin","psmisc","xdotool","qemu-user-static","g++", "fuse", "zlib1g","libfuse2","squashfs-tools","libgtk2.0-dev","libgtk-3-dev","libmaliit-glib-dev"]
