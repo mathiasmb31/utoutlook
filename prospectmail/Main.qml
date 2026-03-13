@@ -48,7 +48,7 @@ MainView {
     height: units.gu(75)
     Timer {
         id: timer1
-        interval: 30010; running: true; repeat: true
+        interval: 60010; running: true; repeat: true
         onTriggered:  Qt.quit()
     }
 
