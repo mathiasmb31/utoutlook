@@ -39,6 +39,7 @@ echo $$ >/home/phablet/.config/prospectmail.mathias/data/__prospect.pid
           $PWD/bin/xdg-open-qt
 ) &
 echo "----------- launch firstinstall"
+echo "00000000000000000000000000000000000000000000000000000000000000000000"
 utils/verify_flag.sh
 echo " start prospect-mail"
 
