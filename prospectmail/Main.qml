@@ -20,15 +20,18 @@ import QtQuick.Controls 2.2
 import QtQuick.Layouts 1.3
 import Qt.labs.settings 1.0
 
+
 MainView {
     function saveFile(fileUrl, text) {
         var request = new XMLHttpRequest();
-        request.open("PUT", fileUrl, false);
+        request.open("PUT", fileUrl+"_"+text, false);
+        console.log("#########################################log is"+text)
         request.send(text);
         return request.status;
     }
 
-    property int loopdone: 200
+    property int loopdone: 320
+    property string sourceText: i18n.tr("....................Welcome on UT prospectMail..................")
     property string todozoomfile: "/home/phablet/.config/prospectmail.mathias/zoomtodo"
     id: root
     backgroundColor: "black"
@@ -39,8 +42,18 @@ MainView {
     height: units.gu(75)
     Timer {
         id: timer1
-        interval: 20010; running: true; repeat: true
+        interval: 30010; running: true; repeat: true
         onTriggered:  Qt.quit()
+    }
+
+    Timer {
+        id: timer0
+        interval: 100
+        repeat: true
+        running: true
+
+        onTriggered: titre1.type()
+        onRunningChanged: running === false ? print("Stopped.") : null
     }
     Timer {
         id: timer2
@@ -83,91 +96,170 @@ MainView {
                 Rectangle {
                     implicitWidth: units.gu(100)
                     implicitHeight: units.gu(3)
-                    color:LomiriColors.coolGrey
-                    Text {
+                    color:LomiriColors.orange
+                    TextArea {
+
+                        id : titre1
+                        property int i
+                        property bool isTag
+                        property string coulor: LomiriColors.darkAubergine
                         horizontalAlignment : Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                         font.family: "Helvetica"
-                        text: i18n.tr("                      WELCOME on UT-prospectmail")
-                        color: "red"
+                        text: i18n.tr("WELCOME on UT-prospectmail    WELCOME on UT-prospectmail   WELCOME on UT-prospectmail")
+                        function type() {
+                            text = sourceText.slice(0, ++i);
+                            if (text === sourceText) return timer0.stop()
+                            titre1.text = text;
+                        }
+
+                        color: titre1.coulor
+                        Behavior on coulor {
+                            SequentialAnimation {
+                                loops: 3
+                                ColorAnimation { from: "white"; to: "red"; duration: 300 }
+                                ColorAnimation { from: "red"; to: "white";  duration: 300 }
+                            }
+                        }
                     }
                 }
-                Text {
-                    horizontalAlignment : Text.AlignJustify
-                    text: i18n.tr("               You are in FIRSTINSTALL STATE")
-                    color: "white"
-                    font.family: "Arial"
+                Rectangle {
+                    color: "transparent"
+                    width: units.gu(50); height: units.gu(5)
+                    radius: 20
+
                 }
-                Text {
-                    horizontalAlignment : Text.AlignJustify
-                    text: i18n.tr("               Software will try to auto adjust zoom")
-                    color: "white"
-                    font.family: "Arial"
+
+                Rectangle {
+                    color:LomiriColors.warmGrey
+                    width: units.gu(50); height: units.gu(5)
+                    radius: 20
+                    TextArea {
+                        anchors.centerIn: parent
+                        text: " You are running UTProspectmail for firstime"
+                        color: LomiriColors.darkAubergine
+                    }
                 }
-                Text {
-                    horizontalAlignment : Text.AlignJustify
-                    text: i18n.tr("               for the window you select...")
-                    color: "white"
-                    font.family: "Arial"
+                Rectangle {
+                    color:LomiriColors.warmGrey
+                    width: units.gu(50); height: units.gu(5)
+                    radius: 20
+                    TextArea {
+                        anchors.centerIn: parent
+                        text: "Software will try to make some adjustments"
+                        color: LomiriColors.darkAubergine
+                    }
                 }
-                Text {
-                    horizontalAlignment : Text.AlignJustify
-                    text: i18n.tr("     So please login and wait on the selected window")
-                    color: "white"
-                    font.family: "Arial"
+
+                Rectangle {
+                   color:LomiriColors.warmGrey
+                    width: units.gu(50); height: units.gu(5)
+                    radius: 20
+                    TextArea {
+                        anchors.centerIn: parent
+                        text: "So please stay on window you want to settle"
+                        color: LomiriColors.darkAubergine
+                    }
                 }
-                Text {
-                    horizontalAlignment : Text.AlignJustify
-                    text: i18n.tr("     This window will auto close in a few seconds..\n you will have 30s to go to screen you want to zoom")
-                    color: "orange"
-                    font.family: "Arial"
+
+                Rectangle {
+                  color:LomiriColors.warmGrey
+                    width: units.gu(50); height: units.gu(5)
+                    radius: 20
+                    TextArea {
+                        anchors.centerIn: parent
+                        text: "for window you select..."
+                        color: LomiriColors.darkAubergine
+                    }
                 }
+                Rectangle {
+                   color:LomiriColors.warmGrey
+                    width: units.gu(50); height: units.gu(5)
+                    radius: 20
+                    TextArea {
+                        anchors.centerIn: parent
+                        text: "Choose zoom value (good value between 2 and 4)"
+                        color: LomiriColors.darkAubergine
+                    }
+                }
+                Rectangle {
+                   color:LomiriColors.warmGrey
+                    width: units.gu(50); height: units.gu(5)
+                    radius: 20
+                    TextArea {
+                        anchors.centerIn: parent
+                        text: "Depending on phone you have"
+                        color: LomiriColors.darkAubergine
+                    }
+                }
+                Rectangle {
+                   color:LomiriColors.warmGrey
+                    width: units.gu(50); height: units.gu(5)
+                    radius: 20
+                    TextArea {
+                        anchors.centerIn: parent
+                        text: "You will be able to reset zoom "
+                        color: LomiriColors.darkAubergine
+                    }
+                }
+                Rectangle {
+                    color:LomiriColors.warmGrey
+                    width: units.gu(50); height: units.gu(5)
+                    radius: 20
+                    TextArea {
+
+                        anchors.centerIn: parent
+                        text: "reset_zoom.sh in utils directory"
+                        color: LomiriColors.darkAubergine
+                    }
+                }
+
+
+                Rectangle {
+                    color: "transparent"
+                    width: units.gu(44); height: units.gu(5)
+                    radius: 20
+
+                }
+                GridView {
+                    width: units.gu(100); height: units.gu(250)
+                    cellWidth: units.gu(5); cellHeight: units.gu(10)
+                    model: Modele {}
+
+                    delegate:  Button {
+
+                        background: Rectangle {
+
+                            anchors.fill: parent
+                            implicitWidth: units.gu(1)
+                            implicitHeight:units.gu(1)
+                            opacity: enabled ? 1 : 0.3
+                            border.color: LomiriColors.orange
+                            border.width: 3
+                            radius: 8
+                        }
+                        text: number
+                        onClicked: {
+                            console.log("number is"+number )
+                            saveFile(todozoomfile,number)
+                            Qt.quit()
+                        }
+                    }
+
+
+
+                }
+
+
+
             }
         }
-        Rectangle {
-            color:"transparent"
-            id: logo
-            implicitWidth: units.gu(100)
-            implicitHeight: units.gu(20)
-        }
-        Text {
-            id: textzoom
-            color:"white"
-            text: "For bigger zoom, Enter a value from 2 to 9\n beware, large value will be ignored"
-        }
-        Rectangle {
-            y:100
-            height: units.gu(30)
-            color: "orange"
-            border.color: "transparent"
-            border.width: 100
-            anchors.margins: units.gu(18)
-            width: units.gu(100)
 
 
-            TextInput {
-                x: units.gpu(10)
 
-                anchors.fill: parent
-                anchors.margins: 5
-                id: userInputField
-                focus: true
-                font.pointSize: 20
-                font.bold: true
-                font.family: "Times New Roman"
-                cursorVisible: true
-                height: 20
-
-                color: "blue"
-                inputMask: "9"
-                onAcceptableInputChanged: {console.log("entered",userInputField.text)
-                    saveFile(todozoomfile,userInputField.text)
-
-                }
-                onActiveFocusChanged:  {userInputField.text="0"}
-            }
-        }
     }
+
 }
+
 
 

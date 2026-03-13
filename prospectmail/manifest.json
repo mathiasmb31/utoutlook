@@ -7,9 +7,13 @@
         "prospectmail": {
             "apparmor": "prospectmail.apparmor",
             "desktop":  "prospectmail.desktop"
-        }
+        },
+	 "push": {
+             "apparmor": "push-apparmor.json",
+             "push-helper": "push.json"
+            }
     },
-    "version": "0.6.0.10",
+    "version": "0.7.0.5",
     "maintainer": "mathias <email@domain.org>",
     "framework" : "@CLICK_FRAMEWORK@"
 }
