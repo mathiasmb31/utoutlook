@@ -37,3 +37,24 @@ $ cd prospectmailut
 $ clickable build
 
 $ clickable install # install to phone
+
+prefer install from ubtouch app store.
+
+## FirstInstall
+On firstinstall , a special process will be lauch to adapt prospectmail to your terminal.
+I prefered ask user level of zoom he wanted. 
+So follow strictly process .
+In case of error , you can return in fistInstall mode => touch .config/prospectmail.mathias/reset.
+
+## Tested
+Tested on fairphone 4 and pixel 3a
+Tested on Ubtouch 24.04.1 and  24.04-1.2
+Should not work on ubtouch earlier release(s).
+
+## Pinable 
+Only pinable on firstinstall (with qml menu asking zoom level).
+
+## Bugs
+For bugs, please go on github :)
+
+
