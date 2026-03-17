@@ -19,7 +19,7 @@ MainView {
     
     Page {
         id: mainPage
-        title: i18n.tr("Hello App")
+        title: i18n.tr("Sample example to test")
 
         Column {
             anchors.centerIn: parent
@@ -31,7 +31,7 @@ MainView {
             }
 
             Button {
-                text: "Click me"
+                text: "Hello world"
                 onClicked: delayTimer.start()
             }
         }
