@@ -54,6 +54,10 @@ Should not work on ubtouch earlier release(s).
 ## Pinable 
 Only pinable on firstinstall (with qml menu asking zoom level).
 
+##TODO
+
+resolve bugs reported
+
 ## Bugs
 For bugs, please go on github :)
 
