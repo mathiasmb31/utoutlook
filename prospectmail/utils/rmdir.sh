@@ -12,6 +12,4 @@ if len(sys.argv) < 2:
 
 dir = sys.argv[1]
 
-
-# If file exists, delete it.
 os.rmdir(dir)
