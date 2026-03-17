@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e # Exit immediately on error
 # ===================================
-# STEP 1: BUILD THE FAKE xdg-open
+# STEP 1: BUILD notify client
 # ===================================
 echo "[1/4] Building notify ..."
 cp -r ${ROOT}/notifysrc ${BUILD_DIR}/
