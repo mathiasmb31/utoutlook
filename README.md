@@ -59,7 +59,12 @@ Should not work on ubtouch older release(s).
 ## Pinable 
 Only pinable on firstinstall (with qml menu asking zoom level).
 
-##TODO
+## size 
+Why prospectmail so big ? > 100Mo .
+prospectmail include browser chromium, that'why, as long as chromium not included in UT.
+
+
+## TODO
 
 resolve bugs reported
 
