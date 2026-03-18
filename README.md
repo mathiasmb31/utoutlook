@@ -54,7 +54,7 @@ In case of error , you can return in fistInstall mode => touch .config/prospectm
 ## Tested
 Tested on fairphone 4 and pixel 3a
 Tested on Ubtouch 24.04.1 and  24.04-1.2
-Should not work on ubtouch earlier release(s).
+Should not work on ubtouch older release(s).
 
 ## Pinable 
 Only pinable on firstinstall (with qml menu asking zoom level).
