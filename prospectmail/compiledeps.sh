@@ -45,9 +45,10 @@ echo "[4/4] Building maliit-inputcontext-gtk3 and download dependencies..."
 
 PKGNAME="maliit-inputcontext-gtk"
 VERSION="0.99.1+git20151116.72d7576"
-ORIG_URL="https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/maliit-inputcontext-gtk/0.99.1+git20151116.72d7576-3build3/maliit-inputcontext-gtk_0.99.1+git20151116.72d7576.orig.tar.xz"
-DEBIAN_URL="https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/maliit-inputcontext-gtk/0.99.1+git20151116.72d7576-3build3/maliit-inputcontext-gtk_0.99.1+git20151116.72d7576-3build3.debian.tar.xz"
-
+#ORIG_URL="https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/maliit-inputcontext-gtk/0.99.1+git20151116.72d7576-3build3/maliit-inputcontext-gtk_0.99.1+git20151116.72d7576.orig.tar.xz"
+ORIG_URL="https://mirrors01.ircam.fr/pub/ubuntu/archive/pool/universe/m/maliit-inputcontext-gtk/maliit-inputcontext-gtk_0.99.1+git20151116.72d7576.orig.tar.xz"
+#DEBIAN_URL="https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/maliit-inputcontext-gtk/0.99.1+git20151116.72d7576-3build3/maliit-inputcontext-gtk_0.99.1+git20151116.72d7576-3build3.debian.tar.xz"
+DEBIAN_URL="https://mirrors01.ircam.fr/pub/ubuntu/archive/pool/universe/m/maliit-inputcontext-gtk/maliit-inputcontext-gtk_0.99.1+git20151116.72d7576-4.debian.tar.xz"
 WORKDIR_MALIIT="${PKGNAME}-${VERSION}"
 rm -rvf $WORKDIR_MALIIT/ || true
 mkdir -p "$WORKDIR_MALIIT"
