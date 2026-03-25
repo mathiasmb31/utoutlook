@@ -113,7 +113,7 @@ MainView {
                     radius: 20
                     TextArea {
                         anchors.centerIn: parent
-                        text: " If zoom not ok , click on reset button"
+                        text: "Bad zoom, click on reset button"
                         color: LomiriColors.darkAubergine
                     }
                 }
@@ -123,7 +123,7 @@ MainView {
                     radius: 20
                     TextArea {
                         anchors.centerIn: parent
-                        text: " If zoom OK  , click on Ok  button"
+                        text: "Zoom OK  , click on Ok  button"
                         color: LomiriColors.darkAubergine
                     }
                     Rectangle {
@@ -132,7 +132,7 @@ MainView {
                         radius: 20
                         TextArea {
                             anchors.centerIn: parent
-                            text: " If you click on reset, then re-launch prospectmail"
+                            text: " If KO, start again prospectmail"
                             color: LomiriColors.darkAubergine
                         }
                     }
@@ -143,8 +143,14 @@ MainView {
 
                     }
                 }
-                    Button {
+                GridLayout {
+                    Rectangle {
+                        color: "transparent"
+                        width: units.gu(10); height: units.gu(5)
+                        radius: 20
+                    }
 
+                    Button {
                         background: Rectangle {
                             anchors.fill: parent
                             implicitWidth: units.gu(10)
@@ -161,7 +167,6 @@ MainView {
                             Qt.quit()
                         }
                     }
-
                     Button {
 
                         background: Rectangle {
@@ -170,11 +175,11 @@ MainView {
                             implicitHeight:units.gu(5)
                             opacity: enabled ? 1 : 0.3
                             border.color: LomiriColors.coolGrey
-                            color: LomiriColors.lightAubergine
+                            color: "green"
                             border.width: 3
                             radius: 8
                         }
-                        text: "ZOOM Ok :)"
+                        text: "ZOOM OK :)"
                         onClicked: {
                             Qt.quit()
                         }
@@ -190,7 +195,7 @@ MainView {
         }
     }
 
-
+}
 
 
 
