@@ -33,13 +33,13 @@ MainView {
     property string sourceText: i18n.tr("....................Welcome on UT prospectMail..................")
     property string todozoomfile: "/home/phablet/.config/prospectmail.mathias/zoomtodo"
     id: root
-        Image {
-                   id: image2
-                   anchors.fill: parent
-                   source: "assets/bluesky.jpg"
-                   opacity: 0.5
-                   z: -1
-               }
+    Image {
+        id: image2
+        anchors.fill: parent
+        source: "assets/bluesky.jpg"
+        opacity: 0.5
+        z: -1
+    }
     backgroundColor: "transparent"
     objectName: 'mainView'
     applicationName: 'firstinstall.prospect'
@@ -157,65 +157,14 @@ MainView {
                     }
                 }
 
-                Rectangle {
-                   color:LomiriColors.warmGrey
-                    width: units.gu(50); height: units.gu(5)
-                    radius: 20
-                    TextArea {
-                        anchors.centerIn: parent
-                        text: "So please stay on window you want to settle"
-                        color: LomiriColors.darkAubergine
-                    }
-                }
 
-                Rectangle {
-                  color:LomiriColors.warmGrey
-                    width: units.gu(50); height: units.gu(5)
-                    radius: 20
-                    TextArea {
-                        anchors.centerIn: parent
-                        text: "for window you select..."
-                        color: LomiriColors.darkAubergine
-                    }
-                }
-                Rectangle {
-                   color:LomiriColors.warmGrey
-                    width: units.gu(50); height: units.gu(5)
-                    radius: 20
-                    TextArea {
-                        anchors.centerIn: parent
-                        text: "Choose zoom value (good value between 4 and 7)"
-                        color: LomiriColors.darkAubergine
-                    }
-                }
-                Rectangle {
-                   color:LomiriColors.warmGrey
-                    width: units.gu(50); height: units.gu(5)
-                    radius: 20
-                    TextArea {
-                        anchors.centerIn: parent
-                        text: "Depending on phone you have"
-                        color: LomiriColors.darkAubergine
-                    }
-                }
-                Rectangle {
-                   color:LomiriColors.warmGrey
-                    width: units.gu(50); height: units.gu(5)
-                    radius: 20
-                    TextArea {
-                        anchors.centerIn: parent
-                        text: "You will be able to reset zoom "
-                        color: LomiriColors.darkAubergine
-                    }
-                }
                 Rectangle {
                     color:LomiriColors.warmGrey
                     width: units.gu(50); height: units.gu(5)
                     radius: 20
                     TextArea {
-
                         anchors.centerIn: parent
-                        text: "reset_zoom.sh in utils directory"
+                        text: "Choose zoom value (good value between 4 and 7)"
                         color: LomiriColors.darkAubergine
                     }
                 }
@@ -228,7 +177,7 @@ MainView {
 
                 }
                 GridView {
-                    width: units.gu(100); height: units.gu(250)
+                    width: units.gu(100); height: units.gu(10)
                     cellWidth: units.gu(5); cellHeight: units.gu(10)
                     model: Modele {}
 
@@ -252,12 +201,29 @@ MainView {
                         }
                     }
 
-
-
                 }
 
 
-
+                Rectangle {
+                    color:LomiriColors.warmGrey
+                    width: units.gu(50); height: units.gu(10)
+                    radius: 20
+                    TextArea {
+                        anchors.centerIn: parent
+                        text: "ProspectMail will start, stay on 2 windows you want to settle"
+                        color: LomiriColors.darkAubergine
+                    }
+                }
+                Rectangle {
+                    color:LomiriColors.warmGrey
+                    width: units.gu(50); height: units.gu(10)
+                    radius: 20
+                    TextArea {
+                        anchors.centerIn: parent
+                        text: "Fisrt : login window and then Mail window"
+                        color: LomiriColors.darkAubergine
+                    }
+                }
             }
         }
 
