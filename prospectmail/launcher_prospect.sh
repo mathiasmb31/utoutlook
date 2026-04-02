@@ -1,4 +1,4 @@
-#!/bin/bash -e
+#!/bin/bash 
 set -x
 WD=${PWD}
 utils/close.sh
@@ -36,7 +36,7 @@ echo $$ >/home/phablet/.config/prospectmail.mathias/data/__prospect.pid
 #Open dummy qt gui app to realease lomiri from its waiting
 (
           utils/sleep.sh
-          $PWD/bin/xdg-open-qt
+          $PWD/bin/xdg-open
 ) &
 echo "----------- launch firstinstall"
 echo "00000000000000000000000000000000000000000000000000000000000000000000"
