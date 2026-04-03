@@ -1,6 +1,6 @@
 {
-  "name": "prospect-mail",
-  "productName": "Prospect Mail",
+  "name": "prospectmail.mathias",
+  "productName": "prospectmail.mathias",
   "version": "1.2.1",
   "main": "src/main.js",
   "type": "modules",
@@ -91,9 +91,9 @@
       ],
       "desktop": {
         "entry": {
-          "Name": "Prospect Mail",
+          "Name": "prospectmail.mathias",
           "Comment": "Unofficial desktop mail client for Microsoft Outlook",
-          "StartupWMClass": "Prospect Mail"
+          "StartupWMClass": "prospectmail.mathias"
         }
       },
       "target": [
