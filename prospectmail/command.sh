@@ -25,7 +25,7 @@ export QT_FILE_SELECTORS=ubuntu-touch
 
 echo "------------------------------------------------------------------"
 echo $$ >>/home/phablet/.config/prospectmail.mathias/data/__prospect.pid
-utils/auto_zoom.sh &
+
 export PATH=$WD/bin:$PATH
 echo $PATH
 if [ "$DISPLAY" = "" ]; then
@@ -51,3 +51,4 @@ echo "launch prospect"
 echo "-----------------------------------------------------------------"
 bin/app/prospect-mail $dpioptions $sandboxoptions $gpuoptions
 echo "launched prospect"
+utils/auto_zoom.sh &
