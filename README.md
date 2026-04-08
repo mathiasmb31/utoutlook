@@ -39,16 +39,9 @@ $ clickable install # install to phone
 
 prefer install from ubtouch app store.
 
-## FirstInstall
-On firstinstall , a special process will be lauch to adapt prospectmail to your terminal.
-I prefered ask user level of zoom he wanted. 
-So follow strictly process .
-zoom will be asked only in firstinstall step.
+## ZOOM
+integrated a new setting qml page to adapt zoom to device.
 
-- PLEASE FOR FIRSTZOOM stay on login page.
-- FOR SECONDZOOM, log and go to prospectmail Main Page.
-
-In case of error , you can return in fistInstall mode => touch .config/prospectmail.mathias/reset.
 
 ## Tested
 Tested on fairphone 4 and pixel 3a
