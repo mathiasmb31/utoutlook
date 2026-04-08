@@ -14,7 +14,10 @@ if [[ $file == "zoomtodo_"* ]]; then
 	loop=${file:0-1}
 	
 	for i in {1..10}; do
-		${WD}/utils/rm.sh "/home/phablet/.config/prospectmail.mathias/zoomtodo_${i}"
+		echo "erase-------------------------------"zoomtodo_${i}
+		cd ${WD}/utils/
+		./rm.sh "/home/phablet/.config/prospectmail.mathias/zoomtodo_${i}"
+		cd ${WD}
 	done
 
 	for i in {1..2}; do
