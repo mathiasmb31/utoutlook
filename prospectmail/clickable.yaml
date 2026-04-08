@@ -30,14 +30,11 @@ build:
 - cp /usr/bin/notify-send $INSTALL_DIR/bin
 install_root_data:
 - manifest.json
-- Main.qml
-- Modele.qml
-- launcher_prospect.sh
+- qml
 - prospectmail.apparmor
 - prospectmail.desktop
 - assets
 - utils
-- Ok.qml
 - push-apparmor.json
 - push.json
 - pushexec
