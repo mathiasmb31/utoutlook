@@ -11,8 +11,9 @@ if [ -f /home/phablet/.config/prospectmail.mathias/reset ]; then
 	cd ${WD}/utils
 	./reset_zoom.sh
 	cd ..
-fi
-
-echo "*********************************** launching settings"
+	echo "*********************************** launching settings"
 utils/rm.sh "/home/phablet/.config/prospectmail.mathias/prospect-mail/Preferences"
 echo "removed file"
+fi
+
+
