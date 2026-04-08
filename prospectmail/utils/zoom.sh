@@ -1,6 +1,8 @@
-#!/bin/bash
-
-export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$PWD/lib/aarch64-linux-gnu/"
-export DISPLAY=:0.0
-echo "zooming..................."
-${WD}/bin/xdotool key control+plus
+while [ true ]
+do
+	qmlscene ${WD}/qml/Settings.qml
+	${WD}/utils/quicksleep.sh
+	echo "lauching autozoom "
+	${WD}/utils/auto_zoom.sh
+	${WD}/utils/quicksleep.sh
+done
