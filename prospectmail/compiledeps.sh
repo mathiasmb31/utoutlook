@@ -30,11 +30,11 @@ cd ${BUILD_DIR}
 DEPENDENCIES="libhybris-utils notify-osd xdotool libmaliit-glib2 libxdo3 x11-utils"
 
 for dep in $DEPENDENCIES; do
-          apt download $dep:arm64
-          mv ${dep}_*.deb ${dep}.deb
-          rm -rvf "${dep}.deb_extract_chsdjksd" || true
-          mkdir "${dep}.deb_extract_chsdjksd"
-          dpkg-deb -x "${dep}.deb" "${dep}.deb_extract_chsdjksd"
+	apt download $dep:arm64
+	mv ${dep}_*.deb ${dep}.deb
+	rm -rvf "${dep}.deb_extract_chsdjksd" || true
+	mkdir "${dep}.deb_extract_chsdjksd"
+	dpkg-deb -x "${dep}.deb" "${dep}.deb_extract_chsdjksd"
 done
 
 # =================================================
@@ -82,9 +82,9 @@ cd ${BUILD_DIR}
 rm -rvf $INSTALL_DIR/lib
 mkdir -p "$INSTALL_DIR/lib/aarch64-linux-gnu/gtk-3.0/3.0.0/immodules/"
 for DIR in *_extract_chsdjksd; do
-          if [ -d "$DIR/usr/lib/aarch64-linux-gnu/" ]; then
-                    cp -r "$DIR/usr/lib/aarch64-linux-gnu/"* "$INSTALL_DIR/lib/aarch64-linux-gnu/"
-          fi
+	if [ -d "$DIR/usr/lib/aarch64-linux-gnu/" ]; then
+		cp -r "$DIR/usr/lib/aarch64-linux-gnu/"* "$INSTALL_DIR/lib/aarch64-linux-gnu/"
+	fi
 done
 
 echo "done"
@@ -102,6 +102,7 @@ cp ${BUILD_DIR}/$WORKDIR_MALIIT/maliit-inputcontext-gtk-$VERSION/builddir/gtk3/g
 mkdir -p "$INSTALL_DIR/utils/"
 cp ${ROOT}/utils/sleep.sh "$INSTALL_DIR/utils/"
 cp ${ROOT}/utils/get-scale.sh "$INSTALL_DIR/utils/"
-cp ${BUILD_DIR}/xdg-open/build/xdg-open-test $INSTALL_DIR/bin/
+cp ${BUILD_DIR}/xdg-open/build/xdg-open-test $INSTALL_DIR/bin/xdg-open
+cp ${BUILD_DIR}/xdg-open/build/xdg-open-test $INSTALL_DIR/bin/xdg-open-test
 cp ${BUILD_DIR}/notifysrc/build/notify $INSTALL_DIR/bin/
 chmod +x $INSTALL_DIR/utils/sleep.sh

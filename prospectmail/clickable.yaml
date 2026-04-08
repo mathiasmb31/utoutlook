@@ -19,7 +19,8 @@ build:
 - echo '-----decompress-----'
 - echo $INSTALL_DIR/bin
 - cd $INSTALL_DIR/bin
-- unsquashfs -d $INSTALL_DIR/bin -percentage $ROOT/prospect-mail.snap 
+- unsquashfs -d $INSTALL_DIR/bin -percentage $ROOT/prospect-mail/dist/prospect-mail_1.2.1_arm64.snap 
+#- cd ${ROOT} && tar xvf ${ROOT}/prospect-mail/dist/prospect-mail-1.2.1-arm64.tar.gz -C $INSTALL_DIR/bin/app && cp -rf $INSTALL_DIR/bin/app/prospect-mail-1.2.1-arm64/* ../ && rm -rf $INSTALL_DIR/bin/app/prospect-mail-1.2.1-arm64
 - cp $ROOT/*.sh $INSTALL_DIR/bin
 - mkdir -p $INSTALL_DIR/lib/aarch64-linux-gnu 
 #- cd $ROOT && cd utils/zlib && ./configure && make && cp -r *  $INSTALL_DIR/lib/aarch64-linux-gnu/
@@ -29,14 +30,11 @@ build:
 - cp /usr/bin/notify-send $INSTALL_DIR/bin
 install_root_data:
 - manifest.json
-- Main.qml
-- Modele.qml
-- launcher_prospect.sh
+- qml
 - prospectmail.apparmor
 - prospectmail.desktop
 - assets
 - utils
-- Ok.qml
 - push-apparmor.json
 - push.json
 - pushexec
