@@ -12,6 +12,10 @@ fi
 if [[ $file == "zoomtodo_"* ]]; then
 
 	loop=${file:0-1}
+	
+	for i in {1..10}; do
+		${WD}/utils/rm.sh "/home/phablet/.config/prospectmail.mathias/zoomtodo_${i}"
+	done
 
 	for i in {1..2}; do
 		echo "waiting before zoom"
@@ -19,7 +23,6 @@ if [[ $file == "zoomtodo_"* ]]; then
 
 		${WD}/bin/notify "${a} seconds before zooming main page"
 		${WD}/utils/shortsleep.sh
-		${WD}/utils/rm.sh "/home/phablet/.config/prospectmail.mathias/zoomtodo_${i}"
 	done
 
 	echo $loop
