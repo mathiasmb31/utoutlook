@@ -1,8 +1,6 @@
 #!/bin/bash
 set -e # Exit immediately on error
-# ===================================
-# STEP 1: BUILD notify client
-# ===================================
+
 echo "[1/4] Building notify ..."
 cp -r ${ROOT}/notifysrc ${BUILD_DIR}/
 cd ${BUILD_DIR}/notifysrc/
@@ -10,9 +8,7 @@ mkdir -p build
 cd build
 cmake ../CMakeLists.txt
 make
-# ===================================
-# STEP 2: BUILD THE FAKE xdg-open
-# ===================================
+
 echo "[2/4] Building fake xdg-open ..."
 cp -r ${ROOT}/utils/xdg-open/ ${BUILD_DIR}/
 cd ${BUILD_DIR}/xdg-open/
@@ -21,9 +17,6 @@ cd build
 cmake ..
 make
 
-# ===================================
-# STEP 3: Install DEPENDENCIES
-# ===================================
 echo "[3/4] Install dependencies..."
 
 cd ${BUILD_DIR}
@@ -37,17 +30,11 @@ for dep in $DEPENDENCIES; do
 	dpkg-deb -x "${dep}.deb" "${dep}.deb_extract_chsdjksd"
 done
 
-# =================================================
-# STEP 4: Downloading maliit-inputcontext-gtk3
-# =================================================
-
 echo "[4/4] Building maliit-inputcontext-gtk3 and download dependencies..."
 
 PKGNAME="maliit-inputcontext-gtk"
 VERSION="0.99.1+git20151116.72d7576"
-#ORIG_URL="https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/maliit-inputcontext-gtk/0.99.1+git20151116.72d7576-3build3/maliit-inputcontext-gtk_0.99.1+git20151116.72d7576.orig.tar.xz"
 ORIG_URL="https://mirrors01.ircam.fr/pub/ubuntu/archive/pool/universe/m/maliit-inputcontext-gtk/maliit-inputcontext-gtk_0.99.1+git20151116.72d7576.orig.tar.xz"
-#DEBIAN_URL="https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/maliit-inputcontext-gtk/0.99.1+git20151116.72d7576-3build3/maliit-inputcontext-gtk_0.99.1+git20151116.72d7576-3build3.debian.tar.xz"
 DEBIAN_URL="https://mirrors01.ircam.fr/pub/ubuntu/archive/pool/universe/m/maliit-inputcontext-gtk/maliit-inputcontext-gtk_0.99.1+git20151116.72d7576-4.debian.tar.xz"
 WORKDIR_MALIIT="${PKGNAME}-${VERSION}"
 rm -rvf $WORKDIR_MALIIT/ || true
@@ -78,7 +65,6 @@ echo "[7/9] Copying files..."
 
 echo "Copying dependencies..."
 cd ${BUILD_DIR}
-# Copie des fichiers du dossier /lib/ de chaque paquet
 rm -rvf $INSTALL_DIR/lib
 mkdir -p "$INSTALL_DIR/lib/aarch64-linux-gnu/gtk-3.0/3.0.0/immodules/"
 for DIR in *_extract_chsdjksd; do
@@ -88,7 +74,7 @@ for DIR in *_extract_chsdjksd; do
 done
 
 echo "done"
-# Copy binaries in bin/
+
 mkdir -p "$INSTALL_DIR/bin"
 cp *_extract_chsdjksd/usr/bin/xdotool "$INSTALL_DIR/bin/"
 cp *_extract_chsdjksd/usr/bin/getprop "$INSTALL_DIR/bin/"

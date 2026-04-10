@@ -1,3 +1,4 @@
+#!/bin/bash
 for i in `ls *.sh`; do
 	echo $i
 	if  grep -q "python" $i ; then 
