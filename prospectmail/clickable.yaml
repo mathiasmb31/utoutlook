@@ -10,20 +10,16 @@ build:
 - rm -rf ${ROOT}/squashfs-root/
 - echo '-----Compile debs and patches'
 - ${ROOT}/compiledeps.sh
-- echo 'Going to download ProspectMail...'
-- ${ROOT}/get.sh            
-- echo '------install dir-------'
+
 
 - mkdir -p ${BUILD_DIR}/bin
 - mkdir -p $INSTALL_DIR/bin
 - echo '-----decompress-----'
 - echo $INSTALL_DIR/bin
 - cd $INSTALL_DIR/bin
-- unsquashfs -d $INSTALL_DIR/bin -percentage $ROOT/prospect-mail/dist/prospect-mail_1.2.1_arm64.snap 
-#- cd ${ROOT} && tar xvf ${ROOT}/prospect-mail/dist/prospect-mail-1.2.1-arm64.tar.gz -C $INSTALL_DIR/bin/app && cp -rf $INSTALL_DIR/bin/app/prospect-mail-1.2.1-arm64/* ../ && rm -rf $INSTALL_DIR/bin/app/prospect-mail-1.2.1-arm64
+- unsquashfs -d $INSTALL_DIR/bin -percentage $ROOT/prospect-mail/dist/prospect-mail_2.0.0_arm64.snap 
 - cp $ROOT/*.sh $INSTALL_DIR/bin
 - mkdir -p $INSTALL_DIR/lib/aarch64-linux-gnu 
-#- cd $ROOT && cd utils/zlib && ./configure && make && cp -r *  $INSTALL_DIR/lib/aarch64-linux-gnu/
 - cp /usr/lib/aarch64-linux-gnu/libfuse.so.2.9.9 $INSTALL_DIR/lib/aarch64-linux-gnu/
 - cp /usr/lib/aarch64-linux-gnu/libfuse.so.2 $INSTALL_DIR/lib/aarch64-linux-gnu/
 - cp /usr/lib/aarch64-linux-gnu/libfuse.so.2 $INSTALL_DIR/lib/aarch64-linux-gnu/libfuse.so
