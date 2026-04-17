@@ -1,6 +1,6 @@
 #prospectmail for ut
 
-adapted from orginal prospectmail package from https://github.com/julian-alarcon/prospect-mail?tab=readme-ov-file#readme
+adapted from original prospectmail package from https://github.com/julian-alarcon/prospect-mail?tab=readme-ov-file#readme
 
 
 integrate and cloned prospect-mail to adapt to UBTouch .
