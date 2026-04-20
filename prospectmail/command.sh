@@ -67,7 +67,7 @@ echo "----------------------------------------------------------------------"
 echo "----------------------------------------------------------------------"
 bin/app/prospect-mail $dpioptions $sandboxoptions $gpuoptions
 echo "quit prospect"
-nohup ${WD}/kill_prospect.sh &
+${WD}/bin/nohup ${WD}/kill_prospect.sh &
 echo "killed prospect"
 utils/sleep.sh 
 ${WD}/bin/pkill prospect-mail
