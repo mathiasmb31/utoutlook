@@ -13,7 +13,7 @@
              "push-helper": "push.json"
             }
     },
-    "version": "1.2.0",
+    "version": "1.2.2",
     "maintainer": "mathias <email@domain.org>",
     "framework" : "@CLICK_FRAMEWORK@"
 }
