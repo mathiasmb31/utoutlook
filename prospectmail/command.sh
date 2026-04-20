@@ -2,7 +2,9 @@
 set -ax
 export WD=$(pwd)
 echo $WD
-
+echo "----------------------------------------------------------------------"
+bin/ls -ld  /proc/*/exe 2>/dev/null | /bin/grep "prospec-mail"
+echo "----------------------------------------------------------------------"
 ###init
 utils/close.sh
 utils/mkdir
@@ -55,6 +57,18 @@ sandboxoptions="--no-sandbox"
 gpuoptions="--use-gl=egl --enable-gpu-rasterization --enable-zero-copy --ignore-gpu-blocklist --enable-features=UseSkiaRenderer,VaapiVideoDecoder --disable-frame-rate-limit --disable-gpu-vsync --enable-oop-rasterization"
 echo "launch prospect"
 echo "-----------------------------------------------------------------"
-utils/zoom.sh &
+(         utils/daemon.sh &
+          utils/sleep.sh
+          utils/menusettings.sh
+) &
+
+echo "----------------------------------------------------------------------"
+
+echo "----------------------------------------------------------------------"
 bin/app/prospect-mail $dpioptions $sandboxoptions $gpuoptions
-echo "launched prospect"
+echo "quit prospect"
+nohup ${WD}/kill_prospect.sh &
+echo "killed prospect"
+utils/sleep.sh 
+${WD}/bin/pkill prospect-mail
+${WD}/bin/pkill prospect-mail

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$PWD/lib/aarch64-linux-gnu/"
+export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${WD}/lib/aarch64-linux-gnu/"
 if [ "$DISPLAY" = "" ]; then
 	i=0
 	while [ -e "/tmp/.X11-unix/X$i" ]; do
