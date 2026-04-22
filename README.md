@@ -49,7 +49,7 @@ Tested on Ubtouch 24.04.1 and  24.04-1.2
 Should not work on ubtouch older release(s).
 
 ## Pinable 
-Only pinable on firstinstall (with qml menu asking zoom level).
+pinable on Setting menu.
 
 ## size 
 Why prospectmail so big ? > 100Mo .
