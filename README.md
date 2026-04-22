@@ -33,7 +33,7 @@ this program. If not, see <http://www.gnu.org/licenses/>.
 ## Compile
 $ cd prospectmailut
 
-$ clickable build
+$./make-project
 
 $ clickable install # install to phone
 
