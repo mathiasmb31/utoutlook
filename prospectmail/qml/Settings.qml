@@ -23,12 +23,26 @@ import QtQuick.Dialogs 1.1
 
 
 MainView {
+  Component.onCompleted:  {
+      console.log("#####################");
+      console.log("opened ........;");
+      open(opened);
+      console.log("#####################");
+  }
+
     id : main
     function saveFile(fileUrl, text) {
         var request = new XMLHttpRequest();
         request.open("PUT", fileUrl+"_"+text, false);
         console.log("#########################################file created"+text)
         request.send(text);
+        return request.status;
+    }
+    function open(fileUrl) {
+        var request = new XMLHttpRequest();
+        request.open("PUT", fileUrl, false);
+        console.log("#########################################file created")
+        request.send("");
         return request.status;
     }
     function sendMsg(fileUrl, text) {
@@ -59,6 +73,7 @@ MainView {
     property string resetfile: "/home/phablet/.config/prospectmail.mathias/reset"
     property string sendMsgFile: "/home/phablet/.cache/prospectmail.mathias/sendMsg"
     property string quitMsg: "/home/phablet/.cache/prospectmail.mathias/quit"
+    property string opened: "/home/phablet/.cache/prospectmail.mathias/opened"
     opacity: enabled ? 1 : 0.3
 
     backgroundColor: "transparent"
