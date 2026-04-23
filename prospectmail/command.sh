@@ -1,14 +1,32 @@
 #!/bin/bash
+function close_command()
+{	
+	${WD}/bin/notify "prospectmail still ative ! cleanup..launch again" 
+	${WD}/bin/pkill -9 qmlscene 
+	${WD}/bin/pkill -9 prospect-mail
+	${WD}/bin/pkill -9 prospect-mail
+	${WD}/utils/quicksleep.sh 
+	${WD}/bin/rm -f ${lock} 
+	${WD}/bin/rm -f ${lockcook} 
+	${WD}/bin/rm -f ${locksock}
+	${WD}/utils/kill_prospect.sh  
+	echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+	exit 0
+}
 set -ax
 export WD=$(pwd)
 echo $WD
-echo "----------------------------------------------------------------------"
-bin/ls -ld  /proc/*/exe 2>/dev/null | /bin/grep "prospec-mail"
-echo "----------------------------------------------------------------------"
+
 ###init
+export lock="/home/phablet/.config/prospectmail.mathias/prospect-mail/SingletonLock"
+export lockcook="/home/phablet/.config/prospectmail.mathias/prospect-mail/SingletonCookie"
+export locksock="/home/phablet/.config/prospectmail.mathias/prospect-mail/SingletonSocket"
+test -L $lock && close_command
+test -L $lockcook && close_command
+test -L $locksock && close_command
 utils/close.sh
 utils/mkdir
-
+${WD}/bin/rm -f "/home/phablet/.cache/prospectmail.mathias/quit"
 echo "################################################"
 trap 'printf "%3d: " "$LINENO"' DEBUG
 export GDK_SCALE=2
@@ -57,18 +75,19 @@ sandboxoptions="--no-sandbox"
 gpuoptions="--use-gl=egl --enable-gpu-rasterization --enable-zero-copy --ignore-gpu-blocklist --enable-features=UseSkiaRenderer,VaapiVideoDecoder --disable-frame-rate-limit --disable-gpu-vsync --enable-oop-rasterization"
 echo "launch prospect"
 echo "-----------------------------------------------------------------"
-(         utils/daemon.sh &
-          utils/sleep.sh
-          utils/menusettings.sh
+(          ${WD}/utils/sleep.sh
+          ${WD}/utils/menusettings.sh &
+	${WD}/bin/nohup utils/daemon.sh &
 ) &
 
 echo "----------------------------------------------------------------------"
 
 echo "----------------------------------------------------------------------"
-bin/app/prospect-mail $dpioptions $sandboxoptions $gpuoptions
-echo "quit prospect"
-${WD}/bin/nohup ${WD}/kill_prospect.sh &
-echo "killed prospect"
-utils/sleep.sh 
-${WD}/bin/pkill prospect-mail
-${WD}/bin/pkill prospect-mail
+${WD}/bin/nohup ${WD}/bin/app/prospect-mail $dpioptions $sandboxoptions $gpuoptions &
+while [ true ]; do
+	${WD}/utils/quicksleep.sh
+	echo "====================================================================="
+pid=`${WD}/bin/ls -l  /proc/*/exe 2>/dev/null | ${WD}/bin/grep "prospect"  |  ${WD}/bin/awk -F'/' '{print $3}'`
+echo $pid
+done
+

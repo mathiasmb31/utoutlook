@@ -2,7 +2,7 @@ clickable_minimum_required: 8.4.0
 builder: custom
 
 skip_review: false
-kill: prospect-mail
+
 
 build:
 - gcc $ROOT/utils/mkdir.c -o $ROOT/utils/mkdir
@@ -30,6 +30,9 @@ build:
 - cp /usr/bin/pkill $INSTALL_DIR/bin
 - cp /usr/bin/pgrep $INSTALL_DIR/bin
 - cp /usr/bin/nohup $INSTALL_DIR/bin
+- cp /usr/bin/rm $INSTALL_DIR/bin
+- cp /usr/bin/ps $INSTALL_DIR/bin
+
 install_root_data:
 - manifest.json
 - qml

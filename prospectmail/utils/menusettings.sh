@@ -1,6 +1,5 @@
 set -x
 trap 'printf "%3d: " "$LINENO"' DEBUG
-export filequit="/home/phablet/.cache/prospectmail.mathias/quit"
 export QML_XHR_ALLOW_FILE_WRITE=1
 
 export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$PWD/lib/aarch64-linux-gnu/"
@@ -15,7 +14,5 @@ if [ "$DISPLAY" = "" ]; then
 fi
 
 qmlscene ${WD}/qml/Settings.qml	
-${WD}/bin/nohup ${WD}/utils/kill_prospect.sh &
-
-echo "killed prospect"
+${WD}/utils/kill_prospect.sh
 
