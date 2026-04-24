@@ -8,10 +8,9 @@ function close_command()
 	${WD}/utils/quicksleep.sh 
 	${WD}/bin/rm -f ${lock} 
 	${WD}/bin/rm -f ${lockcook} 
-	${WD}/bin/rm -f ${locksock}
-	${WD}/utils/kill_prospect.sh  
+	${WD}/bin/rm -f ${locksock} 
 	echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
-	exit 0
+	
 }
 set -ax
 export WD=$(pwd)
@@ -84,10 +83,14 @@ echo "----------------------------------------------------------------------"
 
 echo "----------------------------------------------------------------------"
 ${WD}/bin/nohup ${WD}/bin/app/prospect-mail $dpioptions $sandboxoptions $gpuoptions &
+${WD}/utils/sleep.sh
+
+
 while [ true ]; do
 	${WD}/utils/quicksleep.sh
 	echo "====================================================================="
 pid=`${WD}/bin/ls -l  /proc/*/exe 2>/dev/null | ${WD}/bin/grep "prospect"  |  ${WD}/bin/awk -F'/' '{print $3}'`
 echo $pid
+
 done
 
