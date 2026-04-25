@@ -1,7 +1,6 @@
 #!/bin/bash
 function close_command()
 {	
-	${WD}/bin/notify "prospectmail still ative ! cleanup..launch again" 
 	${WD}/bin/pkill -9 qmlscene 
 	${WD}/bin/pkill -9 prospect-mail
 	${WD}/bin/pkill -9 prospect-mail
