@@ -1,21 +1,31 @@
 #!/bin/bash
-function close_command()
-{	
-	${WD}/bin/pkill -9 qmlscene 
+#
+function test_net() {
+	ping -c 1 -q google.com >&/dev/null
+	if [ "$?" == "2" ]; then
+		${WD}/bin/notify "No network access..quit"
+		exit 0
+
+	fi
+	0
+}
+function close_command() {
+	${WD}/bin/pkill -9 qmlscene
 	${WD}/bin/pkill -9 prospect-mail
 	${WD}/bin/pkill -9 prospect-mail
-	${WD}/utils/quicksleep.sh 
-	${WD}/bin/rm -f ${lock} 
-	${WD}/bin/rm -f ${lockcook} 
-	${WD}/bin/rm -f ${locksock} 
+	${WD}/utils/quicksleep.sh
+	${WD}/bin/rm -f ${lock}
+	${WD}/bin/rm -f ${lockcook}
+	${WD}/bin/rm -f ${locksock}
 	echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
-	
+
 }
 set -ax
 export WD=$(pwd)
 echo $WD
 
 ###init
+test_net
 export lock="/home/phablet/.config/prospectmail.mathias/prospect-mail/SingletonLock"
 export lockcook="/home/phablet/.config/prospectmail.mathias/prospect-mail/SingletonCookie"
 export locksock="/home/phablet/.config/prospectmail.mathias/prospect-mail/SingletonSocket"
@@ -73,8 +83,9 @@ sandboxoptions="--no-sandbox"
 gpuoptions="--use-gl=egl --enable-gpu-rasterization --enable-zero-copy --ignore-gpu-blocklist --enable-features=UseSkiaRenderer,VaapiVideoDecoder --disable-frame-rate-limit --disable-gpu-vsync --enable-oop-rasterization"
 echo "launch prospect"
 echo "-----------------------------------------------------------------"
-(          ${WD}/utils/sleep.sh
-          ${WD}/utils/menusettings.sh &
+(
+	${WD}/utils/sleep.sh
+	${WD}/utils/menusettings.sh &
 	${WD}/bin/nohup utils/daemon.sh &
 ) &
 
@@ -84,12 +95,10 @@ echo "----------------------------------------------------------------------"
 ${WD}/bin/nohup ${WD}/bin/app/prospect-mail $dpioptions $sandboxoptions $gpuoptions &
 ${WD}/utils/sleep.sh
 
-
 while [ true ]; do
 	${WD}/utils/quicksleep.sh
 	echo "====================================================================="
-pid=`${WD}/bin/ls -l  /proc/*/exe 2>/dev/null | ${WD}/bin/grep "prospect"  |  ${WD}/bin/awk -F'/' '{print $3}'`
-echo $pid
+	pid=$(${WD}/bin/ls -l /proc/*/exe 2>/dev/null | ${WD}/bin/grep "prospect" | ${WD}/bin/awk -F'/' '{print $3}')
+	echo $pid
 
 done
-

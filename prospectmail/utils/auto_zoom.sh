@@ -12,7 +12,7 @@ fi
 if [[ $file == "zoomtodo_"* ]]; then
 
 	loop=${file:0-1}
-	
+
 	for i in {1..10}; do
 		echo "erase-------------------------------"zoomtodo_${i}
 		cd ${WD}/utils/
