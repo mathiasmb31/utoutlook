@@ -1,13 +1,12 @@
 #!/bin/bash
 #
 function test_net() {
-	ping -c 1 -q google.com >&/dev/null
-	if [ "$?" == "2" ]; then
+	if ${WD}/bin/ping -c 1 -q google.com >&/dev/null; then
+		echo "network ok"
+	else
 		${WD}/bin/notify "No network access..quit"
 		exit 0
-
 	fi
-	0
 }
 function close_command() {
 	${WD}/bin/pkill -9 qmlscene
