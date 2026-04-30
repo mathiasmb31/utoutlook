@@ -1,5 +1,23 @@
 #!/bin/bash
-#
+function verify_prospect_life() {
+	pid=$(${WD}/bin/ls -l /proc/*/exe 2>/dev/null | ${WD}/bin/grep "prospect-mail" | ${WD}/bin/awk -F'/' '{print $3}')
+
+	echo " ////////////result/////////// : "${pid}
+	if [ -z "$pid" ]; then
+		echo "prospect mail not detected"
+		${WD}/utils/kill_prospect.sh
+		exit 0
+	fi
+	if [-f '/home/phablet/.cache/prospectmail.mathias/opened' ]; then
+		pid=$(${WD}/bin/ls -l /proc/*/exe 2>/dev/null | ${WD}/bin/grep "qmlscene" | ${WD}/bin/awk -F'/' '{print $3}')
+		if [ -z "$pid" ]; then
+			echo "qmlscene not detected, must have been killed"
+			${WD}/utils/kill_prospect.sh
+			exit 0
+		fi
+	fi
+}
+
 function test_net() {
 	if ${WD}/bin/ping -c 1 -q google.com >&/dev/null; then
 		echo "network ok"
@@ -99,5 +117,6 @@ while [ true ]; do
 	echo "====================================================================="
 	pid=$(${WD}/bin/ls -l /proc/*/exe 2>/dev/null | ${WD}/bin/grep "prospect" | ${WD}/bin/awk -F'/' '{print $3}')
 	echo $pid
+	verify_prospect_life
 
 done
