@@ -1,6 +1,7 @@
 #prospectmail for ut
 
 adapted from original prospectmail package from https://github.com/julian-alarcon/prospect-mail?tab=readme-ov-file#readme
+with patches for UT.
 
 
 integrate and cloned prospect-mail to adapt to UBTouch .
