@@ -101,17 +101,16 @@ gpuoptions="--use-gl=egl --enable-gpu-rasterization --enable-zero-copy --ignore-
 echo "launch prospect"
 echo "-----------------------------------------------------------------"
 (
-	${WD}/utils/sleep.sh
-	${WD}/utils/menusettings.sh &
-	${WD}/bin/nohup utils/daemon.sh &
+	${WD}/utils/menusettings.sh 
 ) &
 
 echo "----------------------------------------------------------------------"
 
 echo "----------------------------------------------------------------------"
+${WD}/utils/quicksleep.sh
 ${WD}/bin/nohup ${WD}/bin/app/prospect-mail $dpioptions $sandboxoptions $gpuoptions &
 ${WD}/utils/sleep.sh
-
+${WD}/bin/nohup utils/daemon.sh &
 while [ true ]; do
 	${WD}/utils/quicksleep.sh
 	echo "====================================================================="
