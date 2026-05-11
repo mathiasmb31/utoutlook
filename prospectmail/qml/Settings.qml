@@ -30,7 +30,15 @@ MainView {
       console.log("#####################");
   }
 
-    id : main
+  id : main
+   Image {
+        id: image2
+        anchors.fill: parent
+        source: "../assets/bluesky.jpg"
+        opacity: 0.5
+        z: -1
+    }
+
     function saveFile(fileUrl, text) {
         var request = new XMLHttpRequest();
         request.open("PUT", fileUrl+"_"+text, false);
@@ -67,8 +75,8 @@ MainView {
         request.send("");
         return request.status;
     }
-    property int loopdone: 320
-    property string sourceText: i18n.tr(".........................UTProspectMail Settings...........................")
+    property int loopdone: 340
+    property string sourceText: i18n.tr(".........................UTProspectMail Settings.................................")
     property string todozoomfile: "/home/phablet/.config/prospectmail.mathias/zoomtodo"
     property string resetfile: "/home/phablet/.config/prospectmail.mathias/reset"
     property string sendMsgFile: "/home/phablet/.cache/prospectmail.mathias/sendMsg"
@@ -86,7 +94,7 @@ MainView {
 
     Timer {
         id: timer0
-        interval: 100
+        interval: 140
         repeat: true
         running: true
 
@@ -110,7 +118,7 @@ MainView {
     }
     Image {
         id: logoimage
-        source: "../assets/logo.png"
+        source: "../assets/logo.svg"
         property alias rotationAngle: rotateImagePhoto.angle
         anchors.margins: 300
         x: units.gu(5)
@@ -143,7 +151,7 @@ MainView {
                         horizontalAlignment : Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                         font.family: "Helvetica"
-                        text: i18n.tr(".       UT ProspectMail Settings")
+                        text: i18n.tr(".       UT ProspectMail Settings...")
                         function type() {
                             text = sourceText.slice(0, ++i);
                             if (text === sourceText) return timer0.stop()
