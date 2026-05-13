@@ -48,6 +48,6 @@ while [ true ]; do
 		${WD}/bin/xdotool type "${msg1}"
 	fi
 	echo "lauching autozoom "
-	${WD}/utils/auto_zoom.sh &
+	${WD}/utils/auto_zoom.sh 
 	verify_prospect_life
 done
