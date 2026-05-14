@@ -45,7 +45,7 @@ integrated a new setting qml page to adapt zoom to device.
 
 
 ## Tested
-Tested on fairphone 4 and pixel 3a
+Tested on fairphone 4,pixel 3a and emulator
 Tested on Ubtouch 24.04.1 and  24.04-1.2
 Should not work on ubtouch older release(s).
 
