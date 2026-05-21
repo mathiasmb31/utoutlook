@@ -3,7 +3,7 @@
   "productName": "Prospect Mail",
   "version": "2.0.0",
   "type:": "module",
-  "main": "src/main.js",
+  "main": "src/main.mjs",
   "description": "Unofficial desktop mail client for Microsoft Outlook",
   "homepage": "https://github.com/julian-alarcon/prospect-mail",
   "keywords": [
@@ -27,7 +27,7 @@
   },
   "license": "MIT",
   "engines": {
-    "node": "^24.14.0"
+    "node": "^26.1.0"
   },
   "scripts": {
     "start": "electron . --ozone-platform=x11",

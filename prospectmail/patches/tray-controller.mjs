@@ -7,7 +7,7 @@ import  {
   ipcMain,
   shell,
 } from 'electron';
-import { settings } from "../settings.js";
+import { settings } from "../settings.mjs";
 import { fileURLToPath } from 'url';
 import path from 'node:path';
 
