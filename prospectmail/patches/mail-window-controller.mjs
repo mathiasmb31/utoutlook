@@ -1,9 +1,11 @@
 import { app, BrowserWindow, shell, ipcMain, Menu } from 'electron';
 import  { spawn }  from 'child_process';
-import getClientFile  from './client-injector.js';
+import getClientFile  from './client-injector.mjs';
 import path from 'path';
-import { settings } from "../settings.js"
-import { fileURLToPath } from 'url'
+import { settings } from "../settings.mjs";
+import { fileURLToPath } from 'url';
+import fs from 'node:fs';
+
 let mainMailServiceUrl;
 let deeplinkUrls;
 let safelinksUrls;
@@ -120,20 +122,18 @@ export class MailWindowController {
     const platform = process.platform;
     let userAgentOS;
     let customUserAgent;
-
+    const content = 'initialise!';
+    fs.writeFile('/home/phablet/.config/prospectmail.mathias/init', content, err => {
+      if (err) {
+        console.error(err);
+      } else {
+        // file written successfully
+      }
+    });
     // Set OS-specific part of the user agent
-    switch (platform) {
-      case "darwin":
-        userAgentOS = "Macintosh; Intel Mac OS X 10_15_7";
-        break;
-      case "linux":
-        userAgentOS = "X11; Linux x86_64";
-        break;
-      case "win32":
-      default:
-        userAgentOS = "Windows NT 10.0; Win64; x64";
-        break;
-    }
+    
+    userAgentOS = "X11; Linux x86_64";
+       
 
     customUserAgent =
       "Mozilla/5.0 " +
@@ -225,12 +225,23 @@ export class MailWindowController {
 
     // Show window handler
     ipcMain.on("show", (event) => {
+       console.log("SHOWWWWWWWWWWWWW");
       this.show();
     });
 
     // Native notification handler
     ipcMain.on("show-notification", (_event, { title, body, icon }) => {
+      console.log("NOTIFFFFFFFFFFFFFFFFFFFFFFFF");
       const { Notification, nativeImage } = require("electron");
+
+const content = 'notif!';
+fs.writeFile('/home/phablet/.config/prospectmail.mathias/notif', content, err => {
+  if (err) {
+    console.error(err);
+  } else {
+    // file written successfully
+  }
+});
 
       // Check if notifications are supported
       if (!Notification.isSupported()) {
@@ -266,11 +277,13 @@ export class MailWindowController {
 
     // insert styles
     this.win.webContents.on("dom-ready", () => {
+      console.log("frame")
       this.win.webContents.insertCSS(getClientFile("main.css"));
       if (!showWindowFrame) {
+        console.log("no frame");
         this.win.webContents.insertCSS(getClientFile("no-frame.css"));
       }
-
+      console.log("add observer")
       this.addUnreadNumberObserver();
       if (!initialMinimization.domReady) {
         this.win.show();
@@ -351,6 +364,7 @@ export class MailWindowController {
   }
 
   addUnreadNumberObserver() {
+    console.log("read unread")
     this.win.webContents.executeJavaScript(
       getClientFile("unread-number-observer.js")
     );
@@ -375,7 +389,7 @@ export class MailWindowController {
 
   show() {
     initialMinimization.domReady = false;
-
+    console.log("showwwwwwwwwwwwwwwwwwwwwwwwww");
     // Restore if minimized, otherwise just show
     if (this.win.isMinimized()) {
       this.win.restore();

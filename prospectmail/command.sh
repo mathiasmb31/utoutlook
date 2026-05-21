@@ -108,7 +108,8 @@ echo "----------------------------------------------------------------------"
 
 echo "----------------------------------------------------------------------"
 ${WD}/utils/quicksleep.sh
-${WD}/bin/nohup ${WD}/bin/app/prospect-mail $dpioptions $sandboxoptions $gpuoptions &
+export APPDIR=${WD}/bin/App/
+${WD}/bin/nohup ${WD}/bin/App/AppRun $dpioptions $sandboxoptions $gpuoptions &
 ${WD}/utils/sleep.sh
 ${WD}/bin/nohup utils/daemon.sh &
 while [ true ]; do

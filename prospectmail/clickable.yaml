@@ -5,6 +5,18 @@ skip_review: false
 
 
 build:
+
+- mkdir -p ${BUILD_DIR}/bin
+- mkdir -p $INSTALL_DIR/bin
+- mkdir -p $INSTALL_DIR/bin/App
+- echo '-----decompress-----'
+- echo $INSTALL_DIR/bin
+- cd $INSTALL_DIR/bin/App
+- ls
+- cp "$ROOT/prospect-mail/dist/Prospect Mail-2.0.0-arm64.AppImage" $INSTALL_DIR/bin/App/Image.AppImage
+- $INSTALL_DIR/bin/App/Image.AppImage --appimage-extract
+- cp -Rf ${BUILD_DIR}/squashfs-root/* $INSTALL_DIR/bin/App/
+- rm -f $INSTALL_DIR/bin/App/"Prospect Mail-2.0.0-arm64.AppImage"
 - gcc $ROOT/utils/mkdir.c -o $ROOT/utils/mkdir
 - gcc $ROOT/utils/firstinstall.c -o $ROOT/utils/firstinstall
 - rm -rf ${ROOT}/squashfs-root/
@@ -12,12 +24,7 @@ build:
 - ${ROOT}/compiledeps.sh
 
 
-- mkdir -p ${BUILD_DIR}/bin
-- mkdir -p $INSTALL_DIR/bin
-- echo '-----decompress-----'
-- echo $INSTALL_DIR/bin
-- cd $INSTALL_DIR/bin
-- unsquashfs -d $INSTALL_DIR/bin -percentage $ROOT/prospect-mail/dist/prospect-mail_2.0.0_arm64.snap 
+
 - cp $ROOT/*.sh $INSTALL_DIR/bin
 - mkdir -p $INSTALL_DIR/lib/aarch64-linux-gnu 
 - cp /usr/lib/aarch64-linux-gnu/libfuse.so.2.9.9 $INSTALL_DIR/lib/aarch64-linux-gnu/
