@@ -24,7 +24,7 @@ if [[ $file == "zoomtodo_"* ]]; then
 		echo "waiting before zoom"
 		a=$((15 - $i * 5))
 
-		${WD}/bin/notify "${a} seconds before zooming main page"
+		${WD}/bin/notify "${a} seconds before zooming actual page"
 		${WD}/utils/shortsleep.sh
 	done
 
@@ -38,7 +38,7 @@ if [[ $file == "zoomtodo_"* ]]; then
 	${WD}/utils/shortsleep.sh
 	${WD}/utils/shortsleep.sh
 	done="1"
-	${WD}/bin/notify "finished zooming :) to reset touch .config/prospectmail.mathias/reset"
+	${WD}/bin/notify "zooming done"
 fi
 if [[ $done == "1"* ]]; then
 	echo "done"

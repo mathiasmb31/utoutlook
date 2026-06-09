@@ -1,6 +1,6 @@
 clickable_minimum_required: 8.4.0
 builder: custom
-
+kill: prospect-mail
 skip_review: false
 
 
@@ -13,7 +13,7 @@ build:
 - echo $INSTALL_DIR/bin
 - cd $INSTALL_DIR/bin/App
 - ls
-- cp "$ROOT/prospect-mail/dist/Prospect Mail-2.0.0-arm64.AppImage" $INSTALL_DIR/bin/App/Image.AppImage
+- cp "$ROOT/utoutlookmail/dist/Prospect Mail-2.0.0-arm64.AppImage" $INSTALL_DIR/bin/App/Image.AppImage
 - $INSTALL_DIR/bin/App/Image.AppImage --appimage-extract
 - cp -Rf ${BUILD_DIR}/squashfs-root/* $INSTALL_DIR/bin/App/
 - rm -f $INSTALL_DIR/bin/App/"Prospect Mail-2.0.0-arm64.AppImage"
@@ -44,8 +44,8 @@ build:
 install_root_data:
 - manifest.json
 - qml
-- prospectmail.apparmor
-- prospectmail.desktop
+- UToutlookMail.apparmor
+- UToutlookMail.desktop
 - assets
 - utils
 - push-apparmor.json
