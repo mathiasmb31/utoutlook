@@ -1,7 +1,7 @@
 #!/bin/bash
 set -x
 trap 'printf "%3d: " "$LINENO"' DEBUG
-PIDFILE="/home/phablet/.config/prospectmail.mathias/data/__prospect.pid"
+PIDFILE="/home/phablet/.config/utoutlook.mathias/data/__prospect.pid"
 echo "##################################################################"
 
 if [ -f $PIDFILE ]; then

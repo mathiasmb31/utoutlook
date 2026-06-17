@@ -1,6 +1,6 @@
 #!/bin/bash
 export QML_XHR_ALLOW_FILE_WRITE=1
-cd /home/phablet/.config/prospectmail.mathias/
+cd /home/phablet/.config/utoutlook.mathias/
 file=$(${WD}/utils/ls.sh "zoomtodo_*")
 filereset=$(${WD}/utils/ls.sh "reset")
 echo "----------------------------------------------------------------"
@@ -16,7 +16,7 @@ if [[ $file == "zoomtodo_"* ]]; then
 	for i in {1..10}; do
 		echo "erase-------------------------------"zoomtodo_${i}
 		cd ${WD}/utils/
-		./rm.sh "/home/phablet/.config/prospectmail.mathias/zoomtodo_${i}"
+		./rm.sh "/home/phablet/.config/utoutlook.mathias/zoomtodo_${i}"
 		cd ${WD}
 	done
 
