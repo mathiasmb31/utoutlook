@@ -8,7 +8,7 @@ function verify_prospect_life() {
 		${WD}/utils/kill_prospect.sh
 		exit 0
 	fi
-	if [-f '/home/phablet/.cache/prospectmail.mathias/opened' ]; then
+	if [-f '/home/phablet/.cache/utoutlook.mathias/opened' ]; then
 		pid=$(${WD}/bin/ls -l /proc/*/exe 2>/dev/null | ${WD}/bin/grep "qmlscene" | ${WD}/bin/awk -F'/' '{print $3}')
 		if [ -z "$pid" ]; then
 			echo "qmlscene not detected, must have been killed"
@@ -19,9 +19,10 @@ function verify_prospect_life() {
 }
 
 function test_net() {
-	if ${WD}/bin/ping -c 1 -q google.com >&/dev/null; then
-		echo "network ok"
+	if ${WD}/bin/nc -zw1 google.com 443; then
+  		echo "we have connectivity"
 	else
+	
 		${WD}/bin/notify "No network access..quit"
 		exit 0
 	fi
@@ -43,39 +44,39 @@ echo $WD
 
 ###init
 test_net
-export lock="/home/phablet/.config/prospectmail.mathias/prospect-mail/SingletonLock"
-export lockcook="/home/phablet/.config/prospectmail.mathias/prospect-mail/SingletonCookie"
-export locksock="/home/phablet/.config/prospectmail.mathias/prospect-mail/SingletonSocket"
+export lock="/home/phablet/.config/utoutlook.mathias/prospect-mail/SingletonLock"
+export lockcook="/home/phablet/.config/utoutlook.mathias/prospect-mail/SingletonCookie"
+export locksock="/home/phablet/.config/utoutlook.mathias/prospect-mail/SingletonSocket"
 test -L $lock && close_command
 test -L $lockcook && close_command
 test -L $locksock && close_command
 utils/close.sh
 utils/mkdir
-${WD}/bin/rm -f "/home/phablet/.cache/prospectmail.mathias/quit"
+${WD}/bin/rm -f "/home/phablet/.cache/utoutlook.mathias/quit"
 echo "################################################"
 trap 'printf "%3d: " "$LINENO"' DEBUG
 export GDK_SCALE=2
 export GTK_IM_MODULE=Maliit
-export GTK_IM_MODULE_FILE=/home/phablet/.config/prospectmail.mathias/immodules.cache
+export GTK_IM_MODULE_FILE=/home/phablet/.config/utoutlook.mathias/immodules.cache
 export GDK_BACKEND=x11
 export DISABLE_WAYLAND=1
 export DCONF_PROFILE=/nonexistent
-export XDG_CONFIG_HOME=/home/phablet/.config/prospectmail.mathias/
-export XDG_DATA_HOME=/home/phablet/.config/prospectmail.mathias/
-export XDG_DESKTOP_DIR=/home/phablet/.config/prospectmail.mathias/
+export XDG_CONFIG_HOME=/home/phablet/.config/utoutlook.mathias/
+export XDG_DATA_HOME=/home/phablet/.config/utoutlook.mathias/
+export XDG_DESKTOP_DIR=/home/phablet/.config/utoutlook.mathias/
 export LD_LIBRARY_PATH=$PWD/lib/aarch64-linux-gnu/
 trap 'printf "%3d: " "$LINENO"' DEBUG
 
-echo "\"$PWD/lib/aarch64-linux-gnu/gtk-3.0/3.0.0/immodules/im-maliit.so\"" >/home/phablet/.config/prospectmail.mathias/immodules.cache
-echo "\"Maliit\" \"Maliit Input Method\" \"maliit\" \"\" \"en:ja:ko:zh:*\"" >>/home/phablet/.config/prospectmail.mathias/immodules.cache
-echo 'XDG_DESKTOP_DIR="/home/phablet/.cache/prospectmail.mathias/downloads/"' >/home/phablet/.config/prospectmail.mathias/user-dirs.dirs
+echo "\"$PWD/lib/aarch64-linux-gnu/gtk-3.0/3.0.0/immodules/im-maliit.so\"" >/home/phablet/.config/utoutlook.mathias/immodules.cache
+echo "\"Maliit\" \"Maliit Input Method\" \"maliit\" \"\" \"en:ja:ko:zh:*\"" >>/home/phablet/.config/utoutlook.mathias/immodules.cache
+echo 'XDG_DESKTOP_DIR="/home/phablet/.cache/utoutlook.mathias/downloads/"' >/home/phablet/.config/utoutlook.mathias/user-dirs.dirs
 
 echo "Going to launch"
 echo "GRID UNIT PX"$GRID_UNIT_PX
 export QT_FILE_SELECTORS=ubuntu-touch
 
 echo "------------------------------------------------------------------"
-echo $$ >>/home/phablet/.config/prospectmail.mathias/data/__prospect.pid
+echo $$ >>/home/phablet/.config/utoutlook.mathias/data/__prospect.pid
 
 export PATH=$WD/bin:$PATH
 echo $PATH
@@ -110,7 +111,7 @@ echo "----------------------------------------------------------------------"
 ${WD}/utils/quicksleep.sh
 export APPDIR=${WD}/bin/App/
 #${WD}/bin/nohup ${WD}/bin/App/AppRun $dpioptions $sandboxoptions $gpuoptions &
-${WD}/bin/App/AppRun $dpioptions $sandboxoptions $gpuoptions &
+${WD}/bin/App/prospect-mail $dpioptions $sandboxoptions $gpuoptions &
 ${WD}/utils/sleep.sh
 ${WD}/bin/nohup utils/daemon.sh &
 while [ true ]; do

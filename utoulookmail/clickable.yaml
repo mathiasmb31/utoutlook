@@ -13,10 +13,9 @@ build:
 - echo $INSTALL_DIR/bin
 - cd $INSTALL_DIR/bin/App
 - ls
-- cp "$ROOT/utoutlookmail/dist/Prospect Mail-2.0.0-arm64.AppImage" $INSTALL_DIR/bin/App/Image.AppImage
-- $INSTALL_DIR/bin/App/Image.AppImage --appimage-extract
-- cp -Rf ${BUILD_DIR}/squashfs-root/* $INSTALL_DIR/bin/App/
-- rm -f $INSTALL_DIR/bin/App/"Prospect Mail-2.0.0-arm64.AppImage"
+- cp "$ROOT/utoutlookmail/dist/prospect-mail-2.0.0-arm64.tar.gz" $INSTALL_DIR/bin/App/prospect.tar.gz
+- cd $INSTALL_DIR/bin/App && tar xvfz prospect.tar.gz --strip-components=1 
+- rm -f $INSTALL_DIR/bin/App/prospect.tar.gz
 - gcc $ROOT/utils/mkdir.c -o $ROOT/utils/mkdir
 - gcc $ROOT/utils/firstinstall.c -o $ROOT/utils/firstinstall
 - rm -rf ${ROOT}/squashfs-root/
@@ -40,6 +39,7 @@ build:
 - cp /usr/bin/rm $INSTALL_DIR/bin
 - cp /usr/bin/ps $INSTALL_DIR/bin
 - cp /usr/bin/ping $INSTALL_DIR/bin
+- cp /usr/bin/nc $INSTALL_DIR/bin
 
 install_root_data:
 - manifest.json
@@ -51,6 +51,6 @@ install_root_data:
 - push-apparmor.json
 - push.json
 - pushexec
-dependencies_host: ["libnotify-bin","notify-osd","xdotool","psmisc","g++","jq","libgtk2.0-dev","libgtk-3-dev","libmaliit-glib-dev","build-essential","meson","libtool","m4","automake","squashfs-tools","qemu-user-static" , "tree" , "patchelf", "git", "jq", "curl", "build-essential", "python3", "python3-pip", "libudev-dev", "dpkg", "moreutils","libssl-dev", "libsqlite3-dev", "libcrypto++-dev", "libsqlcipher-dev", "npm", "git-lfs", "execstack", "imagemagick", "librsvg2-bin", "debhelper-compat", "xauth", "xvfb",'squashfs-tools']
+dependencies_host: ["netcat-traditional","libnotify-bin","notify-osd","xdotool","psmisc","g++","jq","libgtk2.0-dev","libgtk-3-dev","libmaliit-glib-dev","build-essential","meson","libtool","m4","automake","squashfs-tools","qemu-user-static" , "tree" , "patchelf", "git", "jq", "curl", "build-essential", "python3", "python3-pip", "libudev-dev", "dpkg", "moreutils","libssl-dev", "libsqlite3-dev", "libcrypto++-dev", "libsqlcipher-dev", "npm", "git-lfs", "execstack", "imagemagick", "librsvg2-bin", "debhelper-compat", "xauth", "xvfb",'squashfs-tools']
 
-dependencies_target: [ "iputils-ping","notify-osd","libnotify-bin","psmisc","xdotool","qemu-user-static","g++", "fuse", "zlib1g","libfuse2","squashfs-tools","libgtk2.0-dev","libgtk-3-dev","libmaliit-glib-dev"]
+dependencies_target: [ "netcat-traditional","iputils-ping","notify-osd","libnotify-bin","psmisc","xdotool","qemu-user-static","g++", "fuse", "zlib1g","libfuse2","squashfs-tools","libgtk2.0-dev","libgtk-3-dev","libmaliit-glib-dev"]

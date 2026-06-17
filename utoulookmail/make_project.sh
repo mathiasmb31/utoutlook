@@ -11,7 +11,7 @@ echo "Build"
 npm install
 npm update
 npm audit fix
-npm run dist:linux:appimage
+npm run dist:linux:targz
 
 cd ..
 
