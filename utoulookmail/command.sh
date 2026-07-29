@@ -1,21 +1,6 @@
 #!/bin/bash
 function verify_prospect_life() {
-	pid=$(${WD}/bin/ls -l /proc/*/exe 2>/dev/null | ${WD}/bin/grep "prospect-mail" | ${WD}/bin/awk -F'/' '{print $3}')
-
-	echo " ////////////result/////////// : "${pid}
-	if [ -z "$pid" ]; then
-		echo "prospect mail not detected"
-		${WD}/utils/kill_prospect.sh
-		exit 0
-	fi
-	if [-f '/home/phablet/.cache/utoutlook.mathias/opened' ]; then
-		pid=$(${WD}/bin/ls -l /proc/*/exe 2>/dev/null | ${WD}/bin/grep "qmlscene" | ${WD}/bin/awk -F'/' '{print $3}')
-		if [ -z "$pid" ]; then
-			echo "qmlscene not detected, must have been killed"
-			${WD}/utils/kill_prospect.sh
-			exit 0
-		fi
-	fi
+echo "hello"
 }
 
 function test_net() {
@@ -93,17 +78,27 @@ echo "--------------------------------------------------------"
 echo "--------------------------------------------------------"
 
 echo $DISPLAY
-utils/verify_flag.sh
+${WD}/utils/verify_flag.sh
 echo "---------------------------------------------------------"
 echo "---------------------------------------------------------"
-dpioptions="--high-dpi-support=1 --force-device-scale-factor=$scale --keyboard-height=$keyboardHeight"
+
+if [ "$textFontSize" = "" ]; then
+textFontSize=106
+fi
+
+if [ "$spanFontSize" = "" ]; then
+spanFontSize=107
+fi
+appScaling=$(${WD}/utils/get-scale.sh 2>/dev/null )
+
+scaling="$((appScaling / 100)).$(printf '%02d' "$((appScaling % 100))")"
+
+
+dpioptions="--high-dpi-support=1 --force-device-scale-factor=$scaling  --text-font-size=$textFontSize --span-font-size=$spanFontSize"
 sandboxoptions="--no-sandbox"
 gpuoptions="--use-gl=egl --enable-gpu-rasterization --enable-zero-copy --ignore-gpu-blocklist --enable-features=UseSkiaRenderer,VaapiVideoDecoder --disable-frame-rate-limit --disable-gpu-vsync --enable-oop-rasterization"
-echo "launch prospect"
-echo "-----------------------------------------------------------------"
-(
-	${WD}/utils/menusettings.sh 
-) &
+
+echo "launch utoutlookmail"
 
 echo "----------------------------------------------------------------------"
 
@@ -113,12 +108,7 @@ export APPDIR=${WD}/bin/App/
 #${WD}/bin/nohup ${WD}/bin/App/AppRun $dpioptions $sandboxoptions $gpuoptions &
 ${WD}/bin/App/prospect-mail $dpioptions $sandboxoptions $gpuoptions &
 ${WD}/utils/sleep.sh
-${WD}/bin/nohup utils/daemon.sh &
 while [ true ]; do
-	${WD}/utils/quicksleep.sh
-	echo "====================================================================="
-	pid=$(${WD}/bin/ls -l /proc/*/exe 2>/dev/null | ${WD}/bin/grep "prospect" | ${WD}/bin/awk -F'/' '{print $3}')
-	echo $pid
 	verify_prospect_life
 
 done
