@@ -1,4 +1,10 @@
 #!/bin/bash
+
+
+trap close_command EXIT
+trap close_command 9
+trap close_command 3
+
 function verify_prospect_life() {
 echo "hello"
 }

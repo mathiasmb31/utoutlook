@@ -43,7 +43,6 @@ build:
 
 install_root_data:
 - manifest.json
-- qml
 - UToutlookMail.apparmor
 - UToutlookMail.desktop
 - assets
