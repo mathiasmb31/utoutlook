@@ -12,10 +12,11 @@ cd utoutlookmail
 echo "Build"
 npm install
 npm update
+for i in {1..10}; do
+  npm audit fix --force
+done
 
-npm audit fix --force
-npm audit fix --force
-npm audit fix --force
+
 npm run dist:linux:targz
 
 cd ..
