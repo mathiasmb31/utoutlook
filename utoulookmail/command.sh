@@ -22,6 +22,7 @@ function close_command() {
 	${WD}/bin/pkill -9 qmlscene
 	${WD}/bin/pkill -9 prospect-mail
 	${WD}/bin/pkill -9 prospect-mail
+	${WD}/bin/pkill -9 prospect-mail
 	${WD}/utils/quicksleep.sh
 	${WD}/bin/rm -f ${lock}
 	${WD}/bin/rm -f ${lockcook}
@@ -34,6 +35,7 @@ export WD=$(pwd)
 echo $WD
 
 ###init
+close_command
 test_net
 export lock="/home/phablet/.config/utoutlook.mathias/prospect-mail/SingletonLock"
 export lockcook="/home/phablet/.config/utoutlook.mathias/prospect-mail/SingletonCookie"
