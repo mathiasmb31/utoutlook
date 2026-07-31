@@ -35,14 +35,12 @@ export WD=$(pwd)
 echo $WD
 
 ###init
-close_command
+
 test_net
 export lock="/home/phablet/.config/utoutlook.mathias/prospect-mail/SingletonLock"
 export lockcook="/home/phablet/.config/utoutlook.mathias/prospect-mail/SingletonCookie"
 export locksock="/home/phablet/.config/utoutlook.mathias/prospect-mail/SingletonSocket"
-test -L $lock && close_command
-test -L $lockcook && close_command
-test -L $locksock && close_command
+close_command
 utils/close.sh
 utils/mkdir
 ${WD}/bin/rm -f "/home/phablet/.cache/utoutlook.mathias/quit"
@@ -91,15 +89,15 @@ echo "---------------------------------------------------------"
 echo "---------------------------------------------------------"
 
 if [ "$textFontSize" = "" ]; then
-textFontSize=106
+textFontSize=100
 fi
 
 if [ "$spanFontSize" = "" ]; then
-spanFontSize=107
+spanFontSize=100
 fi
 appScaling=$(${WD}/utils/get-scale.sh 2>/dev/null )
 
-scaling="$((appScaling / 100)).$(printf '%02d' "$((appScaling % 100))")"
+scaling="$((appScaling / 110)).$(printf '%02d' "$((appScaling % 100))")"
 
 
 dpioptions="--high-dpi-support=1 --force-device-scale-factor=$scaling  --text-font-size=$textFontSize --span-font-size=$spanFontSize"
