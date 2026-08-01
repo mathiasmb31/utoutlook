@@ -23,7 +23,7 @@
 #include <QDebug>
 #include <QJsonArray>
 
-#define PUSH_APP_ID "prospectmail.mathias_prospectmail"
+#define PUSH_APP_ID "UToulookMail.mathias_UToulookMail"
 #define PUSH_SERVICE "com.lomiri.PushNotifications"
 #define POSTAL_SERVICE "com.lomiri.Postal"
 #define PUSH_PATH "/com/lomiri/PushNotifications"
