@@ -19,14 +19,25 @@ function test_net() {
 	fi
 }
 function close_command() {
+	${WD}/bin/notify "Clean up utoulookmai"
 	${WD}/bin/pkill -9 qmlscene
 	${WD}/bin/pkill -9 prospect-mail
 	${WD}/bin/pkill -9 prospect-mail
 	${WD}/bin/pkill -9 prospect-mail
+	${WD}/bin/pkill  prospect-mail
+	${WD}/bin/pkill  prospect-mail
 	${WD}/utils/quicksleep.sh
 	${WD}/bin/rm -f ${lock}
 	${WD}/bin/rm -f ${lockcook}
 	${WD}/bin/rm -f ${locksock}
+	
+	${WD}/bin/pkill -9 qmlscene
+	${WD}/bin/pkill -9 prospect-mail
+	${WD}/bin/pkill -9 prospect-mail
+	${WD}/bin/pkill -9 prospect-mail
+	${WD}/bin/pkill  prospect-mail
+	${WD}/bin/pkill  prospect-mail
+	
 	echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
 
 }
@@ -111,7 +122,7 @@ echo "----------------------------------------------------------------------"
 echo "----------------------------------------------------------------------"
 ${WD}/utils/quicksleep.sh
 export APPDIR=${WD}/bin/App/
-#${WD}/bin/nohup ${WD}/bin/App/AppRun $dpioptions $sandboxoptions $gpuoptions &
+${WD}/bin/notify "Launch prospect"
 ${WD}/bin/App/prospect-mail $dpioptions $sandboxoptions $gpuoptions &
 ${WD}/utils/sleep.sh
 while [ true ]; do
