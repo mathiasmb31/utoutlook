@@ -1,8 +1,7 @@
 clickable_minimum_required: 8.4.0
 builder: custom
-kill: prospect-mail
 skip_review: false
-
+kill: prospect-mail
 
 build:
 
@@ -32,6 +31,7 @@ build:
 - cp /usr/bin/notify-send $INSTALL_DIR/bin
 - cp /usr/bin/ls $INSTALL_DIR/bin
 - cp /usr/bin/grep $INSTALL_DIR/bin
+- cp /usr/bin/pgrep $INSTALL_DIR/bin
 - cp /usr/bin/awk $INSTALL_DIR/bin
 - cp /usr/bin/pkill $INSTALL_DIR/bin
 - cp /usr/bin/pgrep $INSTALL_DIR/bin
