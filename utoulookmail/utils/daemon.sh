@@ -9,7 +9,7 @@ function verify_prospect_life() {
 		${WD}/utils/kill_prospect.sh
 		exit 0
 	fi
-	if [-f '/home/phablet/.cache/prospectmail.mathias/opened' ]; then
+	if [-f '/home/phablet/.cache/utoutlook.mathias/opened' ]; then
 		pid=$(${WD}/bin/ls -l /proc/*/exe 2>/dev/null | ${WD}/bin/grep "qmlscene" | ${WD}/bin/awk -F'/' '{print $3}')
 		if [ -z "$pid" ]; then
 			echo "qmlscene not detected, must have been killed"
@@ -35,7 +35,7 @@ if [ "$DISPLAY" = "" ]; then
 fi
 
 while [ true ]; do
-	cd /home/phablet/.cache/prospectmail.mathias/
+	cd /home/phablet/.cache/utoutlook.mathias/
 	file=$(${WD}/utils/ls.sh "sendMsg*")
 	echo ${file}
 	if [ -f "${file}" ]; then
@@ -44,7 +44,7 @@ while [ true ]; do
 		msg=$(${WD}/utils/ls.sh "$file")
 		msg1=$(${WD}/utils/cut.sh "${msg}")
 		echo "................."$msg1
-		${WD}/utils/rm.sh /home/phablet/.cache/prospectmail.mathias/"${file}"
+		${WD}/utils/rm.sh /home/phablet/.cache/utoutlook.mathias/"${file}"
 		${WD}/bin/xdotool type "${msg1}"
 	fi
 	echo "lauching autozoom "

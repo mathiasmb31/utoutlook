@@ -1,19 +1,19 @@
 {
-    "name": "prospectmail.mathias",
-    "description": "prospectmail",
+    "name": "utoutlook.mathias",
+    "description": "utoutlook",
     "architecture": "@CLICK_ARCH@",
     "title": "prospect",
     "hooks": {
-        "prospectmail": {
-            "apparmor": "prospectmail.apparmor",
-            "desktop":  "prospectmail.desktop"
+        "utoulook": {
+            "apparmor": "utoutlook.apparmor",
+            "desktop":  "utoutlook.desktop"
         },
 	 "push": {
              "apparmor": "push-apparmor.json",
              "push-helper": "push.json"
             }
     },
-    "version": "1.4.6",
+    "version": "2.0.0",
     "maintainer": "mathias <email@domain.org>",
     "framework" : "@CLICK_FRAMEWORK@"
 }

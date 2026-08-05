@@ -43,7 +43,7 @@ def get_lcd_density() -> int:
   finally:
     if process and process.poll() is None:  # Check if the process is still running
         print("Killing process...", file=sys.stderr)
-        process.terminate()  # Send a terminate chromme
+        process.terminate()  # Send a terminate signal
         try:
           process.wait(timeout=5)  # Wait for the process to terminate
         except subprocess.TimeoutExpired:
@@ -64,8 +64,8 @@ def scalingdevidor(GRID_PX : int = int(os.environ["GRID_UNIT_PX"])) -> int:
 #### GLOBAL VARIABLES
 scaling = 2
 if get_lcd_density() == 0:
-  scaling = str(round(1.05*float(os.environ["GRID_UNIT_PX"])/scalingdevidor(),2)) 
+  scaling = str(int(round(105*float(os.environ["GRID_UNIT_PX"])/scalingdevidor()))) 
 else:
-  scaling = str(round(float(get_lcd_density()/173),2))
+  scaling = str(int(round(float(get_lcd_density()/173)*100,0)))
 
 print(scaling)
