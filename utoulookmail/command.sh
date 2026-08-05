@@ -1,12 +1,7 @@
 #!/bin/bash
 
-
-trap close_command EXIT
 trap close_command 9
-trap close_command 3
-trap close_command 1
-trap close_command 6
-trap close_command 2
+
 
 function cleanup() {
 
@@ -19,19 +14,28 @@ function cleanup() {
        ${WD}/bin/rm -f ${lock}
        ${WD}/bin/rm -f ${lockcook}
        ${WD}/bin/rm -f ${locksock}
+       ${WD}/bin/rm -f ${exitclient}
 }
 
 function launch_prospect() {
+	cleanup
+	launchtry=$((launchtry + 1))
+if [ "$launchtry" -gt 3 ] ; then
+	cleanup
+	echo "tryed too more " > ${exitclient}
+	exit 0
+fi
 	${WD}/utils/quicksleep.sh
 	export APPDIR=${WD}/bin/App/
 	${WD}/bin/notify "Launch prospect"
 	${WD}/bin/App/prospect-mail $dpioptions $sandboxoptions $gpuoptions &
 	${WD}/utils/sleep.sh
+	${WD}/utils/sleep.sh
 }
 
 function verify_prospect_life() {
 
-echo "todo :)"
+[ -f ${exitclient} ] && launch_prospect
 
 }
 
@@ -64,10 +68,12 @@ echo $WD
 ###init
 
 test_net
-
+export launchtry=1
 export lock="/home/phablet/.config/utoutlook.mathias/prospect-mail/SingletonLock"
 export lockcook="/home/phablet/.config/utoutlook.mathias/prospect-mail/SingletonCookie"
 export locksock="/home/phablet/.config/utoutlook.mathias/prospect-mail/SingletonSocket"
+export exitclient="/home/phablet/.config/utoutlook.mathias/exitclient"
+${WD}/bin/rm -f ${exitclient}
 cleanup
 utils/mkdir
 ${WD}/bin/rm -f "/home/phablet/.cache/utoutlook.mathias/quit"
@@ -98,7 +104,7 @@ export QT_FILE_SELECTORS=ubuntu-touch
 
 
 ## cleanup 
-  cleanup    
+cleanup    
         
 
 echo "------------------------------------------------------------------"
