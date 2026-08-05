@@ -1,5 +1,5 @@
 [Desktop Entry]
-Name=utoulookmail
+Name=utoutlook
 Exec=./bin/command.sh
 Icon=assets/logo.svg
 Terminal=false

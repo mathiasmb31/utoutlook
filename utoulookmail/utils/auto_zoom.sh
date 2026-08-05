@@ -1,6 +1,6 @@
 #!/bin/bash
 export QML_XHR_ALLOW_FILE_WRITE=1
-cd /home/phablet/.config/prospectmail.mathias/
+cd /home/phablet/.config/utoutlook.mathias/
 file=$(${WD}/utils/ls.sh "zoomtodo_*")
 filereset=$(${WD}/utils/ls.sh "reset")
 echo "----------------------------------------------------------------"
@@ -16,7 +16,7 @@ if [[ $file == "zoomtodo_"* ]]; then
 	for i in {1..10}; do
 		echo "erase-------------------------------"zoomtodo_${i}
 		cd ${WD}/utils/
-		./rm.sh "/home/phablet/.config/prospectmail.mathias/zoomtodo_${i}"
+		./rm.sh "/home/phablet/.config/utoutlook.mathias/zoomtodo_${i}"
 		cd ${WD}
 	done
 
@@ -24,7 +24,7 @@ if [[ $file == "zoomtodo_"* ]]; then
 		echo "waiting before zoom"
 		a=$((15 - $i * 5))
 
-		${WD}/bin/notify "${a} seconds before zooming main page"
+		${WD}/bin/notify "${a} seconds before zooming actual page"
 		${WD}/utils/shortsleep.sh
 	done
 
@@ -38,7 +38,7 @@ if [[ $file == "zoomtodo_"* ]]; then
 	${WD}/utils/shortsleep.sh
 	${WD}/utils/shortsleep.sh
 	done="1"
-	${WD}/bin/notify "finished zooming :) to reset touch .config/prospectmail.mathias/reset"
+	${WD}/bin/notify "zooming done"
 fi
 if [[ $done == "1"* ]]; then
 	echo "done"

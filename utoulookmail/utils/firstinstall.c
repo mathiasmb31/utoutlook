@@ -6,9 +6,9 @@
 #include <unistd.h>        // chdir
 #include <sys/stat.h>      // mkdir
 
-#define PATH "/home/phablet/.config/prospectmail.mathias"
-#define PATH2 "/home/phablet/.config/prospectmail.mathias/data"
-#define PATH3 "/home/phablet/.config/prospectmail.mathias/FIRSTINSTALL/"
+#define PATH "/home/phablet/.config/utoutlook.mathias"
+#define PATH2 "/home/phablet/.config/utoutlook.mathias/data"
+#define PATH3 "/home/phablet/.config/utoutlook.mathias/FIRSTINSTALL/"
 
 int main() 
 	{
