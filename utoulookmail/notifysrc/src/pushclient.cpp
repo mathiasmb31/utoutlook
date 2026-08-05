@@ -58,7 +58,7 @@ QJsonObject PushClient::buildSummaryMessage(const QString &msg) {
     c["persist"] = true;
     c["icon"] = icon;
     QJsonArray actions = QJsonArray();
-    QString actionUri = QStringLiteral("appid://utoutlook.mathias/prospectmail/current-user-version");
+    QString actionUri = QStringLiteral("appid://utoutlook.mathias/utoulook/current-user-version");
     actions.append(actionUri);
     c["actions"] = actions;
 

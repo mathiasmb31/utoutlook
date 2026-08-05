@@ -1,12 +1,12 @@
 {
     "name": "utoutlook.mathias",
-    "description": "UToutlookMail",
+    "description": "utoutlook",
     "architecture": "@CLICK_ARCH@",
     "title": "prospect",
     "hooks": {
-        "UToutlookMail": {
-            "apparmor": "UToutlookMail.apparmor",
-            "desktop":  "UToutlookMail.desktop"
+        "utoulook": {
+            "apparmor": "utoutlook.apparmor",
+            "desktop":  "utoutlook.desktop"
         },
 	 "push": {
              "apparmor": "push-apparmor.json",
