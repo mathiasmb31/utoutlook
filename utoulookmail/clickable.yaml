@@ -40,6 +40,7 @@ build:
 - cp /usr/bin/ps $INSTALL_DIR/bin
 - cp /usr/bin/ping $INSTALL_DIR/bin
 - cp /usr/bin/nc $INSTALL_DIR/bin
+- cp /usr/bin/sleep $INSTALL_DIR/bin
 
 install_root_data:
 - manifest.json
@@ -47,6 +48,7 @@ install_root_data:
 - utoutlook.desktop
 - assets
 - utils
+- qml
 - push-apparmor.json
 - push.json
 - pushexec
