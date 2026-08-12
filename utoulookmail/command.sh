@@ -1,5 +1,4 @@
 #!/bin/bash
-set -x
 
 trap close_command 1
 trap close_command 3
@@ -7,77 +6,99 @@ trap close_command 6
 trap close_command 1
 trap close_command 15
 
-function sleep_int() 
-{
+function sleep_int() {
 
-  for ((target = $((SECONDS + $1)); SECONDS < target; true)); do :; done
+	for ((target = $((SECONDS + $1)); SECONDS < target; true)); do :; done
 }
 
-function cleanup()
-{
+function cleanup() {
 
-  "${WD}"/bin/pkill -9 prospect-mail
-  "${WD}"/bin/pkill -9 prospect-mail
-  "${WD}"/bin/pkill -9 prospect-mail
-  "${WD}"/bin/pkill prospect-mail
-  "${WD}"/bin/pkill prospect-mail
-  "${WD}"/bin/rm -f ${lock}
-  "${WD}"/bin/rm -f ${lockcook}
-  "${WD}"/bin/rm -f ${locksock}
-  "${WD}"/bin/rm -f ${exitclient}
-  "${WD}"/bin/rm -f ${killedclient}
-  "${WD}"/bin/rm -f "/home/phablet/.config/utoutlook.mathias/close"
+	"${WD}"/bin/pkill -9 prospect-mail
+	"${WD}"/bin/pkill -9 prospect-mail
+	"${WD}"/bin/pkill -9 prospect-mail
+	"${WD}"/bin/pkill prospect-mail
+	"${WD}"/bin/pkill prospect-mail
+	"${WD}"/bin/rm -f ${lock}
+	"${WD}"/bin/rm -f ${lockcook}
+	"${WD}"/bin/rm -f ${locksock}
+	"${WD}"/bin/rm -f ${exitclient}
+	"${WD}"/bin/rm -f ${killedclient}
+	"${WD}"/bin/rm -f "/home/phablet/.config/utoutlook.mathias/close"
+	"${WD}"/bin/rm -f ${exitcommand}
 }
 
-function launch_prospect()
-{
-  cleanup
+function launch_prospect() {
+	cleanup
 
-  launchtry=$((launchtry + 1))
-  if [ "$launchtry" -gt 3 ]; then
-    cleanup
-    echo "tried too more " >${exitclient}
-    exit 0
-  fi
-  export APPDIR=${WD}/bin/App/
-  "${WD}"/bin/notify "Launch prospect"
-  "${WD}"/bin/App/prospect-mail "$dpioptions" "$sandboxoptions" "$gpuoptions" &
-  sleep_int 5
+	launchtry=$((launchtry + 1))
+	if [ "$launchtry" -gt 3 ]; then
+		cleanup
+		echo "tried too more " >${exitcommand}
+		qmlscene "${WD}"/qml/nonetwork.qml
+		exit 0
+	fi
+	export APPDIR=${WD}/bin/App/
+	"${WD}"/bin/notify "Launch prospect"
+
+	"${WD}"/bin/App/prospect-mail "$dpioptions" "$sandboxoptions" "$gpuoptions" &
+	i+=1
 }
 
-function verify_prospect_life()
-{
-  if [ -f ${exitclient} ]; then
-    launch_prospect
-  fi
+function verify_prospect_life() {
 
+	follow=$(echo "$(<${filelifefollow})")
+
+	echo "FOLLOW"
+	echo ${follow}
+	echo ${oldfollow}
+	clientalive=0
+	if [ ${follow} -eq ${oldfollow} ]; then
+		echo ${follow}
+		echo ${oldfollow}
+		echo "tried too more " >${exitcommand}
+		echo "******" && qmlscene "${WD}"/qml/exit.qml && exit 0
+	else
+		clientalive=1
+	fi
+	oldfollow=${follow}
+	if [ ${clientalive} -eq 1 ]; then
+		echo "client is alive"
+	else
+
+		if [ -f ${killedclient} ] && [! -f ${exitclient} ]; then
+			sleep_int 1
+			launch_prospect
+		fi
+		if [ -f ${exitclient} ]; then
+			exit 0
+		fi
+	fi
+	echo "done"
 }
 
-function test_net()
-{
-  if "${WD}"/bin/nc -zw1 google.com 443; then
-    echo "we have connectivity"
-  else
+function test_net() {
+	if "${WD}"/bin/nc -zw1 google.com 443; then
+		echo "we have connectivity"
+	else
 
-    "${WD}"/bin/notify "No network access..quit"
-    qmlscene "${WD}"/qml/nonetwork.qml
-    close_command
-  fi
+		"${WD}"/bin/notify "No network access..quit"
+		qmlscene "${WD}"/qml/nonetwork.qml
+		close_command
+	fi
 }
-function close_command()
-{
+function close_command() {
 
-  echo "closed" >/home/phablet/.config/utoutlook.mathias/close
-  "${WD}"/bin/notify "Clean up utoulookmai"
+	echo "closed" >/home/phablet/.config/utoutlook.mathias/close
+	"${WD}"/bin/notify "Clean up utoulookmai"
 
-  exit 0
+	exit 0
 }
-set -ax
 
 export WD=$(pwd)
 echo "$WD"
 
 ###init
+declare -i i=0
 
 test_net
 export launchtry=1
@@ -86,6 +107,9 @@ export lockcook="/home/phablet/.config/utoutlook.mathias/prospect-mail/Singleton
 export locksock="/home/phablet/.config/utoutlook.mathias/prospect-mail/SingletonSocket"
 export exitclient="/home/phablet/.config/utoutlook.mathias/exitclient"
 export killedclient="/home/phablet/.config/utoutlook.mathias/killedmail"
+export filelifefollow="/home/phablet/.config/utoutlook.mathias/follow"
+export exitcommand="/home/phablet/.config/utoutlook.mathias/close"
+oldfollow="0"
 "${WD}"/bin/rm -f ${exitclient}
 "${WD}"/bin/rm -f ${killedclient}
 "${WD}"/bin/rm -f /home/phablet/.config/utoutlook.mathias/close
@@ -118,6 +142,7 @@ export QT_FILE_SELECTORS=ubuntu-touch
 
 ## cleanup
 cleanup
+numberold=$(echo "$(<${filelifefollow})")
 
 echo "------------------------------------------------------------------"
 echo $$ >>/home/phablet/.config/utoutlook.mathias/data/__prospect.pid
@@ -125,13 +150,13 @@ echo $$ >>/home/phablet/.config/utoutlook.mathias/data/__prospect.pid
 export PATH=$WD/bin:$PATH
 echo "$PATH"
 if [ "$DISPLAY" = "" ]; then
-  i=0
-  while [ -e "/tmp/.X11-unix/X$i" ]; do
-    i=$((i + 1))
-  done
-  i=$((i - 1))
-  display=":$i"
-  export DISPLAY=$display
+	i=0
+	while [ -e "/tmp/.X11-unix/X$i" ]; do
+		i=$((i + 1))
+	done
+	i=$((i - 1))
+	display=":$i"
+	export DISPLAY=$display
 fi
 echo "--------------------------------------------------------"
 echo "--------------------------------------------------------"
@@ -142,11 +167,11 @@ echo "---------------------------------------------------------"
 echo "---------------------------------------------------------"
 
 if [ "$textFontSize" = "" ]; then
-  textFontSize=120
+	textFontSize=120
 fi
 
 if [ "$spanFontSize" = "" ]; then
-  spanFontSize=100
+	spanFontSize=100
 fi
 appScaling=$("${WD}"/utils/get-scale.sh 2>/dev/null)
 
@@ -162,14 +187,10 @@ echo "----------------------------------------------------------------------"
 
 echo "----------------------------------------------------------------------"
 launch_prospect
+sleep_int 15
+while true; do
+	sleep_int 3
 
-
-while  true ; do
-  sleep_int 1
-  if [ -f ${killedclient} ]; then
-    exit 0
-  fi
-
-  verify_prospect_life
+	verify_prospect_life
 
 done
