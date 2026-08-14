@@ -1,10 +1,10 @@
 #prospectmail for ut
 
 adapted from original prospectmail package from https://github.com/julian-alarcon/prospect-mail?tab=readme-ov-file#readme
-with patches for UT.
+rewritten for UBTOUCH and small devices.
 
 
-integrate and cloned prospect-mail to adapt to UBTouch .
+
 
 
 ## License
@@ -19,6 +19,7 @@ for patches and ubtouch click package https://github.com/mathiasmb31/prospectmai
 ## License
 
 for clickable package and patches Copyright (C) 2026  mathias
+and modification of electronjs code.
 
 This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU General Public License version 3, as published by the
