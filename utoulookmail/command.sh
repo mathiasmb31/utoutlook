@@ -38,7 +38,7 @@ function launch_prospect() {
 		exit 0
 	fi
 	export APPDIR=${WD}/bin/App/
-	"${WD}"/bin/notify "Launch prospect"
+	"${WD}"/bin/notify "Welcome to utoutlook"
 
 	"${WD}"/bin/App/prospect-mail "$dpioptions" "$sandboxoptions" "$gpuoptions" &
 	i+=1
@@ -89,7 +89,7 @@ function test_net() {
 function close_command() {
 
 	echo "closed" >/home/phablet/.config/utoutlook.mathias/close
-	"${WD}"/bin/notify "Clean up utoulookmai"
+	"${WD}"/bin/notify "close outlookmail !"
 
 	exit 0
 }
@@ -117,7 +117,6 @@ cleanup
 utils/mkdir
 "${WD}"/bin/rm -f "/home/phablet/.cache/utoutlook.mathias/quit"
 "${WD}"/bin/rm -f "/home/phablet/.config/utoutlook.mathias/close"
-
 echo "################################################"
 trap 'printf "%3d: " "$LINENO"' DEBUG
 export GDK_SCALE=2

@@ -2,18 +2,19 @@
     "name": "utoutlook.mathias",
     "description": "utoutlook",
     "architecture": "@CLICK_ARCH@",
-    "title": "prospect",
+    "title": "utoutlook",
     "hooks": {
-        "utoulook": {
+        "utoutlook": {
             "apparmor": "utoutlook.apparmor",
-            "desktop":  "utoutlook.desktop"
+            "desktop":  "utoutlook.desktop",
+             "content-hub": "content-hub.json"
         },
 	 "push": {
              "apparmor": "push-apparmor.json",
              "push-helper": "push.json"
             }
     },
-    "version": "2.1.0",
+    "version": "2.1.1",
     "maintainer": "mathias <email@domain.org>",
     "framework" : "@CLICK_FRAMEWORK@"
 }
