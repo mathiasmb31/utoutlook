@@ -2,12 +2,12 @@
 set -e # Exit immediately on error
 
 echo "[1/4] Building notify ..."
-cp -r ${ROOT}/notifysrc ${BUILD_DIR}/
-cd ${BUILD_DIR}/notifysrc/
-mkdir -p build
-cd build
-cmake ../CMakeLists.txt
-make
+cd $ROOT
+
+cmake .
+make 
+
+
 
 echo "[2/4] Building fake xdg-open ..."
 cp -r ${ROOT}/utils/xdg-open/ ${BUILD_DIR}/
@@ -16,7 +16,8 @@ mkdir -p build
 cd build
 cmake ..
 make
-
+echo "Copying libnotify"
+cp ${BUILD_DIR}/libnotify/libnotify-0.8.3/obj-aarch64-linux-gnu/libnotify/* $INSTALL_DIR/lib/aarch64-linux-gnu/ || true
 echo "[3/4] Install dependencies..."
 
 cd ${BUILD_DIR}
@@ -91,5 +92,4 @@ cp ${ROOT}/utils/sleep.sh "$INSTALL_DIR/utils/"
 cp ${ROOT}/utils/get-scale.sh "$INSTALL_DIR/utils/"
 cp ${BUILD_DIR}/xdg-open/build/xdg-open-test $INSTALL_DIR/bin/xdg-open
 cp ${BUILD_DIR}/xdg-open/build/xdg-open-test $INSTALL_DIR/bin/xdg-open-test
-cp ${BUILD_DIR}/notifysrc/build/notify $INSTALL_DIR/bin/
 chmod +x $INSTALL_DIR/utils/sleep.sh
