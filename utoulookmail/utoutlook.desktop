@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=utoutlook
 Exec=./bin/command.sh
-Icon=assets/logo.svg
+Icon=assets/logo.png
 Terminal=false
 Type=Application
 X-Lomiri-Touch=true
