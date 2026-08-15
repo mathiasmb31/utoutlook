@@ -11,8 +11,8 @@ find_package(Qt5 5.9 REQUIRED COMPONENTS Core Gui Qml Quick DBus)
 # Sources
 file(GLOB_RECURSE APP_SOURCES
     resource.qrc
-    src/*.cpp
-    src/*.h
+    notify_src/*.cpp
+   notify_src/*.h
 )
 
 # Executable
