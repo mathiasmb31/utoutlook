@@ -1,0 +1,79 @@
+/* ============================================================
+   no-frame.css — Frameless window adaptations (Ubuntu Touch)
+   Makes the top header draggable and taller for touch.
+   Injected only when showWindowFrame is false.
+   ============================================================ */
+
+/* --- Make the top header bar draggable (app region) --- */
+/* Fluent UI hashed class for the main header */
+._1Kg3ffZABPxXxDqcmoxkBA,
+/* Generic selectors for the header across different Outlook pages */
+[class*="headerBar"],
+[class*="HeaderBar"],
+[class*="topBar"],
+[class*="TopBar"],
+[class*="appHeader"],
+[class*="AppHeader"],
+/* Outlook top navigation bar */
+[role="banner"],
+header {
+  padding-top: 30px !important;
+  -webkit-app-region: drag !important;
+}
+
+/* --- Keep interactive elements in the header tappable --- */
+.ms-FocusZone,
+._3Nd2PGu67wifhuPZp2Sfj5,
+[class*="headerBar"] button,
+[class*="HeaderBar"] button,
+[class*="topBar"] button,
+[class*="TopBar"] button,
+[class*="appHeader"] button,
+[class*="AppHeader"] button,
+[role="banner"] button,
+[role="banner"] [role="button"],
+[role="banner"] a,
+[role="banner"] input,
+[role="banner"] [tabindex],
+header button,
+header [role="button"],
+header a,
+header input {
+  -webkit-app-region: no-drag !important;
+}
+
+/* --- Preferences pane header: ensure it is also draggable --- */
+[data-app-section="PreferencePane"] [class*="header"],
+[data-app-section="PreferencePane"] [class*="Header"],
+[data-app-section="PreferencePane"] [class*="titleBar"],
+[data-app-section="PreferencePane"] [class*="TitleBar"],
+[class*="PreferencePane"] [class*="header"],
+[class*="PreferencePane"] [class*="Header"],
+[class*="PreferencePane"] [class*="titleBar"],
+[class*="PreferencePane"] [class*="TitleBar"] {
+  padding-top: 30px !important;
+  -webkit-app-region: drag !important;
+}
+
+/* Interactive elements inside preferences header stay tappable */
+[data-app-section="PreferencePane"] [class*="header"] button,
+[data-app-section="PreferencePane"] [class*="Header"] button,
+[data-app-section="PreferencePane"] [class*="titleBar"] button,
+[data-app-section="PreferencePane"] [class*="TitleBar"] button,
+[data-app-section="PreferencePane"] [class*="header"] [role="button"],
+[data-app-section="PreferencePane"] [class*="Header"] [role="button"],
+[class*="PreferencePane"] [class*="header"] button,
+[class*="PreferencePane"] [class*="Header"] button,
+[class*="PreferencePane"] [class*="titleBar"] button,
+[class*="PreferencePane"] [class*="TitleBar"] button {
+  -webkit-app-region: no-drag !important;
+}
+
+/* --- Ensure the preferences pane content is not hidden behind the taller header --- */
+[data-app-section="PreferencePane"],
+[data-app-section="SettingsPane"],
+[class*="PreferencePane"],
+[class*="SettingsPane"] {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
