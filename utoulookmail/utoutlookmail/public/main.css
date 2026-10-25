@@ -1,0 +1,163 @@
+/* ============================================================
+   main.css — Outlook web adaptations for mobile (Ubuntu Touch)
+   Injected into the Outlook web app via insertCSS()
+   ============================================================ */
+
+/* --- Hide ads and promotional banners --- */
+
+/* Vertical ad bar (right side) */
+._1_ag99JsBHxI6S4FP5ayPv,
+[class*="adBar"][class*="vertical"],
+[class*="AdBar"] {
+  display: none !important;
+}
+
+/* Small ad bar on email reading page */
+._2a6h2L3Tl12cnq2P7ZG9y_,
+[class*="adBar"][class*="horizontal"] {
+  display: none !important;
+}
+
+/* Upgrade premium banner */
+._1ZEdP0-JdMOVtjBb5ZcM6M,
+[class*="premiumBanner"],
+[class*="upgradeBanner"] {
+  display: none !important;
+}
+
+/* Left rail (navigation rail with ads) */
+.LeftRail,
+[class*="leftRail"] {
+  display: none !important;
+}
+
+/* Fluent UI hidden element */
+.QVF0n,
+.___fy4zz90 {
+  display: none !important;
+}
+
+/* --- Scrollbar sizing for touch --- */
+
+.scrollbar {
+  height: 30px;
+  width: 30px;
+}
+
+/* --- Layout paddings: mobile-first --- */
+/* These Fluent UI hashed classes get large desktop paddings.
+   On mobile we need near-zero side padding to use the full screen. */
+
+.f12onbmq,
+.___oxltk-4,
+.fui-FluentProvider,
+.f22iagw {
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+}
+
+/* On larger screens (tablet/desktop), allow more breathing room */
+@media (min-width: 768px) {
+  .f12onbmq,
+  .___oxltk-4,
+  .fui-FluentProvider,
+  .f22iagw {
+    padding-left: 40px !important;
+    padding-right: 40px !important;
+  }
+}
+
+/* --- Preferences / Settings pane fixes --- */
+/* The preferences pane has a different layout than the mail view.
+   Aggressive paddings from the mail view break it on mobile.
+   Force near-full-width layout inside the preferences container. */
+
+[data-app-section="PreferencePane"],
+[data-app-section="SettingsPane"],
+[class*="PreferencePane"],
+[class*="SettingsPane"],
+[class*="preferencesPane"] {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  max-width: 100% !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* Inside the preferences pane, all children should use minimal side padding */
+[data-app-section="PreferencePane"] > * > *,
+[data-app-section="SettingsPane"] > * > *,
+[class*="PreferencePane"] > * > *,
+[class*="SettingsPane"] > * > * {
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* Preferences list items: ensure they are tappable and visible */
+[data-app-section="PreferencePane"] [role="listitem"],
+[data-app-section="PreferencePane"] [role="treeitem"],
+[data-app-section="PreferencePane"] button,
+[class*="PreferencePane"] [role="listitem"],
+[class*="PreferencePane"] [role="treeitem"],
+[class*="PreferencePane"] button {
+  min-height: 44px !important;
+  max-width: 100% !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: normal !important;
+}
+
+/* Preferences content area: allow scrolling */
+[data-app-section="PreferencePane"] [class*="content"],
+[data-app-section="PreferencePane"] [class*="scroll"],
+[class*="PreferencePane"] [class*="content"],
+[class*="PreferencePane"] [class*="scroll"] {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  max-width: 100% !important;
+}
+
+/* --- To-do / Tasks pane (similar layout issues) --- */
+
+[data-app-section="ToDoPane"],
+[class*="ToDoPane"],
+[class*="TasksPane"] {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  max-width: 100% !important;
+}
+
+/* --- Calendar view --- */
+
+[data-app-section="CalendarPane"],
+[class*="CalendarPane"],
+[class*="calendarPane"] {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  max-width: 100% !important;
+}
+
+/* --- Generic: prevent horizontal overflow on mobile --- */
+
+body, html {
+  overflow-x: hidden !important;
+  max-width: 100vw !important;
+}
+
+/* --- Ensure tap targets are large enough for touch --- */
+
+button, [role="button"], a[role="button"] {
+  min-height: 36px !important;
+}
+
+/* --- Fix for Outlook top command bar wrapping on narrow screens --- */
+
+[class*="commandBar"],
+[class*="CommandBar"] {
+  flex-wrap: wrap !important;
+  max-width: 100% !important;
+}

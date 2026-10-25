@@ -1,21 +1,33 @@
 #!/bin/bash
 set -e # Exit immediately on error
 
+FORCE_BUILD=0
+if [ "$1" = "--force" ]; then
+	FORCE_BUILD=1
+fi
+
 echo "[1/4] Building notify ..."
 cd $ROOT
 
-cmake .
-make 
-
-
+# Cache: skip rebuild if binary exists and --force not passed
+if [ "$FORCE_BUILD" -eq 0 ] && [ -x "$ROOT/notify" ]; then
+	echo "notify binary already exists, skipping (use --force to rebuild)"
+else
+	cmake .
+	make
+fi
 
 echo "[2/4] Building fake xdg-open ..."
-cp -r ${ROOT}/utils/xdg-open/ ${BUILD_DIR}/
-cd ${BUILD_DIR}/xdg-open/
-mkdir -p build
-cd build
-cmake ..
-make
+if [ "$FORCE_BUILD" -eq 0 ] && [ -x "${BUILD_DIR}/xdg-open/build/xdg-open-test" ]; then
+	echo "xdg-open-test already built, skipping (use --force to rebuild)"
+else
+	cp -r ${ROOT}/utils/xdg-open/ ${BUILD_DIR}/
+	cd ${BUILD_DIR}/xdg-open/
+	mkdir -p build
+	cd build
+	cmake ..
+	make
+fi
 echo "Copying libnotify"
 cp ${BUILD_DIR}/libnotify/libnotify-0.8.3/obj-aarch64-linux-gnu/libnotify/* $INSTALL_DIR/lib/aarch64-linux-gnu/ || true
 echo "[3/4] Install dependencies..."

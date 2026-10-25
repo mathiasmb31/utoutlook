@@ -1,0 +1,135 @@
+{
+  "name": "prospect-mail",
+  "productName": "Prospect Mail",
+  "version": "3.0.0",
+  "type:": "module",
+  "main": "src/main.mjs",
+  "description": "Unofficial desktop mail client for Microsoft Outlook",
+  "homepage": "https://github.com/julian-alarcon/prospect-mail",
+  "keywords": [
+    "Electron",
+    "Outlook",
+    "Microsoft",
+    "Outlook Desktop",
+    "Prospect"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://github.com/julian-alarcon/prospect-mail"
+  },
+  "bugs": {
+    "url": "https://github.com/julian-alarcon/prospect-mail/issues"
+  },
+  "author": {
+    "name": "Julian Alarcon",
+    "email": "prospect-mail@mail.desentropia.com",
+    "url": "https://github.com/julian-alarcon/"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "start": "electron . ",
+    "start-minimized": "electron .  --minimized",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:linux": "electron-builder --linux",
+    "dist:linux:targz": "electron-builder --x64 --arm64 -l tar.gz",
+    "release": "electron-builder",
+    "test": "node --test test/",
+    "lint": "eslint src/ public/ test/ --ext .js,.mjs",
+    "lint:fix": "eslint src/ public/ test/ --ext .js,.mjs --fix",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "dependencies": {
+    "electron-store": "^11.0.2"
+  },
+  "devDependencies": {
+    "electron": "^44.7.0",
+    "electron-builder": "^26.5.0"
+  },
+  "optionalDependencies": {
+    "dmg-license": "^1.0.11"
+  },
+  "build": {
+    "appId": "io.github.julian-alarcon.prospect-mail",
+    "linux": {
+      "category": "Email;Network;Office",
+      "packageCategory": "net",
+      "executableName": "prospect-mail",
+      "synopsis": "Prospect Mail, unofficial desktop mail client for Microsoft Outlook",
+      "desktop": {
+        "entry": {
+          "Name": "Prospect Mail",
+          "Comment": "Unofficial desktop mail client for Microsoft Outlook",
+          "StartupWMClass": "Prospect Mail"
+        }
+      },
+      "target": [
+        "AppImage",
+        "deb",
+        "pacman",
+        "rpm",
+        "flatpak",
+        "tar.gz"
+      ],
+      "publish": {
+        "provider": "github",
+        "releaseType": "release"
+      }
+    },
+    "rpm": {
+      "fpm": [
+        "--rpm-rpmbuild-define=_build_id_links none"
+      ]
+    },
+    "flatpak": {
+      "runtime": "org.freedesktop.Platform",
+      "runtimeVersion": "*",
+      "sdk": "org.freedesktop.Sdk",
+      "base": "org.electronjs.Electron2.BaseApp",
+      "baseVersion": "*",
+      "useWaylandFlags": true,
+      "finishArgs": [
+        "--share=ipc",
+        "--socket=x11",
+        "--socket=wayland",
+        "--socket=pulseaudio",
+        "--share=network",
+        "--device=dri",
+        "--filesystem=xdg-download",
+        "--talk-name=org.freedesktop.Notifications",
+        "--talk-name=org.kde.StatusNotifierWatcher",
+        "--own-name=org.mpris.MediaPlayer2.chromium.*",
+        "--filesystem=xdg-run/tray-icon:create",
+        "--env=XDG_SESSION_TYPE=x11"
+      ]
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
+      "type": "distribution",
+      "publish": {
+        "provider": "github",
+        "releaseType": "release"
+      }
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "msi"
+      ],
+      "publish": {
+        "provider": "github",
+        "releaseType": "release"
+      }
+    },
+    "nsis": {
+      "differentialPackage": false
+    },
+    "dmg": {
+      "writeUpdateInfo": false
+    }
+  }
+}
