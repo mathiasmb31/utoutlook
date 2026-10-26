@@ -17,7 +17,7 @@ function cleanup() {
 function launch_prospect() {
 	cleanup
 	if [[ -f ${lock} ]]; then
-      "${WD}"/bin/notify "$(utoutlook_t 'shell.waitClose')"
+		utoutlook_notify "$(utoutlook_t 'shell.waitClose')"
 	fi
 	launchtry=$((launchtry + 1))
 	if [ "$launchtry" -gt 3 ]; then
@@ -27,7 +27,10 @@ function launch_prospect() {
 		exit 0
 	fi
 	export APPDIR=${WD}/bin/App/
-	"${WD}"/bin/notify "$(utoutlook_t 'shell.welcome')"
+	# Wait for notification service to be ready before sending welcome
+	# (D-Bus Postal may not be up yet on first launch / boot)
+	utoutlook_wait_notifications 15
+	utoutlook_notify "$(utoutlook_t 'shell.welcome')"
 
 	"${WD}"/bin/App/prospect-mail "$dpioptions" "$sandboxoptions" "$gpuoptions" &
 	i+=1
@@ -45,7 +48,7 @@ function verify_prospect_life() {
 		echo ${follow}
 		echo ${oldfollow}
 		echo "tried too more " >${exitcommand}
-		echo "******" && "${WD}"/bin/notify "$(utoutlook_t 'shell.cleaning')" && exit 0
+		echo "******" && utoutlook_notify "$(utoutlook_t 'shell.cleaning')" && exit 0
 	else
 		clientalive=1
 		touch ${lock}
@@ -71,7 +74,7 @@ function test_net() {
 		echo "we have connectivity"
 	else
 
-		"${WD}"/bin/notify "$(utoutlook_t 'shell.noNetwork')"
+		utoutlook_notify "$(utoutlook_t 'shell.noNetwork')"
 		qmlscene "${WD}"/qml/nonetwork.qml
 		close_command
 	fi

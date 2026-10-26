@@ -216,9 +216,47 @@ utoutlook_kill_by_proc() {
 # ============================================================
 # Notify via the embedded notify binary (UBports D-Bus)
 # Usage: utoutlook_notify "Title" ["Body"]
+#
+# Retry logic: the Lomiri Postal D-Bus service may not be ready
+# immediately at startup. We retry up to 3 times with 2s delay.
+# The notify binary now returns non-zero on failure (v3.2.2).
 # ============================================================
 utoutlook_notify() {
-	if [ -x "${UTOUTLOOK_BIN}/notify" ]; then
-		"${UTOUTLOOK_BIN}/notify" "$@" 2>/dev/null || true
+	if [ ! -x "${UTOUTLOOK_BIN}/notify" ]; then
+		return 1
 	fi
+
+	local max_attempts=3
+	local attempt=1
+	while [ $attempt -le $max_attempts ]; do
+		if "${UTOUTLOOK_BIN}/notify" "$@" 2>/dev/null; then
+			return 0
+		fi
+		attempt=$((attempt + 1))
+		if [ $attempt -le $max_attempts ]; then
+			"${UTOUTLOOK_BIN}/sleep" 2
+		fi
+	done
+	return 1
+}
+
+# ============================================================
+# Wait for the notification service (Lomiri Postal) to be ready.
+# Sends a silent test notification and retries until it succeeds
+# or the max wait time is reached.
+# Usage: utoutlook_wait_notifications [max_wait_seconds]
+# ============================================================
+utoutlook_wait_notifications() {
+	local max_wait="${1:-15}"
+	local waited=0
+
+	while [ $waited -lt $max_wait ]; do
+		# Try a test notification — if it succeeds, the service is ready
+		if "${UTOUTLOOK_BIN}/notify" "utoutlook-test" "" 2>/dev/null; then
+			return 0
+		fi
+		"${UTOUTLOOK_BIN}/sleep" 1
+		waited=$((waited + 1))
+	done
+	return 1
 }

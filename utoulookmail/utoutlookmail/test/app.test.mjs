@@ -302,3 +302,79 @@ test('common.sh: uses SIGTERM before SIGKILL for graceful shutdown', async () =>
     assert.ok(killPos !== -1, 'common.sh should still have SIGKILL (-9) as fallback');
     assert.ok(termPos < killPos, 'SIGTERM should be sent before SIGKILL');
 });
+
+// ============================================================
+// Tests for startup notification fixes (v3.2.2)
+// ============================================================
+
+test('common.sh: utoutlook_notify has retry logic', async () => {
+    const fs = await import('node:fs');
+    const commonPath = path.resolve(__dirname, '../../utils/common.sh');
+    const content = fs.readFileSync(commonPath, 'utf-8');
+    assert.ok(content.includes('max_attempts=3'), 'utoutlook_notify should retry 3 times');
+    assert.ok(content.includes('utoutlook_notify()'), 'utoutlook_notify function should exist');
+});
+
+test('common.sh: has utoutlook_wait_notifications function', async () => {
+    const fs = await import('node:fs');
+    const commonPath = path.resolve(__dirname, '../../utils/common.sh');
+    const content = fs.readFileSync(commonPath, 'utf-8');
+    assert.ok(content.includes('utoutlook_wait_notifications()'),
+        'common.sh should have utoutlook_wait_notifications function');
+});
+
+test('command.sh: uses utoutlook_notify instead of direct notify calls', async () => {
+    const fs = await import('node:fs');
+    const cmdPath = path.resolve(__dirname, '../../command.sh');
+    const content = fs.readFileSync(cmdPath, 'utf-8');
+    // Should use utoutlook_notify for all notifications
+    assert.ok(content.includes('utoutlook_notify "$(utoutlook_t'),
+        'command.sh should use utoutlook_notify for shell notifications');
+    // Should NOT have direct notify calls (except in comments)
+    const directCalls = content.match(/"\$\{WD\}"\/bin\/notify/g) || [];
+    assert.strictEqual(directCalls.length, 0,
+        'command.sh should not call notify binary directly');
+});
+
+test('command.sh: waits for notifications before welcome', async () => {
+    const fs = await import('node:fs');
+    const cmdPath = path.resolve(__dirname, '../../command.sh');
+    const content = fs.readFileSync(cmdPath, 'utf-8');
+    assert.ok(content.includes('utoutlook_wait_notifications'),
+        'command.sh should wait for notification service before welcome');
+    // wait should come before the welcome notification
+    const waitPos = content.indexOf('utoutlook_wait_notifications');
+    const welcomePos = content.indexOf("shell.welcome");
+    assert.ok(waitPos !== -1 && welcomePos !== -1, 'Both wait and welcome should exist');
+    assert.ok(waitPos < welcomePos, 'Wait should come before welcome notification');
+});
+
+test('notify main.cpp: returns non-zero exit code on failure', async () => {
+    const fs = await import('node:fs');
+    const mainPath = path.resolve(__dirname, '../../notify_src/main.cpp');
+    const content = fs.readFileSync(mainPath, 'utf-8');
+    assert.ok(content.includes('return sent ? 0 : 1'),
+        'main.cpp should return non-zero when send() fails');
+    assert.ok(content.includes('bool sent = notif.send'),
+        'main.cpp should capture send() return value');
+});
+
+test('notify pushclient.cpp: has D-Bus timeout', async () => {
+    const fs = await import('node:fs');
+    const clientPath = path.resolve(__dirname, '../../notify_src/pushclient.cpp');
+    const content = fs.readFileSync(clientPath, 'utf-8');
+    assert.ok(content.includes('DBUS_TIMEOUT_MS'),
+        'pushclient.cpp should define a D-Bus timeout');
+    assert.ok(content.includes('QDBus::Block, DBUS_TIMEOUT_MS'),
+        'pushclient.cpp should use the timeout in D-Bus calls');
+});
+
+test('reset_zoom.sh: uses utoutlook_notify', async () => {
+    const fs = await import('node:fs');
+    const resetPath = path.resolve(__dirname, '../../utils/reset_zoom.sh');
+    const content = fs.readFileSync(resetPath, 'utf-8');
+    assert.ok(content.includes('utoutlook_notify'),
+        'reset_zoom.sh should use utoutlook_notify');
+    assert.ok(!content.includes('../bin/notify'),
+        'reset_zoom.sh should not call notify binary directly');
+});
