@@ -130,3 +130,79 @@ test('settings: darkMode accepts valid values', {skip: !settingsAvailable && 're
     // Reset to default
     settings.set('darkMode', 'auto');
 });
+
+// ============================================================
+// Tests for i18n.mjs — translations
+// ============================================================
+
+test('i18n: default language is fr', async () => {
+    const {getLanguage, setLanguage} = await import('../src/i18n.mjs');
+    setLanguage('fr');
+    assert.strictEqual(getLanguage(), 'fr');
+});
+
+test('i18n: translates common keys', async () => {
+    const {t, setLanguage} = await import('../src/i18n.mjs');
+    setLanguage('fr');
+    assert.strictEqual(t('tray.quit'), 'Quitter');
+    assert.strictEqual(t('common.cancel'), 'Annuler');
+    setLanguage('en');
+    assert.strictEqual(t('tray.quit'), 'Quit');
+    assert.strictEqual(t('common.cancel'), 'Cancel');
+});
+
+test('i18n: interpolates variables', async () => {
+    const {t, setLanguage} = await import('../src/i18n.mjs');
+    setLanguage('en');
+    assert.strictEqual(t('notif.newMessages.body', {count: 5}), '5 unread message(s)');
+    setLanguage('fr');
+    assert.strictEqual(t('notif.newMessages.body', {count: 3}), '3 message(s) non lu(s)');
+});
+
+test('i18n: falls back to fr for unknown language', async () => {
+    const {t, setLanguage, getLanguage} = await import('../src/i18n.mjs');
+    setLanguage('xx');
+    assert.strictEqual(getLanguage(), 'fr');
+    assert.strictEqual(t('tray.quit'), 'Quitter');
+});
+
+test('i18n: returns key for missing translation', async () => {
+    const {t, setLanguage} = await import('../src/i18n.mjs');
+    setLanguage('en');
+    assert.strictEqual(t('nonexistent.key'), 'nonexistent.key');
+});
+
+test('i18n: supports 8 languages', async () => {
+    const {getAvailableLanguages} = await import('../src/i18n.mjs');
+    const langs = getAvailableLanguages();
+    assert.strictEqual(Object.keys(langs).length, 8);
+    assert.ok(langs.fr);
+    assert.ok(langs.en);
+    assert.ok(langs.es);
+    assert.ok(langs.de);
+    assert.ok(langs.it);
+    assert.ok(langs.pt);
+    assert.ok(langs.zh);
+    assert.ok(langs.ar);
+});
+
+test('i18n: detectLanguage parses locale strings', async () => {
+    const {detectLanguage} = await import('../src/i18n.mjs');
+    assert.strictEqual(detectLanguage('fr_FR.UTF-8'), 'fr');
+    assert.strictEqual(detectLanguage('en-US'), 'en');
+    assert.strictEqual(detectLanguage('es_ES.UTF-8'), 'es');
+    assert.strictEqual(detectLanguage('zh_CN.UTF-8'), 'zh');
+    assert.strictEqual(detectLanguage('ar_SA.UTF-8'), 'ar');
+    assert.strictEqual(detectLanguage('xx_XX'), 'fr'); // fallback
+    assert.strictEqual(detectLanguage(''), 'fr'); // fallback
+});
+
+test('i18n: all languages have tray.quit translation', async () => {
+    const {t, setLanguage, getAvailableLanguages} = await import('../src/i18n.mjs');
+    for (const lang of Object.keys(getAvailableLanguages())) {
+        setLanguage(lang);
+        const translated = t('tray.quit');
+        assert.ok(translated !== 'tray.quit', `Missing tray.quit for ${lang}`);
+        assert.ok(translated.length > 0, `Empty tray.quit for ${lang}`);
+    }
+});

@@ -17,7 +17,7 @@ function cleanup() {
 function launch_prospect() {
 	cleanup
 	if [[ -f ${lock} ]]; then
-      notify "wait for utoutlok close"
+      notify "$(utoutlook_t 'shell.waitClose')"
 	fi
 	launchtry=$((launchtry + 1))
 	if [ "$launchtry" -gt 3 ]; then
@@ -27,7 +27,7 @@ function launch_prospect() {
 		exit 0
 	fi
 	export APPDIR=${WD}/bin/App/
-	"${WD}"/bin/notify "Welcome to utoutlook"
+	"${WD}"/bin/notify "$(utoutlook_t 'shell.welcome')"
 
 	"${WD}"/bin/App/prospect-mail "$dpioptions" "$sandboxoptions" "$gpuoptions" &
 	i+=1
@@ -45,7 +45,7 @@ function verify_prospect_life() {
 		echo ${follow}
 		echo ${oldfollow}
 		echo "tried too more " >${exitcommand}
-		echo "******" && "${WD}"/bin/notify "Clean outlookMail" && exit 0
+		echo "******" && "${WD}"/bin/notify "$(utoutlook_t 'shell.cleaning')" && exit 0
 	else
 		clientalive=1
 		touch ${lock}
@@ -71,7 +71,7 @@ function test_net() {
 		echo "we have connectivity"
 	else
 
-		"${WD}"/bin/notify "No network access..quit"
+		"${WD}"/bin/notify "$(utoutlook_t 'shell.noNetwork')"
 		qmlscene "${WD}"/qml/nonetwork.qml
 		close_command
 	fi
@@ -81,7 +81,7 @@ function close_command() {
 	utoutlook_send_socket_cmd '{"cmd":"quit"}'
 	# Fallback: write close flag file (picked up by heartbeat)
 	echo "closed" >"${UTOUTLOOK_EXITCOMMAND}"
-	utoutlook_notify "goodbye outlookmail !"
+	utoutlook_notify "$(utoutlook_t 'shell.goodbye')"
 	exit 0
 }
 

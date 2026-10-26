@@ -29,6 +29,9 @@ export const NOTIF_FLAG_FILE = path.join(CONFIG_DIR, 'notif');
 export const RESET_FLAG_FILE = path.join(CONFIG_DIR, 'reset');
 export const PID_FILE = path.join(DATA_DIR, '__prospect.pid');
 
+// --- Language file (read by shell scripts for i18n) ---
+export const LANG_FILE = path.join(CONFIG_DIR, 'lang');
+
 // --- Unix socket for shell ↔ Electron commands ---
 export const SOCKET_PATH = path.join(CONFIG_DIR, 'utoutlook.sock');
 

@@ -134,9 +134,7 @@
     <div class="version" id="version">Version 1.1.0-beta</div>
 
     <div class="info">
-        <p>Client mail Outlook pour Ubuntu Touch</p>
-        <p><strong>Human made, vibe verified</strong></p>
-        <p>Basé sur Prospect Mail (MIT) adapté pour UBports</p>
+        <p>Loading...</p>
     </div>
 
     <div class="links">
@@ -145,7 +143,7 @@
     </div>
 
     <div class="footer">
-        <p>Human made, vibe verified</p>
+        <p id="footer-tagline">Human made, vibe verified</p>
         <a href="#" class="report-link" id="report-link">Report an issue</a>
     </div>
 
@@ -157,8 +155,19 @@
         const donateUrl = urlParams.get('donate');
         const issuesUrl = `${githubUrl}/issues`;
 
-        // Set version
+        // i18n: read translated strings from query params
+        const appName = urlParams.get('appName') || 'UToutlook Mail';
+        const description = urlParams.get('description') || '';
+        const tagline = urlParams.get('tagline') || 'Human made, vibe verified';
+        const basedOn = urlParams.get('basedOn') || '';
+        const reportIssue = urlParams.get('reportIssue') || 'Report an issue';
+
+        // Apply translations
+        document.getElementById('app-name').textContent = appName;
         document.getElementById('version').textContent = `Version ${version}`;
+        document.querySelector('.info').innerHTML =
+            `<p>${description}</p><p><strong>${tagline}</strong></p><p>${basedOn}</p>`;
+        document.getElementById('report-link').textContent = reportIssue;
 
         // Get link elements
         const githubLink = document.getElementById('github-link');
