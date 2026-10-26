@@ -47,6 +47,8 @@ const defaults = {
     hideOnMinimize: true,
     startMinimized: false,
     customBrowserPath: undefined,
+    focusMode: false,
+    accentColor: '#0078d4',
     // Multi-account support: each account has its own session partition (storage isolation)
     accounts: [
         {
@@ -84,11 +86,20 @@ for (const key of ['urlsInternal', 'urlsExternal', 'safelinksUrls']) {
 }
 
 // Validate boolean settings
-for (const key of ['showWindowFrame', 'hideOnClose', 'hideOnMinimize', 'startMinimized']) {
+for (const key of ['showWindowFrame', 'hideOnClose', 'hideOnMinimize', 'startMinimized', 'focusMode']) {
     const value = settings.get(key);
     if (typeof value !== 'boolean') {
         logger.warn(`Invalid ${key} (not boolean), reverting to default`);
         settings.set(key, defaults[key]);
+    }
+}
+
+// Validate accentColor (hex color)
+{
+    const color = settings.get('accentColor');
+    if (typeof color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(color)) {
+        logger.warn(`Invalid accentColor: ${color}, reverting to default`);
+        settings.set('accentColor', defaults.accentColor);
     }
 }
 

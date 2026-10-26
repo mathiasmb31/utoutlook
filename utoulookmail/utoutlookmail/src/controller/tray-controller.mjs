@@ -157,6 +157,34 @@ export class TrayController {
                     },
                     {type: "separator"},
                     {
+                        label: "Mode lecture concentrée",
+                        type: "checkbox",
+                        checked: settings.get("focusMode"),
+                        click: () => this.toggleFocusMode(),
+                    },
+                    {
+                        label: "Couleur d'accent",
+                        submenu: [
+                            {label: "Bleu Outlook (défaut)", click: () => this.setAccentColor('#0078d4')},
+                            {label: "Vert", click: () => this.setAccentColor('#107c10')},
+                            {label: "Violet", click: () => this.setAccentColor('#5c2d91')},
+                            {label: "Rose", click: () => this.setAccentColor('#e3008c')},
+                            {label: "Orange", click: () => this.setAccentColor('#d83b01')},
+                            {label: "Rouge", click: () => this.setAccentColor('#a4262c')},
+                            {label: "Turquoise", click: () => this.setAccentColor('#00b7c3')},
+                        ],
+                    },
+                    {type: "separator"},
+                    {
+                        label: "Exporter les paramètres",
+                        click: () => this.exportSettings(),
+                    },
+                    {
+                        label: "Importer les paramètres",
+                        click: () => this.importSettings(),
+                    },
+                    {type: "separator"},
+                    {
                         label: "Show settings file",
                         click: () => shell.showItemInFolder(path.resolve(settings.path)),
                     },
@@ -252,6 +280,95 @@ export class TrayController {
         let orivalue = settings.get("hideOnMinimize");
         settings.set("hideOnMinimize", !orivalue);
         this.buildContextMenu();
+    }
+
+    /**
+     * Bascule le mode lecture concentrée sur tous les comptes.
+     */
+    async toggleFocusMode() {
+        const newValue = !settings.get("focusMode");
+        settings.set("focusMode", newValue);
+        for (const controller of this.accountManager.controllers.values()) {
+            controller.focusMode = newValue;
+            await controller.injectStyles();
+        }
+        this.buildContextMenu();
+    }
+
+    /**
+     * Définit la couleur d'accent sur tous les comptes.
+     * @param {string} color - Code couleur hex
+     */
+    async setAccentColor(color) {
+        settings.set("accentColor", color);
+        for (const controller of this.accountManager.controllers.values()) {
+            controller.accentColor = color;
+            await controller.injectStyles();
+        }
+        this.buildContextMenu();
+    }
+
+    /**
+     * Exporte les paramètres vers un fichier JSON choisi par l'utilisateur.
+     */
+    async exportSettings() {
+        const result = await dialog.showSaveDialog({
+            title: "Exporter les paramètres",
+            defaultPath: "utoutlook-settings.json",
+            filters: [{name: "JSON", extensions: ["json"]}],
+        });
+
+        if (result.canceled || !result.filePath) return;
+
+        try {
+            const data = settings.store;
+            await fs.writeFile(result.filePath, JSON.stringify(data, null, 2), 'utf-8');
+            logger.info(`Settings exported to: ${result.filePath}`);
+            await dialog.showMessageBox({
+                type: "info",
+                buttons: ["OK"],
+                title: "Export réussi",
+                message: "Paramètres exportés.",
+                detail: `Fichier : ${result.filePath}`,
+            });
+        } catch (error) {
+            logger.error('Export failed:', error);
+            dialog.showErrorBox("Export échoué", error.message);
+        }
+    }
+
+    /**
+     * Importe les paramètres depuis un fichier JSON choisi par l'utilisateur.
+     */
+    async importSettings() {
+        const result = await dialog.showOpenDialog({
+            title: "Importer les paramètres",
+            filters: [{name: "JSON", extensions: ["json"]}],
+            properties: ["openFile"],
+        });
+
+        if (result.canceled || !result.filePaths.length) return;
+
+        try {
+            const data = JSON.parse(await fs.readFile(result.filePaths[0], 'utf-8'));
+            // Merge imported settings (don't overwrite accounts unless present)
+            for (const [key, value] of Object.entries(data)) {
+                settings.set(key, value);
+            }
+            logger.info(`Settings imported from: ${result.filePaths[0]}`);
+            await dialog.showMessageBox({
+                type: "info",
+                buttons: ["OK"],
+                title: "Import réussi",
+                message: "Paramètres importés. Redémarrage recommandé.",
+                detail: "L'application va redémarrer pour appliquer tous les changements.",
+            });
+            app.relaunch();
+            app.exit(0);
+        } catch (error) {
+            logger.error('Import failed:', error);
+            dialog.showErrorBox("Import échoué", `Fichier invalide : ${error.message}`);
+        }
     }
 
     /**
