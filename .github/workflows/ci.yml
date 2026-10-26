@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'feature/**', 'fix/**', 'hotfix/**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ================================================================
+  # Test — fast feedback on every push/PR (~30s)
+  # ================================================================
+  test:
+    name: Test (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['22', '24']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: utoulookmail/utoutlookmail/package-lock.json
+
+      - name: Install dependencies
+        working-directory: utoulookmail/utoutlookmail
+        run: npm ci
+
+      - name: Run tests
+        working-directory: utoulookmail/utoutlookmail
+        run: npm test
+
+  # ================================================================
+  # Lint — style check on every push/PR (~30s)
+  # ================================================================
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: utoulookmail/utoutlookmail/package-lock.json
+
+      - name: Install dependencies
+        working-directory: utoulookmail/utoutlookmail
+        run: npm ci
+
+      - name: Run ESLint
+        working-directory: utoulookmail/utoutlookmail
+        run: npm run lint
+        env:
+          # Project uses .eslintrc.json (legacy format) with ESLint v9
+          ESLINT_USE_FLAT_CONFIG: 'false'
+
+  # ================================================================
+  # Build Electron — produces tar.gz for x64 + arm64 (~5-10 min)
+  # ================================================================
+  build-electron:
+    name: Build Electron (x64 + arm64)
+    runs-on: ubuntu-latest
+    needs: [test, lint]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: utoulookmail/utoutlookmail/package-lock.json
+
+      - name: Install dependencies
+        working-directory: utoulookmail/utoutlookmail
+        run: npm ci
+
+      - name: Build Electron tar.gz
+        working-directory: utoulookmail/utoutlookmail
+        run: npm run dist:linux:targz
+
+      - name: Upload Electron artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-dist
+          path: |
+            utoulookmail/utoutlookmail/dist/*.tar.gz
+          retention-days: 7
+          if-no-files-found: error
