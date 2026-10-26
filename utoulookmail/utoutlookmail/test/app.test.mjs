@@ -522,3 +522,36 @@ test('observer: script wrapped in IIFE to prevent re-declaration errors', async 
     assert.ok(content.trimEnd().endsWith('})();') || content.trimEnd().endsWith('})(); // end IIFE'),
         'Observer script should close the IIFE');
 });
+
+test('main: heartbeat auto-exit timeout is 60s (not 10s)', async () => {
+    const fs = await import('node:fs');
+    const mainPath = path.resolve(__dirname, '../src/main.mjs');
+    const content = fs.readFileSync(mainPath, 'utf-8');
+    // 10s was too short — Outlook web app can take 30s+ to load on slow
+    // devices, causing the app to kill itself before the window appears
+    assert.ok(content.includes('heartbeatSeconds > 60'),
+        'Heartbeat auto-exit should be 60s (Outlook load can take 30s+ on mobile)');
+    assert.ok(!content.includes('heartbeatSeconds > 10'),
+        'Heartbeat auto-exit should NOT be 10s (too short for Outlook load)');
+});
+
+test('tray-controller: launcher badge capped at 99', async () => {
+    const fs = await import('node:fs');
+    const trayPath = path.resolve(__dirname, '../src/controller/tray-controller.mjs');
+    const content = fs.readFileSync(trayPath, 'utf-8');
+    assert.ok(content.includes('Math.min(count || 0, 99)'),
+        'Launcher badge should cap count at 99 (larger numbers overflow the small badge)');
+});
+
+test('assets: simplified logo exists for launcher icon', async () => {
+    const fs = await import('node:fs');
+    const simpleLogo = path.resolve(__dirname, '../../assets/logo-simple.png');
+    const launcherLogo = path.resolve(__dirname, '../../assets/logo.png');
+    assert.ok(fs.existsSync(simpleLogo), 'Simplified logo (logo-simple.png) should exist');
+    assert.ok(fs.existsSync(launcherLogo), 'Launcher logo (logo.png) should exist');
+    // Launcher logo should be the simplified version (no circular text)
+    const simpleSize = fs.statSync(simpleLogo).size;
+    const launcherSize = fs.statSync(launcherLogo).size;
+    assert.strictEqual(launcherSize, simpleSize,
+        'Launcher logo should be the simplified version (same as logo-simple.png)');
+});
