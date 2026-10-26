@@ -6,4 +6,4 @@ source "${WD}/utils/common.sh"
 ./rmdir.sh /home/phablet/.config/utoutlook.mathias/FIRSTINSTALL
 ./rm.sh /home/phablet/.config/utoutlook.mathias/reset
 ./rm.sh /home/phablet/.config/utoutlook.mathias/prospect-mail/Preferences
-../bin/notify "$(utoutlook_t 'shell.resetDone')"
+utoutlook_notify "$(utoutlook_t 'shell.resetDone')"

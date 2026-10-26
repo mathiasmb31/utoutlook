@@ -33,6 +33,11 @@
 #define LAUNCHER_PATH_PREFIX "/com/lomiri/LauncherEntry/"
 #define LAUNCHER_IFACE "com.lomiri.LauncherEntry"
 
+// D-Bus call timeout in milliseconds.
+// Default is 25s — too long for startup notifications.
+// 5s is enough for a responsive service, and fails fast if not ready.
+#define DBUS_TIMEOUT_MS 5000
+
 static QPointer<PushClient> s_client;
 PushClient *PushClient::instance()
 {
@@ -118,7 +123,7 @@ bool PushClient::send(const QJsonObject &message)
 
     qDebug() << "[POST] >>  " << msg;
 
-    QDBusMessage reply = m_conn.call(msg);
+    QDBusMessage reply = m_conn.call(msg, QDBus::Block, DBUS_TIMEOUT_MS);
     if (reply.type() == QDBusMessage::ErrorMessage) {
         qDebug() << "[POST ERROR] " << reply.errorMessage();
         return false;
@@ -150,7 +155,7 @@ bool PushClient::setBadgeCount(int count)
 
     qDebug() << "[BADGE] >> Setting badge count to" << count;
 
-    QDBusMessage reply = m_conn.call(msg);
+    QDBusMessage reply = m_conn.call(msg, QDBus::Block, DBUS_TIMEOUT_MS);
     if (reply.type() == QDBusMessage::ErrorMessage) {
         qDebug() << "[BADGE ERROR] " << reply.errorMessage();
         return false;
@@ -186,7 +191,7 @@ bool PushClient::clearPersistent(const QString &tag)
         message << PUSH_APP_ID;
         message << tag;
 
-        QDBusMessage reply = m_conn.call(message);
+        QDBusMessage reply = m_conn.call(message, QDBus::Block, DBUS_TIMEOUT_MS);
         if (reply.type() == QDBusMessage::ErrorMessage) {
             qDebug() << "[REMOVE ERROR] " << reply.errorMessage();
             return false;
@@ -267,7 +272,7 @@ QStringList PushClient::getPersistent()
                                                           POSTAL_IFACE,
                                                           "ListPersistent");
     message << PUSH_APP_ID;
-    QDBusMessage reply = m_conn.call(message);
+    QDBusMessage reply = m_conn.call(message, QDBus::Block, DBUS_TIMEOUT_MS);
     if (reply.type() == QDBusMessage::ErrorMessage) {
         qDebug() << reply.errorMessage();
         return QStringList();

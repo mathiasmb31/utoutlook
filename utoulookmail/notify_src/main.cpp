@@ -14,15 +14,17 @@ int main(int argc, char *argv[])
             bool ok;
             int count = QString::fromLocal8Bit(argv[2]).toInt(&ok);
             if (ok) {
-                notif.setBadgeCount(count);
+                bool sent = notif.setBadgeCount(count);
+                return sent ? 0 : 1;
             }
-            return 0;
+            return 1;
         }
 
         // Mode notification: notify <title> [body]
         QString title = arg1;
         QString body = (argc > 2) ? QString::fromLocal8Bit(argv[2]) : "";
-        notif.send(title, body);
+        bool sent = notif.send(title, body);
+        return sent ? 0 : 1;
     }
 
     return 0;
