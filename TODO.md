@@ -45,6 +45,16 @@
 - [x] Fix: reset_zoom.sh — utiliser utoutlook_notify
 - [x] Tests: 7 nouveaux tests (37 total, 32 pass + 5 skip Electron)
 
+## Fait (v3.2.2 — hotfix écran d'erreur au démarrage)
+
+- [x] Fix: faux positif overlay "Pas de connexion" — ERR_ABORTED (-3) retiré de networkErrors (SPA Outlook)
+- [x] Fix: unhandled Promise rejections — addUnreadNumberObserver() async + try-catch executeJavaScript
+- [x] Fix: health check — vérifie document.readyState avant réinjection
+- [x] Fix: .catch() sur tous les executeJavaScript (dom-ready, did-navigate-in-page, did-stop-loading)
+- [x] Fix: injectGestures() — .catch() sur le Promise executeJavaScript
+- [x] Fix: AppArmor — /usr/bin/touch embarqué dans le click (clickable.yaml)
+- [x] Tests: 4 nouveaux tests (41 total, 36 pass + 5 skip Electron)
+
 ## Idées en réserve (non prioritaires)
 
 - [ ] Raccourcis clavier personnalisables
