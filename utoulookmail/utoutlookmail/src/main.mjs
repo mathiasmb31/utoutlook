@@ -69,8 +69,11 @@ const heartbeatInterval = setInterval(() => {
         if (err) logger.error(err);
     });
 
-    // Check for external close flag from the shell wrapper (fallback for socket)
+    // Check for external close flag from the shell wrapper (fallback for socket).
+    // Delete the file after reading so a stale flag from a previous SIGKILL
+    // doesn't prevent the next launch (app would exit within 2s).
     if (fs.existsSync(CLOSE_FLAG_FILE)) {
+        try { fs.unlinkSync(CLOSE_FLAG_FILE); } catch (e) { /* ignore */ }
         app.exit(0);
     }
 }, 2000);
