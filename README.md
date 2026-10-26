@@ -1,4 +1,7 @@
-#prospectmail for ut
+# UToutlook Mail
+
+[![CI](https://github.com/mathiasmb31/utoutlook/actions/workflows/ci.yml/badge.svg)](https://github.com/mathiasmb31/utoutlook/actions/workflows/ci.yml)
+[![Build Click](https://github.com/mathiasmb31/utoutlook/actions/workflows/build-click.yml/badge.svg)](https://github.com/mathiasmb31/utoutlook/actions/workflows/build-click.yml)
 
 adapted from original prospectmail package from https://github.com/julian-alarcon/prospect-mail?tab=readme-ov-file#readme
 rewritten for UBTOUCH and small devices.
