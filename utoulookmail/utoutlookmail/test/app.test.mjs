@@ -378,3 +378,56 @@ test('reset_zoom.sh: uses utoutlook_notify', async () => {
     assert.ok(!content.includes('../bin/notify'),
         'reset_zoom.sh should not call notify binary directly');
 });
+
+// ============================================================
+// Tests for error screen fixes (v3.2.2 hotfix)
+// ============================================================
+
+test('mail-window-controller: addUnreadNumberObserver catches rejections', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+    // The method should be async and handle executeJavaScript rejections
+    assert.ok(content.includes('async addUnreadNumberObserver()'),
+        'addUnreadNumberObserver should be async');
+    // Should have try-catch around executeJavaScript
+    const methodStart = content.indexOf('async addUnreadNumberObserver()');
+    const methodEnd = content.indexOf('injectGestures()', methodStart);
+    const methodBody = content.slice(methodStart, methodEnd);
+    assert.ok(methodBody.includes('catch'),
+        'addUnreadNumberObserver should catch executeJavaScript rejections');
+});
+
+test('mail-window-controller: health check verifies page readiness', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+    assert.ok(content.includes("document.readyState"),
+        'Health check should verify page readyState before re-injecting');
+    assert.ok(content.includes('pageReady'),
+        'Health check should use pageReady guard');
+});
+
+test('mail-window-controller: offline detection excludes ERR_ABORTED', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+    // ERR_ABORTED (-3) should NOT be in the networkErrors list
+    const networkErrorsMatch = content.match(/networkErrors\s*=\s*\[([^\]]+)\]/);
+    assert.ok(networkErrorsMatch, 'Should have networkErrors array');
+    // Parse as numbers to check for -3 as a standalone value
+    const errors = networkErrorsMatch[1].split(',').map(s => parseInt(s.trim(), 10));
+    assert.ok(!errors.includes(-3),
+        'ERR_ABORTED (-3) should be excluded from offline detection (SPA false positive)');
+    // But real network errors should still be there
+    assert.ok(errors.includes(-105) || errors.includes(-106),
+        'Real network errors should still trigger offline detection');
+});
+
+test('clickable.yaml: bundles touch binary', async () => {
+    const fs = await import('node:fs');
+    const yamlPath = path.resolve(__dirname, '../../clickable.yaml');
+    const content = fs.readFileSync(yamlPath, 'utf-8');
+    assert.ok(content.includes('cp /usr/bin/touch'),
+        'clickable.yaml should bundle touch binary (AppArmor blocks /usr/bin/touch)');
+});
