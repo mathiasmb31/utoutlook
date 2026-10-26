@@ -23,6 +23,17 @@
 - [x] Logo "Human made, vibe verified" — texte rotatif autour du cercle sur splash + about
 - [x] i18n — 8 langues (FR/EN/ES/DE/IT/PT/ZH/AR) : tray menu, dialogs, notifications, offline, splash, about, shell scripts
 
+## Fait (v3.2.2 — fixes session + notifications)
+
+- [x] Fix: persistance session — flush cookies toutes les 15s (évite perte de session au kill)
+- [x] Fix: arrêt gracieux — SIGTERM avant SIGKILL dans utoutlook_kill_app (common.sh)
+- [x] Fix: flush cookies de toutes les partitions à la fermeture (cleanupAndExit)
+- [x] Fix: notifications au démarrage — observer retry continu avec backoff exponentiel (3s→30s max)
+- [x] Fix: observer health check — réinjection auto si déconnecté (toutes les 10s)
+- [x] Fix: réinjection observer sur did-stop-loading (SPA lente)
+- [x] Fix: cleanup observer avant réinjection (évite les doublons)
+- [x] Tests: 8 nouveaux tests (30 total, 25 pass + 5 skip Electron)
+
 ## Idées en réserve (non prioritaires)
 
 - [ ] Raccourcis clavier personnalisables
