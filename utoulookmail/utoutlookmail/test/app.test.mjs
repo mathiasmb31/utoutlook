@@ -431,3 +431,94 @@ test('clickable.yaml: bundles touch binary', async () => {
     assert.ok(content.includes('cp /usr/bin/touch'),
         'clickable.yaml should bundle touch binary (AppArmor blocks /usr/bin/touch)');
 });
+
+test('clickable.yaml: bundles cat, tr, cut binaries', async () => {
+    const fs = await import('node:fs');
+    const yamlPath = path.resolve(__dirname, '../../clickable.yaml');
+    const content = fs.readFileSync(yamlPath, 'utf-8');
+    for (const bin of ['cat', 'tr', 'cut']) {
+        assert.ok(content.includes(`cp /usr/bin/${bin}`),
+            `clickable.yaml should bundle ${bin} binary (AppArmor blocks /usr/bin/${bin})`);
+    }
+});
+
+test('mail-window-controller: observerWasActive tracks observer lifecycle', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+    assert.ok(content.includes('this.observerWasActive'),
+        'Controller should track observerWasActive to distinguish initial load from SPA disconnect');
+    // Health check should only re-inject if observer was previously active
+    assert.ok(content.includes('this.observerWasActive = false') && content.includes('Observer disconnected'),
+        'Health check should re-inject only after observer was active (not on initial load)');
+});
+
+test('mail-window-controller: single did-stop-loading listener', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+    // Count did-stop-loading listener registrations
+    const matches = content.match(/webContents\.on\(['"]did-stop-loading['"]/g) || [];
+    assert.strictEqual(matches.length, 1,
+        `Expected exactly 1 did-stop-loading listener (merged), found ${matches.length}`);
+});
+
+test('mail-window-controller: logs page URL on navigation', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+    assert.ok(content.includes('getURL()'),
+        'Controller should log page URL for session/login diagnostics');
+    assert.ok(content.includes('SPA navigation:'),
+        'Controller should log SPA navigation URLs');
+});
+
+test('main: cleanupAndExit awaits cookie flushStore', async () => {
+    const fs = await import('node:fs');
+    const mainPath = path.resolve(__dirname, '../src/main.mjs');
+    const content = fs.readFileSync(mainPath, 'utf-8');
+    // cleanupAndExit should be async and await flushStore
+    assert.ok(content.includes('async cleanupAndExit()'),
+        'cleanupAndExit should be async to await cookie flush');
+    assert.ok(content.includes('await session.fromPartition'),
+        'cleanupAndExit should await flushStore on partition session');
+    assert.ok(content.includes('await session.defaultSession'),
+        'cleanupAndExit should await flushStore on default session');
+});
+
+test('mail-window-controller: CSP script-src includes CDN domains', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+    // script-src must include CDN domains, not just default-src,
+    // otherwise Outlook boot JS from CDNs is blocked (olkerror.html?esrc=NoBootJs)
+    const cspMatch = content.match(/script-src[^;]+/);
+    assert.ok(cspMatch, 'CSP should have script-src directive');
+    const scriptSrc = cspMatch[0];
+    for (const domain of ['msocdn.com', 'msecnd.net', 'msftauth.net', 'cdn.office.net', 'onecdn.static.microsoft', 'microsoftonline.com']) {
+        assert.ok(scriptSrc.includes(domain),
+            `script-src should include ${domain} (Outlook boot JS served from CDN)`);
+    }
+});
+
+test('mail-window-controller: logs failed resource loads', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+    assert.ok(content.includes("on('did-fail-load'"),
+        'Controller should log did-fail-load events for diagnostics');
+    assert.ok(content.includes('Load failed'),
+        'Controller should log load failure details (errorCode, description, URL)');
+});
+
+test('observer: script wrapped in IIFE to prevent re-declaration errors', async () => {
+    const fs = await import('node:fs');
+    const obsPath = path.resolve(__dirname, '../public/unread-number-observer.js');
+    const content = fs.readFileSync(obsPath, 'utf-8');
+    // Top-level const/let in executeJavaScript global scope causes
+    // "Identifier already declared" on re-injection — must be wrapped in IIFE
+    assert.ok(content.trimStart().startsWith('(() => {') || content.includes('(() => {'),
+        'Observer script should be wrapped in IIFE to prevent re-declaration errors');
+    assert.ok(content.trimEnd().endsWith('})();') || content.trimEnd().endsWith('})(); // end IIFE'),
+        'Observer script should close the IIFE');
+});
