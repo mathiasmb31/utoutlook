@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   version="1.1"
+   width="800"
+   height="800"
+   viewBox="0 0 800 800"
+   xmlns="http://www.w3.org/2000/svg">
+
+  <!-- Background circle -->
+  <circle cx="400" cy="400" r="390" fill="#0078d4"/>
+
+  <!-- Inner subtle ring -->
+  <circle cx="400" cy="400" r="360" fill="none" stroke="#ffffff" stroke-opacity="0.15" stroke-width="2"/>
+
+  <!-- Center: Outlook-style envelope icon -->
+  <g transform="translate(400, 400)">
+    <!-- Envelope body -->
+    <rect x="-110" y="-75" width="220" height="150" rx="12" fill="#ffffff"/>
+    <!-- Envelope flap (top triangle) -->
+    <path d="M -110,-63 L 0,20 L 110,-63" fill="none" stroke="#0078d4" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
+    <!-- Envelope bottom fold lines -->
+    <path d="M -110,63 L -30,0" fill="none" stroke="#0078d4" stroke-width="4" stroke-linecap="round" opacity="0.4"/>
+    <path d="M 110,63 L 30,0" fill="none" stroke="#0078d4" stroke-width="4" stroke-linecap="round" opacity="0.4"/>
+    <!-- Outlook "O" accent dot -->
+    <circle cx="0" cy="-28" r="18" fill="#0078d4"/>
+    <text x="0" y="-20" font-family="Ubuntu, Cantarell, sans-serif" font-size="24" font-weight="700" fill="#ffffff" text-anchor="middle">O</text>
+  </g>
+
+</svg>
