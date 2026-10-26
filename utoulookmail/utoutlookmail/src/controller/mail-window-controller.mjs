@@ -292,6 +292,42 @@ class MailWindowController {
 
     // --- Dark mode (amélioré) ---
 
+    /**
+     * Détermine si le mode sombre doit être actif.
+     * @returns {boolean}
+     */
+    shouldUseDarkMode() {
+        const mode = settings.get("darkMode") || 'auto';
+        if (mode === 'on') return true;
+        if (mode === 'off') return false;
+        return nativeTheme.shouldUseDarkColors;
+    }
+
+    /**
+     * Cycle le mode sombre : auto → on → off → auto.
+     * @returns {string} nouveau mode ('auto' | 'on' | 'off')
+     */
+    async toggleDarkMode() {
+        const current = settings.get("darkMode") || 'auto';
+        const next = current === 'auto' ? 'on' : current === 'on' ? 'off' : 'auto';
+        settings.set("darkMode", next);
+        await this.applyDarkModeClass();
+        await this.injectStyles();
+        logger.info(`Dark mode: ${next}`);
+        return next;
+    }
+
+    /**
+     * Applique ou retire la classe dark-mode sur <html> selon le setting.
+     */
+    async applyDarkModeClass() {
+        if (!this.win || this.win.isDestroyed()) return;
+        const dark = this.shouldUseDarkMode();
+        await this.win.webContents.executeJavaScript(
+            `document.documentElement.classList.toggle('dark-mode', ${dark});`
+        );
+    }
+
     getDarkModeCSS() {
         return `
             /* Dark mode — Outlook web */
@@ -678,6 +714,20 @@ class MailWindowController {
                 this.setAccentColor(color);
             }
         });
+
+        // Dark mode toggle (from renderer or tray)
+        ipcMain.on("toggle-dark-mode", (event) => {
+            if (this.win && event.sender === this.win.webContents) {
+                this.toggleDarkMode();
+            }
+        });
+
+        // Reload (from renderer, e.g. offline.html retry button)
+        ipcMain.on("reload", (event) => {
+            if (this.win && event.sender === this.win.webContents) {
+                this.reloadWindow();
+            }
+        });
     }
 
     /**
@@ -715,10 +765,14 @@ class MailWindowController {
             this.addUnreadNumberObserver();
             this.injectGestures();
 
-            // Apply dark mode if system prefers it
-            if (nativeTheme.shouldUseDarkColors) {
+            // Apply dark mode if setting says so (auto follows system, on/off override)
+            if (this.shouldUseDarkMode()) {
                 this.win.webContents.executeJavaScript(
                     `document.documentElement.classList.add('dark-mode');`
+                );
+            } else {
+                this.win.webContents.executeJavaScript(
+                    `document.documentElement.classList.remove('dark-mode');`
                 );
             }
 
@@ -729,6 +783,7 @@ class MailWindowController {
 
         // Re-inject on SPA navigation (Outlook is a single-page app)
         this.win.webContents.on('did-navigate-in-page', () => {
+            this.applyDarkModeClass();
             this.injectStyles();
             this.addUnreadNumberObserver();
             this.injectGestures();
@@ -926,7 +981,7 @@ class MailWindowController {
         if (!showWindowFrame) {
             this.cssKeys.noFrame = await this.win.webContents.insertCSS(getClientFile("no-frame.css"));
         }
-        if (nativeTheme.shouldUseDarkColors) {
+        if (this.shouldUseDarkMode()) {
             this.cssKeys.dark = await this.win.webContents.insertCSS(this.getDarkModeCSS());
         }
         if (this.focusMode) {

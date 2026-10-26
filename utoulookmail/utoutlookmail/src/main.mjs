@@ -197,6 +197,9 @@ class ProspectMail {
             globalShortcut.register('CommandOrControl+Shift+F', () => {
                 if (this.mailController) this.mailController.toggleFocusMode();
             });
+            globalShortcut.register('CommandOrControl+Shift+D', () => {
+                if (this.mailController) this.mailController.toggleDarkMode();
+            });
             globalShortcut.register('CommandOrControl+Shift+Q', () => {
                 this.cleanupAndExit();
             });

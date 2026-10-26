@@ -15,4 +15,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     toggleFocusMode: () => ipcRenderer.send("toggle-focus-mode"),
     // Accent color theme
     setAccentColor: (color) => ipcRenderer.send("set-accent-color", color),
+    // Reload the page (used by offline.html)
+    reload: () => ipcRenderer.send("reload"),
+    // Dark mode toggle
+    toggleDarkMode: () => ipcRenderer.send("toggle-dark-mode"),
 });

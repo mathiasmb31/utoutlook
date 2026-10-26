@@ -49,6 +49,7 @@ const defaults = {
     customBrowserPath: undefined,
     focusMode: false,
     accentColor: '#0078d4',
+    darkMode: 'auto',
     // Multi-account support: each account has its own session partition (storage isolation)
     accounts: [
         {
@@ -100,6 +101,15 @@ for (const key of ['showWindowFrame', 'hideOnClose', 'hideOnMinimize', 'startMin
     if (typeof color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(color)) {
         logger.warn(`Invalid accentColor: ${color}, reverting to default`);
         settings.set('accentColor', defaults.accentColor);
+    }
+}
+
+// Validate darkMode (auto | on | off)
+{
+    const mode = settings.get('darkMode');
+    if (!['auto', 'on', 'off'].includes(mode)) {
+        logger.warn(`Invalid darkMode: ${mode}, reverting to default`);
+        settings.set('darkMode', defaults.darkMode);
     }
 }
 

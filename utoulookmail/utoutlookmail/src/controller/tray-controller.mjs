@@ -163,6 +163,14 @@ export class TrayController {
                         click: () => this.toggleFocusMode(),
                     },
                     {
+                        label: "Mode sombre",
+                        submenu: [
+                            {label: "Auto (système)", click: () => this.setDarkMode('auto')},
+                            {label: "Toujours activé", click: () => this.setDarkMode('on')},
+                            {label: "Toujours désactivé", click: () => this.setDarkMode('off')},
+                        ],
+                    },
+                    {
                         label: "Couleur d'accent",
                         submenu: [
                             {label: "Bleu Outlook (défaut)", click: () => this.setAccentColor('#0078d4')},
@@ -303,6 +311,19 @@ export class TrayController {
         settings.set("accentColor", color);
         for (const controller of this.accountManager.controllers.values()) {
             controller.accentColor = color;
+            await controller.injectStyles();
+        }
+        this.buildContextMenu();
+    }
+
+    /**
+     * Définit le mode sombre sur tous les comptes.
+     * @param {string} mode - 'auto' | 'on' | 'off'
+     */
+    async setDarkMode(mode) {
+        settings.set("darkMode", mode);
+        for (const controller of this.accountManager.controllers.values()) {
+            await controller.applyDarkModeClass();
             await controller.injectStyles();
         }
         this.buildContextMenu();
