@@ -5,7 +5,7 @@ import {TrayController} from './controller/tray-controller.mjs';
 import {startSocketServer, stopSocketServer} from './ipc-socket.mjs';
 import {logger} from './logger.mjs';
 import {setLanguage} from './i18n.mjs';
-import {resolveLanguage} from './settings.mjs';
+import {resolveLanguage, writeLangFile, settings} from './settings.mjs';
 import {
     CONFIG_DIR,
     HEARTBEAT_FILE,
@@ -115,6 +115,8 @@ class ProspectMail {
             const lang = resolveLanguage();
             setLanguage(lang);
             logger.info(`Language: ${lang}`);
+            // Ensure lang file exists (re-write if deleted manually)
+            writeLangFile();
 
             this.createControllers();
             this.startSocketServer();
@@ -122,6 +124,8 @@ class ProspectMail {
         });
 
         app.on("browser-window-blur", () => {
+            // Don't auto-quit when hideOnClose is active — windows are hidden, not closed
+            if (settings.get("hideOnClose")) return;
             const count = BrowserWindow.getAllWindows()
                 .filter(b => b.isVisible())
                 .length;
@@ -216,6 +220,7 @@ class ProspectMail {
     }
 
     cleanupAndExit() {
+        heartbeatExiting = true;
         clearInterval(heartbeatInterval);
         stopSocketServer();
         fs.writeFile(`${CONFIG_DIR}/killedmail`, "quitclient", err => {

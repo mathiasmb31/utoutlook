@@ -11,7 +11,13 @@ const CONFIG = {
   // Retry delays
   handlerRetryDelayMs: 5000,         // 5 seconds before retrying failed handlers
   handlerRetryAgainDelayMs: 10000,   // 10 seconds for subsequent retry attempts
+
+  // Debug logging (set to true to enable verbose console output)
+  debug: false,
 };
+
+// Debug logger — silent by default
+const debug = (...args) => { if (CONFIG.debug) console.log(...args); };
 
 // i18n: translations injected by the main process
 const I18N = window.__utoutlookI18n || {
@@ -39,13 +45,8 @@ let lastReminderCount = 0;          // Track previous reminder count
 
 // Helper to create and show notifications using native Electron notifications
 const showNotification = (title, body) => {
-  console.log('showNotification called:', { title, body });
-  console.log('Creating native Electron notification...');
-
-  // Use native Electron notification via IPC
-  // Icon is handled by main process using file path
+  debug('showNotification:', { title, body });
   window.electronAPI.showNotification(title, body);
-  console.log('Native notification request sent to main process');
 };
 
 const observeUnreadHandlers = {
@@ -54,22 +55,29 @@ const observeUnreadHandlers = {
     const inboxElement = document.querySelector('[data-folder-name="inbox"]');
 
     if (!inboxElement) {
-      console.log(`No inbox element found for unread monitoring`);
+      debug('No inbox element found for unread monitoring');
       return false;
     }
 
     const checkUnread = (checkOnlyZeroUnread) => {
       if (!inboxElement) {
-        console.log("Invalid inbox element");
+        debug('Invalid inbox element');
         return false;
       }
 
       // Extract unread count from title attribute: "Inbox - 263 items (217 unread)"
+      // Language-agnostic: look for a parenthesized number as the last item
       const title = inboxElement.getAttribute('title');
-      const unreadMatch = title?.match(/\((\d+)\s+unread\)/);
-      const unread = unreadMatch ? parseInt(unreadMatch[1], 10) : 0;
+      let unread = 0;
+      if (title) {
+        // Match the last parenthesized number in the title (e.g. "(217 unread)" or "(217 non lus)")
+        const matches = [...title.matchAll(/\((\d+)\)/g)];
+        if (matches.length > 0) {
+          unread = parseInt(matches[matches.length - 1][1], 10);
+        }
+      }
 
-      console.log(`Found ${unread} unread message(s)`);
+      debug(`Found ${unread} unread message(s)`);
 
       if (unread > 0 || !checkOnlyZeroUnread) {
         window.electronAPI.updateUnread(unread);
@@ -82,13 +90,6 @@ const observeUnreadHandlers = {
             ? now - lastUnreadNotificationTime
             : Infinity;
 
-          console.log('Unread notification check:', {
-            unread,
-            lastUnreadCount,
-            timeSinceLastNotification,
-            willShow: timeSinceLastNotification > CONFIG.unreadEmailThrottleMs
-          });
-
           if (!lastUnreadNotificationTime || timeSinceLastNotification > CONFIG.unreadEmailThrottleMs) {
             showNotification(
               `${I18N.appName}: ${tr('newMessagesTitle')}`,
@@ -96,7 +97,7 @@ const observeUnreadHandlers = {
             );
             lastUnreadNotificationTime = now;
           } else {
-            console.log(`Unread notification suppressed by anti-spam (need to wait ${CONFIG.unreadEmailThrottleMs}ms)`);
+            debug(`Unread notification suppressed by anti-spam (need to wait ${CONFIG.unreadEmailThrottleMs}ms)`);
           }
         }
       }
@@ -110,11 +111,11 @@ const observeUnreadHandlers = {
     const leftPanel = navigationPane?.querySelector('#folderPaneDroppableContainer');
 
     if (!leftPanel) {
-      console.log("Navigation panel not found for mutation observer");
+      debug('Navigation panel not found for mutation observer');
       return false;
     }
 
-    console.log("Successfully found inbox element and navigation panel");
+    debug('Successfully found inbox element and navigation panel');
 
     // Observe for DOM changes
     const observer = new MutationObserver(() => {
@@ -145,15 +146,15 @@ const observeUnreadHandlers = {
     const notificationPane = document.querySelector('[data-app-section="NotificationPane"]');
 
     if (!notificationPane) {
-      console.log(`No notification pane found for calendar reminders`);
+      debug('No notification pane found for calendar reminders');
       return false;
     }
 
-    console.log("Successfully found notification pane");
+    debug('Successfully found notification pane');
 
     const checkNotifications = (suppressNotification = false) => {
       if (!notificationPane) {
-        console.log("Invalid notification pane element");
+        debug('Invalid notification pane element');
         return false;
       }
 
@@ -162,7 +163,7 @@ const observeUnreadHandlers = {
       const reminderElements = notificationPane.querySelectorAll('[reminder]');
       const reminderCount = reminderElements.length;
 
-      console.log(`Found ${reminderCount} calendar reminder(s)`);
+      debug(`Found ${reminderCount} calendar reminder(s)`);
 
       // Only show notification if reminder count increased
       if (reminderCount > lastReminderCount && !suppressNotification) {
@@ -171,13 +172,6 @@ const observeUnreadHandlers = {
         const timeSinceLastNotification = lastCalendarNotificationTime
           ? now - lastCalendarNotificationTime
           : Infinity;
-
-        console.log('Calendar notification check:', {
-          reminderCount,
-          lastReminderCount,
-          timeSinceLastNotification,
-          willShow: timeSinceLastNotification > CONFIG.calendarReminderThrottleMs
-        });
 
         if (!lastCalendarNotificationTime || timeSinceLastNotification > CONFIG.calendarReminderThrottleMs) {
           const reminderDetails = [];
@@ -195,14 +189,14 @@ const observeUnreadHandlers = {
             reminderDetails.push(details);
           });
 
-          console.log('Showing calendar notification:', reminderDetails);
+          debug('Showing calendar notification:', reminderDetails);
           showNotification(
             `${I18N.appName}: ${tr('calendarTitle', { count: reminderCount })}`,
             reminderDetails.join('\n')
           );
           lastCalendarNotificationTime = now;
         } else {
-          console.log(`Calendar notification suppressed by anti-spam (need to wait ${CONFIG.calendarReminderThrottleMs}ms)`);
+          debug(`Calendar notification suppressed by anti-spam (need to wait ${CONFIG.calendarReminderThrottleMs}ms)`);
         }
       }
 
@@ -227,9 +221,7 @@ const observeUnreadHandlers = {
 };
 
 const initializeEmailMonitoring = () => {
-  // Native Electron notifications don't require permission requests
-  // The main process handles notification permissions
-  console.log("init monitor");
+  debug('init monitor');
   const startedHandlers = [];
   const failedHandlers = [];
 
@@ -238,25 +230,25 @@ const initializeEmailMonitoring = () => {
     const started = handler();
 
     if (started) {
-      console.log(`Successfully connected to ${interfaceType} interface`);
+      debug(`Successfully connected to ${interfaceType} interface`);
       startedHandlers.push(interfaceType);
     } else {
-      console.log(`Failed to connect to ${interfaceType} interface`);
+      debug(`Failed to connect to ${interfaceType} interface`);
       failedHandlers.push(interfaceType);
     }
   }
 
   // Retry failed handlers after a delay
   if (failedHandlers.length > 0) {
-    console.log(`Retrying failed handlers in ${CONFIG.handlerRetryDelayMs / 1000} seconds: ${failedHandlers.join(', ')}`);
+    debug(`Retrying failed handlers in ${CONFIG.handlerRetryDelayMs / 1000} seconds: ${failedHandlers.join(', ')}`);
     setTimeout(() => {
       failedHandlers.forEach(interfaceType => {
         const handler = observeUnreadHandlers[interfaceType];
         const started = handler();
         if (started) {
-          console.log(`Successfully connected to ${interfaceType} interface on retry`);
+          debug(`Successfully connected to ${interfaceType} interface on retry`);
         } else {
-          console.log(`${interfaceType} interface still not ready, will retry again`);
+          debug(`${interfaceType} interface still not ready, will retry again`);
           // Keep retrying
           setTimeout(() => handler(), CONFIG.handlerRetryAgainDelayMs);
         }
@@ -266,7 +258,7 @@ const initializeEmailMonitoring = () => {
 
   // If no handlers started at all, retry everything
   if (startedHandlers.length === 0) {
-    console.log(`No interfaces ready yet, retrying all in ${CONFIG.handlerRetryDelayMs / 1000} seconds...`);
+    debug(`No interfaces ready yet, retrying all in ${CONFIG.handlerRetryDelayMs / 1000} seconds...`);
     setTimeout(initializeEmailMonitoring, CONFIG.handlerRetryDelayMs);
   }
 };
@@ -281,5 +273,5 @@ const debounce = (() => {
     timers[id] = setTimeout(callback, wait);
   };
 })();
-console.log("init monitor");
+debug('init monitor');
 initializeEmailMonitoring();
