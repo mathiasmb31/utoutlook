@@ -62,13 +62,17 @@ export class TrayController {
 
     /**
      * Met à jour le badge du launcher Ubuntu Touch via D-Bus LauncherEntry.
+     * Le compteur est plafonné à 99 — au-delà, le badge devient illisible
+     * sur l'icône du launcher (petite taille d'affichage).
      * @param {number} count - Nombre total de messages non lus
      */
     updateLauncherBadge(count) {
         const notifyPath = this.accountManager.getNotifyBinaryPath?.();
         if (!notifyPath) return;
+        // Cap at 99 — larger numbers overflow the small launcher badge
+        const displayCount = Math.min(count || 0, 99);
         try {
-            const child = spawn(notifyPath, ['--badge', String(count || 0)], {
+            const child = spawn(notifyPath, ['--badge', String(displayCount)], {
                 detached: true,
                 stdio: 'ignore'
             });

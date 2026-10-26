@@ -49,8 +49,11 @@ const heartbeatInterval = setInterval(() => {
         .filter(b => b.isVisible())
         .length;
 
-    // After 10 heartbeats with no visible window, signal exit and quit
-    if (heartbeatSeconds > 10) {
+    // After 60 heartbeats (60s) with no visible window, signal exit and quit.
+    // 10s was too short — Outlook web app can take 30s+ to load on slow devices,
+    // causing the app to kill itself before the window ever appears (crash
+    // at startup ~1 in 2 launches depending on network speed).
+    if (heartbeatSeconds > 60) {
         if (visibleCount > 0) {
             heartbeatSeconds = 0;
         } else {
