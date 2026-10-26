@@ -141,8 +141,34 @@ except Exception:
 
 # ============================================================
 # Kill all prospect-mail processes
+# Strategy: SIGTERM first (allows Chromium to flush cookies/session
+# to disk), wait up to 5 seconds, then SIGKILL as last resort.
+# SIGKILL alone loses the most recent cookies → user sees login page.
 # ============================================================
 utoutlook_kill_app() {
+	# Check if any prospect-mail process is running
+	if ! "${UTOUTLOOK_BIN}/pkill" -0 prospect-mail 2>/dev/null; then
+		# No process running, nothing to kill
+		"${UTOUTLOOK_BIN}/pkill" -9 qmlscene 2>/dev/null || true
+		return 0
+	fi
+
+	# Step 1: SIGTERM — graceful shutdown (flushes cookies, closes windows)
+	"${UTOUTLOOK_BIN}/pkill" -TERM prospect-mail 2>/dev/null || true
+
+	# Step 2: Wait up to 5 seconds for graceful exit
+	local waited=0
+	while [ $waited -lt 5 ]; do
+		if ! "${UTOUTLOOK_BIN}/pkill" -0 prospect-mail 2>/dev/null; then
+			# Process exited gracefully
+			"${UTOUTLOOK_BIN}/pkill" -9 qmlscene 2>/dev/null || true
+			return 0
+		fi
+		"${UTOUTLOOK_BIN}/sleep" 1
+		waited=$((waited + 1))
+	done
+
+	# Step 3: SIGKILL — process refused to die
 	"${UTOUTLOOK_BIN}/pkill" -9 prospect-mail 2>/dev/null || true
 	"${UTOUTLOOK_BIN}/pkill" -9 qmlscene 2>/dev/null || true
 }

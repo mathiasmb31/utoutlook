@@ -8,9 +8,9 @@ const CONFIG = {
   mutationDebounceMs: 1000,          // 1 second debounce for mutation observers
   unreadCheckIntervalMs: 5000,       // 5 seconds between periodic unread checks
 
-  // Retry delays
-  handlerRetryDelayMs: 5000,         // 5 seconds before retrying failed handlers
-  handlerRetryAgainDelayMs: 10000,   // 10 seconds for subsequent retry attempts
+  // Retry delays — exponential backoff, capped at maxRetryDelayMs
+  initialRetryDelayMs: 3000,         // 3 seconds before first retry
+  maxRetryDelayMs: 30000,            // 30 seconds max between retries
 
   // Debug logging (set to true to enable verbose console output)
   debug: false,
@@ -37,11 +37,25 @@ function tr(key, vars) {
   return str;
 }
 
-let unreadCheckTimer;
-let lastUnreadNotificationTime;
-let lastCalendarNotificationTime;
-let lastUnreadCount = 0;           // Track previous unread count
-let lastReminderCount = 0;          // Track previous reminder count
+// ============================================================
+// Cleanup: remove all previous observers, timers, and flags
+// This prevents duplicates when the script is re-injected
+// (dom-ready, did-navigate-in-page, did-stop-loading, health check)
+// ============================================================
+if (window.__utoutlookObserverCleanup) {
+  window.__utoutlookObserverCleanup();
+}
+
+// State — module-level so cleanup can access it
+let unreadCheckTimer = null;
+let lastUnreadNotificationTime = null;
+let lastCalendarNotificationTime = null;
+let lastUnreadCount = 0;
+let lastReminderCount = 0;
+let unreadObserver = null;
+let notificationObserver = null;
+let retryTimer = null;
+let retryDelay = CONFIG.initialRetryDelayMs;
 
 // Helper to create and show notifications using native Electron notifications
 const showNotification = (title, body) => {
@@ -118,10 +132,10 @@ const observeUnreadHandlers = {
     debug('Successfully found inbox element and navigation panel');
 
     // Observe for DOM changes
-    const observer = new MutationObserver(() => {
+    unreadObserver = new MutationObserver(() => {
       debounce(checkUnread, CONFIG.mutationDebounceMs, "unread-mutation");
     });
-    observer.observe(leftPanel, {
+    unreadObserver.observe(leftPanel, {
       attributes: true,
       childList: true,
       subtree: true,
@@ -205,10 +219,10 @@ const observeUnreadHandlers = {
     };
 
     // Observe for DOM changes
-    const observer = new MutationObserver(() => {
+    notificationObserver = new MutationObserver(() => {
       debounce(checkNotifications, CONFIG.mutationDebounceMs, "notification-mutation");
     });
-    observer.observe(notificationPane, {
+    notificationObserver.observe(notificationPane, {
       childList: true,
       subtree: true,
     });
@@ -218,6 +232,18 @@ const observeUnreadHandlers = {
 
     return true;
   },
+};
+
+// ============================================================
+// Cleanup function — exposed globally so re-injection can clean up
+// ============================================================
+window.__utoutlookObserverCleanup = () => {
+  debug('Cleaning up previous observer instance');
+  if (unreadObserver) { unreadObserver.disconnect(); unreadObserver = null; }
+  if (notificationObserver) { notificationObserver.disconnect(); notificationObserver = null; }
+  if (unreadCheckTimer) { clearInterval(unreadCheckTimer); unreadCheckTimer = null; }
+  if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+  window.__utoutlookObserverActive = false;
 };
 
 const initializeEmailMonitoring = () => {
@@ -238,28 +264,33 @@ const initializeEmailMonitoring = () => {
     }
   }
 
-  // Retry failed handlers after a delay
-  if (failedHandlers.length > 0) {
-    debug(`Retrying failed handlers in ${CONFIG.handlerRetryDelayMs / 1000} seconds: ${failedHandlers.join(', ')}`);
-    setTimeout(() => {
-      failedHandlers.forEach(interfaceType => {
-        const handler = observeUnreadHandlers[interfaceType];
-        const started = handler();
-        if (started) {
-          debug(`Successfully connected to ${interfaceType} interface on retry`);
-        } else {
-          debug(`${interfaceType} interface still not ready, will retry again`);
-          // Keep retrying
-          setTimeout(() => handler(), CONFIG.handlerRetryAgainDelayMs);
-        }
-      });
-    }, CONFIG.handlerRetryDelayMs);
+  // Mark observer as active if at least one handler connected
+  if (startedHandlers.length > 0) {
+    window.__utoutlookObserverActive = true;
+    // Reset backoff on success
+    retryDelay = CONFIG.initialRetryDelayMs;
+    debug(`Observer active (${startedHandlers.length} handler(s) connected)`);
+  } else {
+    window.__utoutlookObserverActive = false;
   }
 
-  // If no handlers started at all, retry everything
-  if (startedHandlers.length === 0) {
-    debug(`No interfaces ready yet, retrying all in ${CONFIG.handlerRetryDelayMs / 1000} seconds...`);
-    setTimeout(initializeEmailMonitoring, CONFIG.handlerRetryDelayMs);
+  // Retry failed handlers with exponential backoff — never give up.
+  // Outlook is a SPA that can take 30s+ to render on slow devices.
+  if (failedHandlers.length > 0 || startedHandlers.length === 0) {
+    const currentDelay = retryDelay;
+    debug(`Retrying in ${currentDelay / 1000}s (failed: ${failedHandlers.join(', ') || 'all'})`);
+    retryTimer = setTimeout(() => {
+      // Exponential backoff: double the delay, capped at max
+      retryDelay = Math.min(retryDelay * 2, CONFIG.maxRetryDelayMs);
+      initializeEmailMonitoring();
+    }, currentDelay);
+  } else {
+    // All handlers connected — schedule a full re-check as a safety net
+    // (in case the SPA re-renders and kills our observers)
+    retryTimer = setTimeout(() => {
+      debug('Periodic full re-check of observer connectivity');
+      initializeEmailMonitoring();
+    }, 60000); // every 60 seconds
   }
 };
 
@@ -273,5 +304,6 @@ const debounce = (() => {
     timers[id] = setTimeout(callback, wait);
   };
 })();
+
 debug('init monitor');
 initializeEmailMonitoring();

@@ -50,6 +50,8 @@ class MailWindowController {
         this.cacheWatcher = null;
         this.triggerTimers = new Map(); // debounce timers for file triggers
         this.splashWindow = null;
+        this.cookieFlushInterval = null; // periodic cookie flush to disk
+        this.observerHealthCheck = null; // periodic observer connectivity check
         // Multi-account: each account has its own config and session partition
         this.accountConfig = accountConfig;
         this.accountId = accountConfig?.id || 'default';
@@ -226,6 +228,62 @@ class MailWindowController {
                 }
             }
         } catch (err) { /* ignore */ }
+    }
+
+    // --- Session persistence: periodic cookie flush ---
+
+    /**
+     * Flush cookies to disk periodically so session survives SIGKILL / OOM.
+     * Chromium flushes every ~30s by default, but on Ubuntu Touch the app is
+     * frequently killed without a clean shutdown. We flush every 15s to be safe.
+     */
+    startCookieFlush() {
+        this.cookieFlushInterval = setInterval(() => {
+            this.flushSessionCookies();
+        }, 15000);
+        logger.info('Cookie flush interval started (15s)');
+    }
+
+    /**
+     * Flush this account's session cookies to disk immediately.
+     */
+    async flushSessionCookies() {
+        try {
+            const ses = session.fromPartition(this.sessionPartition);
+            await ses.cookies.flushStore();
+            logger.debug('Cookies flushed to disk');
+        } catch (err) {
+            logger.warn('Failed to flush cookies:', err.message);
+        }
+    }
+
+    // --- Observer health check ---
+
+    /**
+     * Periodically check if the unread observer is still connected.
+     * If the page navigated or the observer was lost, re-inject it.
+     * Outlook is a SPA — the observer can silently die on navigation.
+     */
+    startObserverHealthCheck() {
+        this.observerHealthCheck = setInterval(async () => {
+            if (!this.win || this.win.isDestroyed()) return;
+            try {
+                const connected = await this.win.webContents.executeJavaScript(
+                    `(() => {
+                        return typeof window.__utoutlookObserverActive !== 'undefined'
+                            && window.__utoutlookObserverActive === true;
+                    })()`
+                );
+                if (!connected) {
+                    logger.info('Observer disconnected — re-injecting');
+                    this.addUnreadNumberObserver();
+                }
+            } catch (err) {
+                // Page might not be ready or navigating — will retry next interval
+                logger.debug('Observer health check failed:', err.message);
+            }
+        }, 10000);
+        logger.info('Observer health check started (10s)');
     }
 
     // --- UBports notification relay ---
@@ -518,6 +576,8 @@ class MailWindowController {
         this.setupScreenEvents();
         this.setupOfflineDetection();
         this.startCacheWatcher();
+        this.startCookieFlush();
+        this.startObserverHealthCheck();
     }
 
     // --- Splash screen ---
@@ -810,6 +870,16 @@ class MailWindowController {
             this.addUnreadNumberObserver();
             this.injectGestures();
         });
+
+        // Re-inject after page finishes loading (catches late-rendered SPA content)
+        this.win.webContents.on('did-stop-loading', () => {
+            // Small delay to let the SPA render after load event
+            setTimeout(() => {
+                if (this.win && !this.win.isDestroyed()) {
+                    this.addUnreadNumberObserver();
+                }
+            }, 2000);
+        });
     }
 
     setupWindowOpenHandler() {
@@ -868,6 +938,18 @@ class MailWindowController {
                 clearInterval(this.connectivityTimer);
                 this.connectivityTimer = null;
             }
+            // Stop cookie flush
+            if (this.cookieFlushInterval) {
+                clearInterval(this.cookieFlushInterval);
+                this.cookieFlushInterval = null;
+            }
+            // Stop observer health check
+            if (this.observerHealthCheck) {
+                clearInterval(this.observerHealthCheck);
+                this.observerHealthCheck = null;
+            }
+            // Flush cookies one last time before window destruction
+            this.flushSessionCookies();
             if (!global.preventAutoCloseApp) {
                 app.exit(0);
             }
