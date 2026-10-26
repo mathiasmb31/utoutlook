@@ -1,5 +1,5 @@
 import path from 'node:path';
-import {app, BrowserWindow, globalShortcut} from 'electron';
+import {app, BrowserWindow, globalShortcut, session} from 'electron';
 import AccountManager from './account-manager.mjs';
 import {TrayController} from './controller/tray-controller.mjs';
 import {startSocketServer, stopSocketServer} from './ipc-socket.mjs';
@@ -223,6 +223,27 @@ class ProspectMail {
         heartbeatExiting = true;
         clearInterval(heartbeatInterval);
         stopSocketServer();
+
+        // Flush all session cookies to disk before exiting so the login
+        // session survives app restarts (Chromium normally flushes every
+        // ~30s, but we may be killed before that).
+        try {
+            const accounts = settings.get('accounts') || [];
+            for (const acct of accounts) {
+                if (acct.partition) {
+                    try {
+                        session.fromPartition(acct.partition).cookies.flushStore();
+                    } catch (e) { /* partition may not exist yet */ }
+                }
+            }
+            // Also flush the default session
+            try {
+                session.defaultSession.cookies.flushStore();
+            } catch (e) { /* ignore */ }
+        } catch (err) {
+            logger.warn('Failed to flush session cookies on exit:', err.message);
+        }
+
         fs.writeFile(`${CONFIG_DIR}/killedmail`, "quitclient", err => {
             if (err) logger.error(err);
         });

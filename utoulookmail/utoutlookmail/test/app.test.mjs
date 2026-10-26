@@ -1,5 +1,9 @@
 import {test} from 'node:test';
 import assert from 'node:assert';
+import {fileURLToPath} from 'node:url';
+import path from 'node:path';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ============================================================
 // Tests for config.mjs — path constants
@@ -215,4 +219,86 @@ test('i18n: all languages have context menu translations', async () => {
             assert.ok(translated.length > 0, `Empty ${key} for ${lang}`);
         }
     }
+});
+
+// ============================================================
+// Tests for session persistence fixes (v3.2.2)
+// ============================================================
+
+test('observer: script sets __utoutlookObserverActive flag', async () => {
+    const fs = await import('node:fs');
+    const observerPath = path.resolve(__dirname, '../public/unread-number-observer.js');
+    const content = fs.readFileSync(observerPath, 'utf-8');
+    assert.ok(content.includes('window.__utoutlookObserverActive'),
+        'Observer should set __utoutlookObserverActive flag for health check');
+});
+
+test('observer: script has cleanup mechanism for re-injection', async () => {
+    const fs = await import('node:fs');
+    const observerPath = path.resolve(__dirname, '../public/unread-number-observer.js');
+    const content = fs.readFileSync(observerPath, 'utf-8');
+    assert.ok(content.includes('window.__utoutlookObserverCleanup'),
+        'Observer should expose __utoutlookObserverCleanup for re-injection');
+});
+
+test('observer: script uses exponential backoff for retries', async () => {
+    const fs = await import('node:fs');
+    const observerPath = path.resolve(__dirname, '../public/unread-number-observer.js');
+    const content = fs.readFileSync(observerPath, 'utf-8');
+    assert.ok(content.includes('maxRetryDelayMs'),
+        'Observer should have a max retry delay cap');
+    assert.ok(content.includes('retryDelay * 2') || content.includes('retryDelay*2'),
+        'Observer should use exponential backoff (doubling delay)');
+});
+
+test('mail-window-controller: has cookie flush interval', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+    assert.ok(content.includes('startCookieFlush'),
+        'Controller should start periodic cookie flush');
+    assert.ok(content.includes('flushSessionCookies'),
+        'Controller should have flushSessionCookies method');
+    assert.ok(content.includes('cookies.flushStore'),
+        'Controller should call cookies.flushStore()');
+});
+
+test('mail-window-controller: has observer health check', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+    assert.ok(content.includes('startObserverHealthCheck'),
+        'Controller should start observer health check');
+    assert.ok(content.includes('__utoutlookObserverActive'),
+        'Controller should check __utoutlookObserverActive flag');
+});
+
+test('mail-window-controller: injects observer on did-stop-loading', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+    assert.ok(content.includes('did-stop-loading'),
+        'Controller should re-inject observer on did-stop-loading event');
+});
+
+test('main: flushes session cookies on cleanupAndExit', async () => {
+    const fs = await import('node:fs');
+    const mainPath = path.resolve(__dirname, '../src/main.mjs');
+    const content = fs.readFileSync(mainPath, 'utf-8');
+    assert.ok(content.includes('flushStore'),
+        'main.mjs should flush session cookies before exit');
+    assert.ok(content.includes('cleanupAndExit'),
+        'main.mjs should have cleanupAndExit method');
+});
+
+test('common.sh: uses SIGTERM before SIGKILL for graceful shutdown', async () => {
+    const fs = await import('node:fs');
+    const commonPath = path.resolve(__dirname, '../../utils/common.sh');
+    const content = fs.readFileSync(commonPath, 'utf-8');
+    // SIGTERM should appear before SIGKILL (-9) in the kill function
+    const termPos = content.indexOf('pkill" -TERM');
+    const killPos = content.indexOf('pkill" -9 prospect-mail');
+    assert.ok(termPos !== -1, 'common.sh should use SIGTERM (-TERM) for graceful shutdown');
+    assert.ok(killPos !== -1, 'common.sh should still have SIGKILL (-9) as fallback');
+    assert.ok(termPos < killPos, 'SIGTERM should be sent before SIGKILL');
 });
