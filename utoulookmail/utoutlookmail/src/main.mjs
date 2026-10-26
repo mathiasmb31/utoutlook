@@ -219,7 +219,9 @@ class ProspectMail {
         }
     }
 
-    cleanupAndExit() {
+    async cleanupAndExit() {
+        if (this.isQuitting) return;
+        this.isQuitting = true;
         heartbeatExiting = true;
         clearInterval(heartbeatInterval);
         stopSocketServer();
@@ -227,18 +229,20 @@ class ProspectMail {
         // Flush all session cookies to disk before exiting so the login
         // session survives app restarts (Chromium normally flushes every
         // ~30s, but we may be killed before that).
+        // Await each flushStore() — without await, app.exit() races ahead
+        // and the cookies never reach disk.
         try {
             const accounts = settings.get('accounts') || [];
             for (const acct of accounts) {
                 if (acct.partition) {
                     try {
-                        session.fromPartition(acct.partition).cookies.flushStore();
+                        await session.fromPartition(acct.partition).cookies.flushStore();
                     } catch (e) { /* partition may not exist yet */ }
                 }
             }
             // Also flush the default session
             try {
-                session.defaultSession.cookies.flushStore();
+                await session.defaultSession.cookies.flushStore();
             } catch (e) { /* ignore */ }
         } catch (err) {
             logger.warn('Failed to flush session cookies on exit:', err.message);

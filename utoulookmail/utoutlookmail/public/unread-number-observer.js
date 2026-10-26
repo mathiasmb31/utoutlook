@@ -1,4 +1,6 @@
-// Configuration constants
+// Wrap in IIFE to prevent "Identifier already declared" errors on re-injection.
+// executeJavaScript runs in global scope — top-level const/let would conflict.
+(() => {
 const CONFIG = {
   // Anti-spam throttle times
   unreadEmailThrottleMs: 10000,   // 10 seconds between unread email notifications
@@ -307,3 +309,4 @@ const debounce = (() => {
 
 debug('init monitor');
 initializeEmailMonitoring();
+})(); // end IIFE
