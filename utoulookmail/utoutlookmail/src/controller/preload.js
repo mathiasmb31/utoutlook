@@ -11,4 +11,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     zoomIn: () => ipcRenderer.send("zoom", {action: "in"}),
     zoomOut: () => ipcRenderer.send("zoom", {action: "out"}),
     zoomReset: () => ipcRenderer.send("zoom", {action: "reset"}),
+    // Focus mode (lecture concentrée)
+    toggleFocusMode: () => ipcRenderer.send("toggle-focus-mode"),
+    // Accent color theme
+    setAccentColor: (color) => ipcRenderer.send("set-accent-color", color),
 });

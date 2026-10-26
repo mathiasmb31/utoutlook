@@ -12,9 +12,6 @@ import {
     LOGIN_FLAG_FILE,
     NOTIF_FLAG_FILE,
     ICON_PATH,
-    ZOOM_TRIGGER_GLOB,
-    TEXT_TRIGGER_GLOB,
-    ZOOM_RESET_FILE,
 } from '../config.mjs';
 import {logger} from '../logger.mjs';
 
@@ -51,7 +48,7 @@ let currentZoomIndex = 2; // start at 1.0
 class MailWindowController {
     constructor(accountConfig = null) {
         loginPage = 0;
-        this.cssKeys = { main: null, noFrame: null, dark: null };
+        this.cssKeys = { main: null, noFrame: null, dark: null, focus: null, accent: null };
         this.cacheWatcher = null;
         this.triggerTimers = new Map(); // debounce timers for file triggers
         this.splashWindow = null;
@@ -79,6 +76,8 @@ class MailWindowController {
         deeplinkUrls = settings.get("urlsInternal");
         mailServicesUrls = settings.get("urlsExternal");
         safelinksUrls = settings.get("safelinksUrls");
+        this.focusMode = settings.get("focusMode") || false;
+        this.accentColor = settings.get("accentColor") || '#0078d4';
 
         logger.info("Loaded settings", {
             mainMailServiceUrl, deeplinkUrls, mailServicesUrls, safelinksUrls,
@@ -291,18 +290,175 @@ class MailWindowController {
         });
     }
 
-    // --- Dark mode ---
+    // --- Dark mode (amélioré) ---
 
     getDarkModeCSS() {
         return `
-            /* Dark mode overrides for Outlook web */
+            /* Dark mode — Outlook web */
+            html.dark-mode body,
+            html.dark-mode [role="main"],
+            html.dark-mode [class*="bodyContainer"],
+            html.dark-mode [class*="content"],
+            html.dark-mode [class*="mainContent"],
+            html.dark-mode [class*="readingPane"],
+            html.dark-mode [class*="messageList"],
+            html.dark-mode [class*="listView"] {
+                background-color: #1a1a1a !important;
+                color: #e0e0e0 !important;
+            }
+            /* Navigation pane */
+            html.dark-mode [data-app-section="NavigationPane"],
+            html.dark-mode [class*="folderPane"],
+            html.dark-mode [class*="navigationPane"] {
+                background-color: #252525 !important;
+                color: #c0c0c0 !important;
+            }
+            /* Cards and surfaces */
+            html.dark-mode [class*="card"],
+            html.dark-mode [class*="surface"],
+            html.dark-mode [class*="panel"],
+            html.dark-mode [class*="dialog"] {
+                background-color: #2d2d2d !important;
+                color: #e0e0e0 !important;
+            }
+            /* Inputs */
+            html.dark-mode input,
+            html.dark-mode textarea,
+            html.dark-mode [class*="textField"] {
+                background-color: #3a3a3a !important;
+                color: #e0e0e0 !important;
+                border-color: #555 !important;
+            }
+            /* Links */
+            html.dark-mode a { color: #6cb6ff !important; }
+            /* Separators */
+            html.dark-mode [class*="divider"],
+            html.dark-mode hr {
+                border-color: #444 !important;
+            }
+            /* System dark preference fallback */
             @media (prefers-color-scheme: dark) {
                 body { background-color: #1a1a1a !important; color: #e0e0e0 !important; }
             }
-            /* Force dark when nativeTheme says so */
-            html.dark-mode body { background-color: #1a1a1a !important; color: #e0e0e0 !important; }
-            html.dark-mode [class*="background"] { background-color: #1a1a1a !important; }
         `;
+    }
+
+    // --- Focus mode (lecture concentrée) ---
+
+    getFocusModeCSS() {
+        return `
+            /* Hide navigation pane */
+            [data-app-section="NavigationPane"],
+            [class*="folderPane"],
+            [class*="navigationPane"],
+            [class*="LeftRail"],
+            [class*="leftRail"] {
+                display: none !important;
+            }
+            /* Hide ads and banners */
+            [class*="adBar"],
+            [class*="AdBar"],
+            [class*="premiumBanner"],
+            [class*="upgradeBanner"] {
+                display: none !important;
+            }
+            /* Hide reading pane header actions (keep essential) */
+            [class*="commandBar"] button:not([aria-label*="Répondre"]):not([aria-label*="Reply"]):not([aria-label*="Transférer"]):not([aria-label*="Forward"]) {
+                display: none !important;
+            }
+            /* Maximize email content area */
+            [class*="readingPane"],
+            [class*="messageBody"],
+            [class*="emailContent"] {
+                max-width: 100% !important;
+                padding: 8px 16px !important;
+            }
+            /* Dim non-essential UI */
+            [class*="headerBar"] > *:not(button):not([role="button"]),
+            [class*="topBar"] > *:not(button):not([role="button"]) {
+                opacity: 0.5 !important;
+            }
+            /* Focus indicator */
+            body::after {
+                content: "Mode lecture";
+                position: fixed;
+                bottom: 8px;
+                right: 8px;
+                background: rgba(0,0,0,0.6);
+                color: #fff;
+                padding: 4px 12px;
+                border-radius: 12px;
+                font-size: 12px;
+                z-index: 9999;
+                pointer-events: none;
+                font-family: Ubuntu, sans-serif;
+            }
+        `;
+    }
+
+    // --- Accent color theme ---
+
+    getAccentColorCSS(color) {
+        return `
+            /* Custom accent color override */
+            :root {
+                --utoutlook-accent: ${color} !important;
+            }
+            /* Buttons */
+            button[class*="primary"],
+            [role="button"][class*="primary"],
+            button[class*="accent"],
+            [class*="ms-Button--primary"] {
+                background-color: ${color} !important;
+                border-color: ${color} !important;
+            }
+            /* Links */
+            a[class*="primary"],
+            [class*="link"][class*="primary"] {
+                color: ${color} !important;
+            }
+            /* Selection highlight */
+            ::selection {
+                background-color: ${color} !important;
+                color: #fff !important;
+            }
+            /* Focus ring */
+            *:focus-visible {
+                outline-color: ${color} !important;
+            }
+            /* Progress bar */
+            [class*="progressBar"] > div,
+            [class*="progress"] > div {
+                background-color: ${color} !important;
+            }
+        `;
+    }
+
+    /**
+     * Bascule le mode lecture concentrée (focus mode).
+     * @returns {boolean} nouvel état
+     */
+    async toggleFocusMode() {
+        this.focusMode = !this.focusMode;
+        settings.set("focusMode", this.focusMode);
+        await this.injectStyles();
+        logger.info(`Focus mode: ${this.focusMode ? 'ON' : 'OFF'}`);
+        return this.focusMode;
+    }
+
+    /**
+     * Définit la couleur d'accent personnalisée.
+     * @param {string} color - Code couleur hex (#rrggbb)
+     */
+    async setAccentColor(color) {
+        if (!/^#[0-9a-fA-F]{6}$/.test(color)) {
+            logger.warn(`Invalid accent color: ${color}`);
+            return;
+        }
+        this.accentColor = color;
+        settings.set("accentColor", color);
+        await this.injectStyles();
+        logger.info(`Accent color set to: ${color}`);
     }
 
     // --- Lifecycle orchestrator ---
@@ -506,6 +662,20 @@ class MailWindowController {
         ipcMain.on("show-notification", (event, {title, body, icon}) => {
             if (this.win && event.sender === this.win.webContents) {
                 this.handleNotification(title, body, icon);
+            }
+        });
+
+        // Focus mode toggle (from renderer or tray)
+        ipcMain.on("toggle-focus-mode", (event) => {
+            if (this.win && event.sender === this.win.webContents) {
+                this.toggleFocusMode();
+            }
+        });
+
+        // Accent color change (from renderer or tray)
+        ipcMain.on("set-accent-color", (event, color) => {
+            if (this.win && event.sender === this.win.webContents) {
+                this.setAccentColor(color);
             }
         });
     }
@@ -741,10 +911,10 @@ class MailWindowController {
     }
 
     async injectStyles() {
-        if (!this.cssKeys) this.cssKeys = { main: null, noFrame: null, dark: null };
+        if (!this.cssKeys) this.cssKeys = { main: null, noFrame: null, dark: null, focus: null, accent: null };
 
         // Remove previously inserted CSS
-        for (const key of ['main', 'noFrame', 'dark']) {
+        for (const key of ['main', 'noFrame', 'dark', 'focus', 'accent']) {
             if (this.cssKeys[key]) {
                 try { await this.win.webContents.removeInsertedCSS(this.cssKeys[key]); } catch (e) { /* ignore */ }
                 this.cssKeys[key] = null;
@@ -758,6 +928,12 @@ class MailWindowController {
         }
         if (nativeTheme.shouldUseDarkColors) {
             this.cssKeys.dark = await this.win.webContents.insertCSS(this.getDarkModeCSS());
+        }
+        if (this.focusMode) {
+            this.cssKeys.focus = await this.win.webContents.insertCSS(this.getFocusModeCSS());
+        }
+        if (this.accentColor && this.accentColor !== '#0078d4') {
+            this.cssKeys.accent = await this.win.webContents.insertCSS(this.getAccentColorCSS(this.accentColor));
         }
     }
 
