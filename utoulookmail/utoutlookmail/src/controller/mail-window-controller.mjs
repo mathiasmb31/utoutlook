@@ -43,6 +43,8 @@ class MailWindowController {
         this.mailServicesUrls = [];
         this.showWindowFrame = true;
         this.loginPage = 0;
+        this.pageLoadTimes = []; // timestamps of recent page loads for loop detection
+        this.redirectLoopDetected = false;
         this.currentZoomIndex = 2; // start at 1.0
         this.initialMinimization = { domReady: false };
 
@@ -258,6 +260,39 @@ class MailWindowController {
         }
     }
 
+    /**
+     * Clear all cookies for Outlook/Microsoft domains in this session partition.
+     * Used to break redirect loops (mail → oauthRedirect → mail → …).
+     */
+    async clearOutlookSession() {
+        try {
+            const ses = session.fromPartition(this.sessionPartition);
+            const cookies = await ses.cookies.get({});
+            let cleared = 0;
+            for (const cookie of cookies) {
+                const domain = (cookie.domain || '').toLowerCase();
+                if (domain.includes('outlook') ||
+                    domain.includes('microsoft') ||
+                    domain.includes('live.com') ||
+                    domain.includes('office.com') ||
+                    domain.includes('office365') ||
+                    domain.includes('sharepoint') ||
+                    domain.includes('msauth') ||
+                    domain.includes('msocdn') ||
+                    domain.includes('msecnd') ||
+                    domain.includes('msftauth')) {
+                    const url = cookie.secure ? `https://${cookie.domain}${cookie.path}` : `http://${cookie.domain}${cookie.path}`;
+                    await ses.cookies.remove(url, cookie.name);
+                    cleared++;
+                }
+            }
+            await ses.cookies.flushStore();
+            logger.info(`Cleared ${cleared} Outlook/Microsoft cookies`);
+        } catch (err) {
+            logger.error('Failed to clear Outlook session:', err.message);
+        }
+    }
+
     // --- Observer health check ---
 
     /**
@@ -361,7 +396,8 @@ class MailWindowController {
                         "https://*.office365.com https://*.live.com https://*.microsoft.com " +
                         "https://*.microsoftonline.com https://*.msauth.net https://*.msocdn.com " +
                         "https://*.sharepoint.com https://*.msecnd.net https://*.msftauth.net " +
-                        "https://*.cdn.office.net https://*.onecdn.static.microsoft; " +
+                        "https://*.cdn.office.net https://*.onecdn.static.microsoft " +
+                        "https://*.github.com https://*.githubassets.com https://*.bing.com; " +
                         // script-src must include ALL domains that serve JS, not just
                         // default-src — otherwise Outlook boot JS from CDNs is blocked
                         // (olkerror.html?esrc=NoBootJs). blob: needed for web workers.
@@ -370,22 +406,26 @@ class MailWindowController {
                         "https://*.live.com https://*.microsoft.com https://*.microsoftonline.com " +
                         "https://*.msocdn.com https://*.msauth.net https://*.msecnd.net " +
                         "https://*.msftauth.net https://*.cdn.office.net https://*.sharepoint.com " +
-                        "https://*.onecdn.static.microsoft; " +
+                        "https://*.onecdn.static.microsoft " +
+                        "https://*.github.com https://*.githubassets.com https://*.bing.com; " +
                         "style-src 'self' 'unsafe-inline' https://outlook.office.com https://*.office.com " +
                         "https://*.office365.com https://*.live.com https://*.microsoft.com " +
                         "https://*.microsoftonline.com https://*.msocdn.com https://*.msauth.net " +
-                        "https://*.msftauth.net https://*.cdn.office.net https://*.onecdn.static.microsoft; " +
+                        "https://*.msftauth.net https://*.cdn.office.net https://*.onecdn.static.microsoft " +
+                        "https://*.github.com https://*.githubassets.com https://*.bing.com; " +
                         "img-src 'self' data: https: blob:; " +
                         "connect-src 'self' https://outlook.office.com wss://*.office.com " +
                         "https://*.live.com https://*.office365.com https://*.sharepoint.com " +
                         "https://*.microsoft.com https://*.microsoftonline.com https://*.msocdn.com " +
                         "https://*.msauth.net https://*.msecnd.net https://*.msftauth.net " +
                         "https://*.cdn.office.net https://*.onecdn.static.microsoft " +
+                        "https://*.github.com https://*.githubassets.com https://*.bing.com " +
                         "wss://*.live.com wss://*.office365.com; " +
                         "font-src 'self' https://outlook.office.com https://*.office.com " +
                         "https://*.office365.com https://*.live.com https://*.microsoft.com " +
                         "https://*.microsoftonline.com https://*.msocdn.com https://*.msauth.net " +
-                        "https://*.msftauth.net https://*.cdn.office.net https://*.onecdn.static.microsoft data:; " +
+                        "https://*.msftauth.net https://*.cdn.office.net https://*.onecdn.static.microsoft " +
+                        "https://*.github.com https://*.githubassets.com https://*.bing.com data:; " +
                         "media-src 'self' https: blob:; " +
                         "frame-src 'self' https://outlook.office.com https://*.office.com " +
                         "https://*.office365.com https://*.live.com https://*.microsoft.com " +
@@ -717,6 +757,34 @@ class MailWindowController {
             this.loginPage++;
             const url = this.win.webContents.getURL();
             logger.info(`Page loaded #${this.loginPage}: ${url}`);
+
+            // --- Redirect loop detection ---
+            // Outlook sometimes loops: mail page → oauthRedirect.html → mail page → …
+            // Detect when the same mail URL loads too many times in a short window
+            // and break the loop by clearing the session (forces fresh login).
+            const now = Date.now();
+            this.pageLoadTimes.push({url, time: now});
+            // Keep only loads from the last 60 seconds
+            this.pageLoadTimes = this.pageLoadTimes.filter(p => now - p.time < 60000);
+
+            const isMailPage = url.includes('outlook.live.com/mail') ||
+                               url.includes('outlook.office.com/mail') ||
+                               url.includes('outlook.office365.com/mail');
+            const mailLoads = this.pageLoadTimes.filter(p =>
+                p.url.includes('outlook.live.com/mail') ||
+                p.url.includes('outlook.office.com/mail') ||
+                p.url.includes('outlook.office365.com/mail')
+            );
+
+            if (isMailPage && mailLoads.length >= 5 && !this.redirectLoopDetected) {
+                this.redirectLoopDetected = true;
+                logger.warn(`Redirect loop detected: ${mailLoads.length} mail page loads in 60s — clearing session`);
+                this.clearOutlookSession().then(() => {
+                    logger.info('Session cleared — reloading for fresh login');
+                    this.pageLoadTimes = [];
+                    this.win.reload();
+                }).catch(err => logger.error('Failed to clear session:', err));
+            }
         });
 
         fs.writeFile(LOGIN_FLAG_FILE, 'notif!', err => { if (err) logger.error(err); });
