@@ -268,6 +268,20 @@ class MailWindowController {
         this.observerHealthCheck = setInterval(async () => {
             if (!this.win || this.win.isDestroyed()) return;
             try {
+                // First verify the page can execute JS at all
+                const pageReady = await this.win.webContents.executeJavaScript(
+                    `(() => {
+                        try {
+                            return document.readyState === 'complete'
+                                || document.readyState === 'interactive';
+                        } catch(e) { return false; }
+                    })()`
+                );
+                if (!pageReady) {
+                    logger.debug('Health check: page not ready, skipping');
+                    return;
+                }
+
                 const connected = await this.win.webContents.executeJavaScript(
                     `(() => {
                         return typeof window.__utoutlookObserverActive !== 'undefined'
@@ -276,7 +290,8 @@ class MailWindowController {
                 );
                 if (!connected) {
                     logger.info('Observer disconnected — re-injecting');
-                    this.addUnreadNumberObserver();
+                    // Await to catch rejections inside the try-catch
+                    await this.addUnreadNumberObserver();
                 }
             } catch (err) {
                 // Page might not be ready or navigating — will retry next interval
@@ -843,19 +858,19 @@ class MailWindowController {
         // Insert styles and observer on first DOM ready
         this.win.webContents.on("dom-ready", () => {
             this.closeSplashWindow();
-            this.injectStyles();
-            this.addUnreadNumberObserver();
+            this.injectStyles().catch(() => {});
+            this.addUnreadNumberObserver().catch(() => {});
             this.injectGestures();
 
             // Apply dark mode if setting says so (auto follows system, on/off override)
             if (this.shouldUseDarkMode()) {
                 this.win.webContents.executeJavaScript(
                     `document.documentElement.classList.add('dark-mode');`
-                );
+                ).catch(() => {});
             } else {
                 this.win.webContents.executeJavaScript(
                     `document.documentElement.classList.remove('dark-mode');`
-                );
+                ).catch(() => {});
             }
 
             if (!this.initialMinimization.domReady) {
@@ -865,9 +880,9 @@ class MailWindowController {
 
         // Re-inject on SPA navigation (Outlook is a single-page app)
         this.win.webContents.on('did-navigate-in-page', () => {
-            this.applyDarkModeClass();
-            this.injectStyles();
-            this.addUnreadNumberObserver();
+            this.applyDarkModeClass().catch(() => {});
+            this.injectStyles().catch(() => {});
+            this.addUnreadNumberObserver().catch(() => {});
             this.injectGestures();
         });
 
@@ -876,7 +891,7 @@ class MailWindowController {
             // Small delay to let the SPA render after load event
             setTimeout(() => {
                 if (this.win && !this.win.isDestroyed()) {
-                    this.addUnreadNumberObserver();
+                    this.addUnreadNumberObserver().catch(() => {});
                 }
             }, 2000);
         });
@@ -980,8 +995,10 @@ class MailWindowController {
 
         // Detect network failures on page load
         this.win.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
-            // Network-related error codes
-            const networkErrors = [-3, -100, -101, -102, -105, -106, -109, -118, -121, -137, -323];
+            // Network-related error codes.
+            // NOTE: -3 (ERR_ABORTED) is intentionally excluded — Outlook SPA triggers
+            // it during normal redirects/navigations, causing false offline overlays.
+            const networkErrors = [-100, -101, -102, -105, -106, -109, -118, -121, -137, -323];
             if (networkErrors.includes(errorCode) && validatedURL && !validatedURL.startsWith('file://')) {
                 logger.warn(`Network error ${errorCode}: ${errorDescription} — showing offline overlay`);
                 this.showOfflineOverlay();
@@ -1096,7 +1113,8 @@ class MailWindowController {
         }
     }
 
-    addUnreadNumberObserver() {
+    async addUnreadNumberObserver() {
+        if (!this.win || this.win.isDestroyed()) return;
         // Inject translations as a global before the observer script
         const tr = getAllTranslations();
         const i18nJson = JSON.stringify({
@@ -1105,20 +1123,26 @@ class MailWindowController {
             calendarTitle: tr['notif.calendar.title'],
             appName: tr['app.name'],
         });
-        this.win.webContents.executeJavaScript(
-            `window.__utoutlookI18n = ${i18nJson};\n` +
-            getClientFile("unread-number-observer.js")
-        );
+        // executeJavaScript returns a Promise — catch rejections to avoid
+        // unhandled rejections when the page is navigating or not ready.
+        try {
+            await this.win.webContents.executeJavaScript(
+                `window.__utoutlookI18n = ${i18nJson};\n` +
+                getClientFile("unread-number-observer.js")
+            );
+        } catch (err) {
+            // Page may be navigating — will be re-injected by health check or next event
+            logger.debug('Observer injection deferred (page not ready):', err.message);
+        }
     }
 
     injectGestures() {
-        try {
-            this.win.webContents.executeJavaScript(
-                getClientFile("gestures.js")
-            );
-        } catch (err) {
-            // gestures.js may not exist yet, ignore
-        }
+        if (!this.win || this.win.isDestroyed()) return;
+        this.win.webContents.executeJavaScript(
+            getClientFile("gestures.js")
+        ).catch(() => {
+            // gestures.js may not exist yet or page not ready, ignore
+        });
     }
 
     /**
