@@ -24,14 +24,14 @@ export function openAboutWindow() {
 
     aboutWindow = new BrowserWindow({
         width: 450,
-        height: 580,
+        height: 620,
         resizable: false,
         minimizable: false,
         maximizable: false,
         fullscreenable: false,
         frame: false,
         transparent: true,
-        title: "About Prospect Mail",
+        title: "About UToutlook Mail",
         autoHideMenuBar: true,
         backgroundColor: '#00000000',
         webPreferences: {
