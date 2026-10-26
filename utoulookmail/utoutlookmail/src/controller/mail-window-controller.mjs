@@ -52,6 +52,7 @@ class MailWindowController {
         this.splashWindow = null;
         this.cookieFlushInterval = null; // periodic cookie flush to disk
         this.observerHealthCheck = null; // periodic observer connectivity check
+        this.observerWasActive = false; // true once observer connected at least once
         // Multi-account: each account has its own config and session partition
         this.accountConfig = accountConfig;
         this.accountId = accountConfig?.id || 'default';
@@ -288,11 +289,19 @@ class MailWindowController {
                             && window.__utoutlookObserverActive === true;
                     })()`
                 );
-                if (!connected) {
+                if (connected) {
+                    // Observer is active — remember for future checks
+                    this.observerWasActive = true;
+                } else if (this.observerWasActive) {
+                    // Observer WAS active but is now gone (SPA navigation killed it)
+                    // Only re-inject in this case — let the observer's own retry
+                    // backoff handle the initial connection on first load.
+                    this.observerWasActive = false;
                     logger.info('Observer disconnected — re-injecting');
-                    // Await to catch rejections inside the try-catch
                     await this.addUnreadNumberObserver();
                 }
+                // else: observer never connected yet — its own retry backoff
+                // (3s → 30s exponential) is handling initial connection.
             } catch (err) {
                 // Page might not be ready or navigating — will retry next interval
                 logger.debug('Observer health check failed:', err.message);
@@ -350,16 +359,38 @@ class MailWindowController {
                     'Content-Security-Policy': [
                         "default-src 'self' https://outlook.office.com https://*.office.com " +
                         "https://*.office365.com https://*.live.com https://*.microsoft.com " +
-                        "https://*.msauth.net https://*.msocdn.com https://*.sharepoint.com; " +
-                        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://outlook.office.com " +
-                        "https://*.office.com https://*.office365.com https://*.live.com https://*.microsoft.com; " +
-                        "style-src 'self' 'unsafe-inline' https://outlook.office.com https://*.office.com; " +
+                        "https://*.microsoftonline.com https://*.msauth.net https://*.msocdn.com " +
+                        "https://*.sharepoint.com https://*.msecnd.net https://*.msftauth.net " +
+                        "https://*.cdn.office.net https://*.onecdn.static.microsoft; " +
+                        // script-src must include ALL domains that serve JS, not just
+                        // default-src — otherwise Outlook boot JS from CDNs is blocked
+                        // (olkerror.html?esrc=NoBootJs). blob: needed for web workers.
+                        "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: " +
+                        "https://outlook.office.com https://*.office.com https://*.office365.com " +
+                        "https://*.live.com https://*.microsoft.com https://*.microsoftonline.com " +
+                        "https://*.msocdn.com https://*.msauth.net https://*.msecnd.net " +
+                        "https://*.msftauth.net https://*.cdn.office.net https://*.sharepoint.com " +
+                        "https://*.onecdn.static.microsoft; " +
+                        "style-src 'self' 'unsafe-inline' https://outlook.office.com https://*.office.com " +
+                        "https://*.office365.com https://*.live.com https://*.microsoft.com " +
+                        "https://*.microsoftonline.com https://*.msocdn.com https://*.msauth.net " +
+                        "https://*.msftauth.net https://*.cdn.office.net https://*.onecdn.static.microsoft; " +
                         "img-src 'self' data: https: blob:; " +
                         "connect-src 'self' https://outlook.office.com wss://*.office.com " +
-                        "https://*.live.com https://*.office365.com https://*.sharepoint.com; " +
-                        "font-src 'self' https://outlook.office.com https://*.office.com data:; " +
+                        "https://*.live.com https://*.office365.com https://*.sharepoint.com " +
+                        "https://*.microsoft.com https://*.microsoftonline.com https://*.msocdn.com " +
+                        "https://*.msauth.net https://*.msecnd.net https://*.msftauth.net " +
+                        "https://*.cdn.office.net https://*.onecdn.static.microsoft " +
+                        "wss://*.live.com wss://*.office365.com; " +
+                        "font-src 'self' https://outlook.office.com https://*.office.com " +
+                        "https://*.office365.com https://*.live.com https://*.microsoft.com " +
+                        "https://*.microsoftonline.com https://*.msocdn.com https://*.msauth.net " +
+                        "https://*.msftauth.net https://*.cdn.office.net https://*.onecdn.static.microsoft data:; " +
                         "media-src 'self' https: blob:; " +
-                        "frame-src 'self' https://outlook.office.com https://*.office.com;"
+                        "frame-src 'self' https://outlook.office.com https://*.office.com " +
+                        "https://*.office365.com https://*.live.com https://*.microsoft.com " +
+                        "https://*.microsoftonline.com https://*.sharepoint.com; " +
+                        "worker-src 'self' blob:;"
                     ]
                 }
             });
@@ -684,7 +715,8 @@ class MailWindowController {
 
         this.win.webContents.on('did-finish-load', () => {
             this.loginPage++;
-            if (this.loginPage < 2) logger.info("LOGIN WINDOW");
+            const url = this.win.webContents.getURL();
+            logger.info(`Page loaded #${this.loginPage}: ${url}`);
         });
 
         fs.writeFile(LOGIN_FLAG_FILE, 'notif!', err => { if (err) logger.error(err); });
@@ -694,9 +726,8 @@ class MailWindowController {
         this.win.webContents.on('did-start-loading', () => {
             this.win.setProgressBar(0.3);
         });
-        this.win.webContents.on('did-stop-loading', () => {
-            this.win.setProgressBar(-1);
-        });
+        // did-stop-loading handled in setupWebContentsEvents (merged to avoid
+        // listener accumulation — MaxListenersExceededWarning at 11 listeners)
     }
 
     setupContextMenu() {
@@ -855,6 +886,21 @@ class MailWindowController {
     }
 
     setupWebContentsEvents() {
+        // Log console messages from the renderer — captures JS errors, CSP violations
+        this.win.webContents.on('console-message', (_event, level, message, _line, _sourceId) => {
+            const levelName = ['verbose', 'info', 'warning', 'error'][level] || 'log';
+            // Skip noisy messages
+            if (message.includes('Autofill') || message.includes('DevTools')) return;
+            logger.info(`[console.${levelName}] ${message.substring(0, 500)}`);
+        });
+
+        // Log failed resource loads — helps diagnose boot failures (olkerror.html)
+        this.win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+            // -3 (ERR_ABORTED) is normal for SPA redirects — skip it
+            if (errorCode === -3) return;
+            logger.warn(`Load failed [${errorCode}] ${errorDescription}: ${validatedURL} (mainFrame=${isMainFrame})`);
+        });
+
         // Insert styles and observer on first DOM ready
         this.win.webContents.on("dom-ready", () => {
             this.closeSplashWindow();
@@ -879,7 +925,8 @@ class MailWindowController {
         });
 
         // Re-inject on SPA navigation (Outlook is a single-page app)
-        this.win.webContents.on('did-navigate-in-page', () => {
+        this.win.webContents.on('did-navigate-in-page', (_event, url) => {
+            logger.info(`SPA navigation: ${url}`);
             this.applyDarkModeClass().catch(() => {});
             this.injectStyles().catch(() => {});
             this.addUnreadNumberObserver().catch(() => {});
@@ -887,7 +934,10 @@ class MailWindowController {
         });
 
         // Re-inject after page finishes loading (catches late-rendered SPA content)
+        // Also clears the progress bar — merged with setupLoadingIndicators
+        // to keep a single did-stop-loading listener.
         this.win.webContents.on('did-stop-loading', () => {
+            this.win.setProgressBar(-1);
             // Small delay to let the SPA render after load event
             setTimeout(() => {
                 if (this.win && !this.win.isDestroyed()) {
