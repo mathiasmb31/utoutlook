@@ -494,6 +494,51 @@ const T = {
         it: 'Modalità lettura', pt: 'Modo leitura', zh: '专注模式', ar: 'وضع التركيز',
     },
 
+    // ===== Context menu =====
+    'ctx.undo': {
+        fr: 'Annuler', en: 'Undo', es: 'Deshacer', de: 'Rückgängig',
+        it: 'Annulla', pt: 'Desfazer', zh: '撤销', ar: 'تراجع',
+    },
+    'ctx.redo': {
+        fr: 'Rétablir', en: 'Redo', es: 'Rehacer', de: 'Wiederholen',
+        it: 'Ripeti', pt: 'Refazer', zh: '重做', ar: 'إعادة',
+    },
+    'ctx.cut': {
+        fr: 'Couper', en: 'Cut', es: 'Cortar', de: 'Ausschneiden',
+        it: 'Taglia', pt: 'Cortar', zh: '剪切', ar: 'قص',
+    },
+    'ctx.copy': {
+        fr: 'Copier', en: 'Copy', es: 'Copiar', de: 'Kopieren',
+        it: 'Copia', pt: 'Copiar', zh: '复制', ar: 'نسخ',
+    },
+    'ctx.paste': {
+        fr: 'Coller', en: 'Paste', es: 'Pegar', de: 'Einfügen',
+        it: 'Incolla', pt: 'Colar', zh: '粘贴', ar: 'لصق',
+    },
+    'ctx.selectAll': {
+        fr: 'Tout sélectionner', en: 'Select All', es: 'Seleccionar todo',
+        de: 'Alles auswählen', it: 'Seleziona tutto', pt: 'Selecionar tudo',
+        zh: '全选', ar: 'تحديد الكل',
+    },
+    'ctx.openLink': {
+        fr: 'Ouvrir le lien dans le navigateur', en: 'Open Link in Browser',
+        es: 'Abrir enlace en el navegador', de: 'Link im Browser öffnen',
+        it: 'Apri link nel browser', pt: 'Abrir link no navegador',
+        zh: '在浏览器中打开链接', ar: 'فتح الرابط في المتصفح',
+    },
+    'ctx.copyLink': {
+        fr: "Copier l'adresse du lien", en: 'Copy Link Address',
+        es: 'Copiar dirección del enlace', de: 'Linkadresse kopieren',
+        it: 'Copia indirizzo link', pt: 'Copiar endereço do link',
+        zh: '复制链接地址', ar: 'نسخ عنوان الرابط',
+    },
+    'ctx.inspect': {
+        fr: "Inspecter l'élément", en: 'Inspect Element',
+        es: 'Inspeccionar elemento', de: 'Element untersuchen',
+        it: 'Ispeziona elemento', pt: 'Inspecionar elemento',
+        zh: '检查元素', ar: 'فحص العنصر',
+    },
+
     // ===== Shell notifications =====
     'shell.welcome': {
         fr: 'Bienvenue dans UToutlook Mail', en: 'Welcome to UToutlook Mail',
