@@ -41,6 +41,7 @@ const defaults = {
         "to-do.office.com/tasks",
     ],
     urlsExternal: [
+        "outlook.com",
         "outlook.live.com",
         "outlook.office365.com",
         "outlook.office.com",
