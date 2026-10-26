@@ -65,18 +65,34 @@
 </head>
 <body>
   <div class="icon">&#x1F4F6;</div>
-  <h1>Pas de connexion</h1>
-  <p>UToutlook Mail n'arrive pas à se connecter.<br>Vérifiez votre connexion Internet.</p>
-  <button class="retry-btn" onclick="retry()">Réessayer</button>
+  <h1 id="offline-title">Pas de connexion</h1>
+  <p id="offline-message">UToutlook Mail n'arrive pas à se connecter.<br>Vérifiez votre connexion Internet.</p>
+  <button class="retry-btn" id="retry-btn" onclick="retry()">Réessayer</button>
   <div class="spinner" id="spinner"></div>
   <div class="status" id="status">Reconnexion automatique...</div>
 
   <script>
+    // i18n: read from query params (if loaded with translations)
+    (function() {
+      const params = new URLSearchParams(window.location.search);
+      const title = params.get('title');
+      const message = params.get('message');
+      const retry = params.get('retry');
+      const autoReconnect = params.get('autoReconnect');
+      const checking = params.get('checking');
+      const connected = params.get('connected');
+      if (title) document.getElementById('offline-title').textContent = title;
+      if (message) document.getElementById('offline-message').innerHTML = message;
+      if (retry) document.getElementById('retry-btn').textContent = retry;
+      if (autoReconnect) document.getElementById('status').textContent = autoReconnect;
+      window.__offlineI18n = { checking, connected };
+    })();
+
     let checkInterval;
 
     function retry() {
       document.getElementById('spinner').classList.add('visible');
-      document.getElementById('status').textContent = 'Vérification...';
+      document.getElementById('status').textContent = window.__offlineI18n?.checking || 'Vérification...';
       // Signal the main process to reload
       if (window.electronAPI && window.electronAPI.reload) {
         window.electronAPI.reload();
@@ -89,7 +105,7 @@
     checkInterval = setInterval(() => {
       if (navigator.onLine) {
         document.getElementById('spinner').classList.add('visible');
-        document.getElementById('status').textContent = 'Connexion retrouvée !';
+        document.getElementById('status').textContent = window.__offlineI18n?.connected || 'Connexion retrouvée !';
         clearInterval(checkInterval);
         setTimeout(() => {
           if (window.electronAPI && window.electronAPI.reload) {

@@ -1,5 +1,12 @@
 import __Store from 'electron-store'
 import {logger} from './logger.mjs';
+import {LANGUAGES, detectLanguage} from './i18n.mjs';
+import {LANG_FILE} from './config.mjs';
+import fs from 'node:fs';
+import path from 'node:path';
+import {createRequire} from 'node:module';
+
+const require = createRequire(import.meta.url);
 
 export const Store = __Store.default || __Store
 
@@ -50,11 +57,12 @@ const defaults = {
     focusMode: false,
     accentColor: '#0078d4',
     darkMode: 'auto',
+    language: 'auto',
     // Multi-account support: each account has its own session partition (storage isolation)
     accounts: [
         {
             id: 'default',
-            name: 'Compte principal',
+            name: 'Primary account',
             url: 'https://outlook.office.com/mail',
             partition: 'persist:utoutlook-default',
             enabled: true,
@@ -149,3 +157,54 @@ for (const key of ['showWindowFrame', 'hideOnClose', 'hideOnMinimize', 'startMin
         settings.set('activeAccountId', accounts[0]?.id || 'default');
     }
 }
+
+// ============================================================
+// Language setting + lang file for shell scripts
+// ============================================================
+
+/**
+ * Resolve the effective language code from the setting.
+ * @returns {string} Language code (fr, en, es, ...)
+ */
+export function resolveLanguage() {
+    const lang = settings.get('language') || 'auto';
+    if (lang === 'auto') {
+        // Detect from Electron's locale (set by the OS)
+        try {
+            const {app} = require('electron');
+            return detectLanguage(app.getLocale());
+        } catch {
+            return detectLanguage(process.env.LANG || 'fr');
+        }
+    }
+    return LANGUAGES[lang] ? lang : 'fr';
+}
+
+/**
+ * Write the current language to a file so shell scripts can read it.
+ */
+function writeLangFile() {
+    const lang = resolveLanguage();
+    try {
+        fs.mkdirSync(path.dirname(LANG_FILE), {recursive: true});
+        fs.writeFileSync(LANG_FILE, lang, 'utf-8');
+    } catch (err) {
+        logger.warn('Failed to write lang file:', err.message);
+    }
+}
+
+// Validate language setting
+{
+    const lang = settings.get('language');
+    if (lang !== 'auto' && !LANGUAGES[lang]) {
+        logger.warn(`Invalid language: ${lang}, reverting to auto`);
+        settings.set('language', 'auto');
+    }
+}
+
+// Write lang file on startup and whenever language changes
+writeLangFile();
+settings.onDidChange('language', () => {
+    writeLangFile();
+    logger.info(`Language changed to: ${resolveLanguage()}`);
+});

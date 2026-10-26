@@ -3,6 +3,7 @@ import {spawn} from 'child_process';
 import getClientFile from './client-injector.mjs';
 import path from 'node:path';
 import {settings} from "../settings.mjs";
+import {t, getAllTranslations} from "../i18n.mjs";
 import {fileURLToPath} from 'node:url';
 import fs from 'node:fs';
 import {
@@ -416,7 +417,7 @@ class MailWindowController {
             }
             /* Focus indicator */
             body::after {
-                content: "Mode lecture";
+                content: "${t('focus.indicator')}";
                 position: fixed;
                 bottom: 8px;
                 right: 8px;
@@ -546,7 +547,12 @@ class MailWindowController {
         });
 
         this.splashWindow.setMenu(null);
-        this.splashWindow.loadFile(splashPath);
+        // Pass translations via query params
+        const splashParams = new URLSearchParams({
+            loading: t('splash.loading'),
+            appName: t('app.name'),
+        });
+        this.splashWindow.loadFile(splashPath, {search: splashParams.toString()});
 
         // Safety timeout: close splash after 15s even if dom-ready never fires
         this.splashTimeout = setTimeout(() => this.closeSplashWindow(), 15000);
@@ -889,6 +895,7 @@ class MailWindowController {
     showOfflineOverlay() {
         if (!this.win || this.win.isDestroyed()) return;
         this.isOffline = true;
+        const tr = getAllTranslations();
 
         this.win.webContents.executeJavaScript(`
             (() => {
@@ -904,15 +911,14 @@ class MailWindowController {
                          align-items:center;justify-content:center;font-family:Ubuntu,sans-serif;
                          color:#e0e0e0;text-align:center;padding:24px;box-sizing:border-box;">
                         <div style="font-size:72px;margin-bottom:24px;opacity:0.6;">&#x1F4F6;</div>
-                        <h1 style="font-size:24px;font-weight:300;margin-bottom:12px;">Pas de connexion</h1>
+                        <h1 style="font-size:24px;font-weight:300;margin-bottom:12px;">${tr['offline.title']}</h1>
                         <p style="font-size:16px;opacity:0.7;margin-bottom:32px;line-height:1.5;">
-                            UToutlook Mail n\\'arrive pas à se connecter.<br>
-                            Vérifiez votre connexion Internet.
+                            ${tr['offline.message']}
                         </p>
                         <div style="width:24px;height:24px;border:2px solid rgba(255,255,255,0.2);
                              border-top-color:#0078d4;border-radius:50%;
                              animation:utoutlook-spin 0.8s linear infinite;"></div>
-                        <div style="margin-top:16px;font-size:13px;opacity:0.5;">Reconnexion automatique...</div>
+                        <div style="margin-top:16px;font-size:13px;opacity:0.5;">${tr['offline.autoReconnect']}</div>
                     </div>
                 \`;
                 // Add spinner animation
@@ -924,7 +930,7 @@ class MailWindowController {
         `).catch(err => logger.error('Failed to show offline overlay:', err));
 
         // Notify via UBports
-        this.sendUbportsNotification('UToutlook Mail', 'Connexion Internet perdue');
+        this.sendUbportsNotification(t('app.name'), t('notif.offline.title'));
     }
 
     hideOfflineOverlay() {
@@ -956,7 +962,7 @@ class MailWindowController {
                     clearInterval(this.connectivityTimer);
                     this.connectivityTimer = null;
                     this.hideOfflineOverlay();
-                    this.sendUbportsNotification('UToutlook Mail', 'Connexion rétablie');
+                    this.sendUbportsNotification(t('app.name'), t('notif.online.title'));
                     this.win.reload();
                 }
             } catch (err) {
@@ -993,7 +999,16 @@ class MailWindowController {
     }
 
     addUnreadNumberObserver() {
+        // Inject translations as a global before the observer script
+        const tr = getAllTranslations();
+        const i18nJson = JSON.stringify({
+            newMessagesTitle: tr['notif.newMessages.title'],
+            newMessagesBody: tr['notif.newMessages.body'],
+            calendarTitle: tr['notif.calendar.title'],
+            appName: tr['app.name'],
+        });
         this.win.webContents.executeJavaScript(
+            `window.__utoutlookI18n = ${i18nJson};\n` +
             getClientFile("unread-number-observer.js")
         );
     }
