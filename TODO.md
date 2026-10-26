@@ -20,6 +20,7 @@
 - [x] Fix: script npm test (node --test test/ → node --test)
 - [x] Fix: preload.js — ajout de reload() manquant (référencé par offline.html)
 - [x] Tests: ajout tests validation darkMode
+- [x] Logo "Human made, vibe verified" — texte rotatif autour du cercle sur splash + about
 
 ## Idées en réserve (non prioritaires)
 

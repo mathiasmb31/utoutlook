@@ -209,7 +209,7 @@ export class TrayController {
 
             {type: "separator"},
             {
-                label: "About Prospect Mail",
+                label: "About UToutlook Mail",
                 click: () => openAboutWindow(),
             },
             {label: "Quit", click: () => this.cleanupAndQuit()},
