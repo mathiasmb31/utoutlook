@@ -45,6 +45,7 @@ class MailWindowController {
         this.loginPage = 0;
         this.pageLoadTimes = []; // timestamps of recent page loads for loop detection
         this.redirectLoopDetected = false;
+        this.loginHintIntercepts = 0; // count of login_hint redirects intercepted
         this.currentZoomIndex = 2; // start at 1.0
         this.initialMinimization = { domReady: false };
 
@@ -392,7 +393,8 @@ class MailWindowController {
                 responseHeaders: {
                     ...details.responseHeaders,
                     'Content-Security-Policy': [
-                        "default-src 'self' https://outlook.office.com https://*.office.com " +
+                        "default-src 'self' https://outlook.com https://*.outlook.com " +
+                        "https://outlook.office.com https://*.office.com " +
                         "https://*.office365.com https://*.live.com https://*.microsoft.com " +
                         "https://*.microsoftonline.com https://*.msauth.net https://*.msocdn.com " +
                         "https://*.sharepoint.com https://*.msecnd.net https://*.msftauth.net " +
@@ -402,32 +404,37 @@ class MailWindowController {
                         // default-src — otherwise Outlook boot JS from CDNs is blocked
                         // (olkerror.html?esrc=NoBootJs). blob: needed for web workers.
                         "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: " +
+                        "https://outlook.com https://*.outlook.com " +
                         "https://outlook.office.com https://*.office.com https://*.office365.com " +
                         "https://*.live.com https://*.microsoft.com https://*.microsoftonline.com " +
                         "https://*.msocdn.com https://*.msauth.net https://*.msecnd.net " +
                         "https://*.msftauth.net https://*.cdn.office.net https://*.sharepoint.com " +
                         "https://*.onecdn.static.microsoft " +
                         "https://*.github.com https://*.githubassets.com https://*.bing.com; " +
-                        "style-src 'self' 'unsafe-inline' https://outlook.office.com https://*.office.com " +
+                        "style-src 'self' 'unsafe-inline' https://outlook.com https://*.outlook.com " +
+                        "https://outlook.office.com https://*.office.com " +
                         "https://*.office365.com https://*.live.com https://*.microsoft.com " +
                         "https://*.microsoftonline.com https://*.msocdn.com https://*.msauth.net " +
                         "https://*.msftauth.net https://*.cdn.office.net https://*.onecdn.static.microsoft " +
                         "https://*.github.com https://*.githubassets.com https://*.bing.com; " +
                         "img-src 'self' data: https: blob:; " +
-                        "connect-src 'self' https://outlook.office.com wss://*.office.com " +
+                        "connect-src 'self' https://outlook.com https://*.outlook.com " +
+                        "https://outlook.office.com wss://*.office.com " +
                         "https://*.live.com https://*.office365.com https://*.sharepoint.com " +
                         "https://*.microsoft.com https://*.microsoftonline.com https://*.msocdn.com " +
                         "https://*.msauth.net https://*.msecnd.net https://*.msftauth.net " +
                         "https://*.cdn.office.net https://*.onecdn.static.microsoft " +
                         "https://*.github.com https://*.githubassets.com https://*.bing.com " +
                         "wss://*.live.com wss://*.office365.com; " +
-                        "font-src 'self' https://outlook.office.com https://*.office.com " +
+                        "font-src 'self' https://outlook.com https://*.outlook.com " +
+                        "https://outlook.office.com https://*.office.com " +
                         "https://*.office365.com https://*.live.com https://*.microsoft.com " +
                         "https://*.microsoftonline.com https://*.msocdn.com https://*.msauth.net " +
                         "https://*.msftauth.net https://*.cdn.office.net https://*.onecdn.static.microsoft " +
                         "https://*.github.com https://*.githubassets.com https://*.bing.com data:; " +
                         "media-src 'self' https: blob:; " +
-                        "frame-src 'self' https://outlook.office.com https://*.office.com " +
+                        "frame-src 'self' https://outlook.com https://*.outlook.com " +
+                        "https://outlook.office.com https://*.office.com " +
                         "https://*.office365.com https://*.live.com https://*.microsoft.com " +
                         "https://*.microsoftonline.com https://*.sharepoint.com; " +
                         "worker-src 'self' blob:;"
@@ -767,10 +774,12 @@ class MailWindowController {
             // Keep only loads from the last 60 seconds
             this.pageLoadTimes = this.pageLoadTimes.filter(p => now - p.time < 60000);
 
-            const isMailPage = url.includes('outlook.live.com/mail') ||
+            const isMailPage = url.includes('outlook.com/mail') ||
+                               url.includes('outlook.live.com/mail') ||
                                url.includes('outlook.office.com/mail') ||
                                url.includes('outlook.office365.com/mail');
             const mailLoads = this.pageLoadTimes.filter(p =>
+                p.url.includes('outlook.com/mail') ||
                 p.url.includes('outlook.live.com/mail') ||
                 p.url.includes('outlook.office.com/mail') ||
                 p.url.includes('outlook.office365.com/mail')
@@ -999,6 +1008,29 @@ class MailWindowController {
             this.injectStyles().catch(() => {});
             this.addUnreadNumberObserver().catch(() => {});
             this.injectGestures();
+        });
+
+        // Intercept cross-domain redirect loop (hotfix #7):
+        // After login on outlook.office.com, Microsoft redirects personal accounts
+        // to outlook.live.com/mail/?login_hint=... which loops with oauthRedirect.html.
+        // Strip the login_hint parameter to break the loop — the page loads
+        // outlook.live.com/mail/ directly. If the session is valid the mail UI
+        // appears; otherwise the user sees the sign-in page (no infinite loop).
+        this.win.webContents.on('will-navigate', (event, url) => {
+            if (url.includes('outlook.live.com/mail') && url.includes('login_hint=')) {
+                event.preventDefault();
+                const cleanUrl = url.split('?')[0]; // strip query params (login_hint)
+                this.loginHintIntercepts++;
+                logger.info(`Intercepted login_hint redirect #${this.loginHintIntercepts}: ${url} → ${cleanUrl}`);
+                // Safety: if intercepted too many times, the clean URL is also looping
+                if (this.loginHintIntercepts > 10) {
+                    logger.warn('Too many login_hint intercepts — falling back to office.com');
+                    this.loginHintIntercepts = 0;
+                    this.win.loadURL('https://outlook.office.com/mail/');
+                    return;
+                }
+                this.win.loadURL(cleanUrl);
+            }
         });
 
         // Re-inject after page finishes loading (catches late-rendered SPA content)
