@@ -115,3 +115,18 @@ test('settings: customBrowserPath defaults to undefined', {skip: !settingsAvaila
     const val = settings.get('customBrowserPath');
     assert.ok(val === undefined || val === null);
 });
+
+test('settings: darkMode defaults to auto', {skip: !settingsAvailable && 'requires Electron runtime'}, async () => {
+    const {settings} = await import('../src/settings.mjs');
+    assert.strictEqual(settings.get('darkMode'), 'auto');
+});
+
+test('settings: darkMode accepts valid values', {skip: !settingsAvailable && 'requires Electron runtime'}, async () => {
+    const {settings} = await import('../src/settings.mjs');
+    for (const mode of ['auto', 'on', 'off']) {
+        settings.set('darkMode', mode);
+        assert.strictEqual(settings.get('darkMode'), mode);
+    }
+    // Reset to default
+    settings.set('darkMode', 'auto');
+});
