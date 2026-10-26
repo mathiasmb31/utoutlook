@@ -6,59 +6,21 @@
    viewBox="0 0 800 800"
    xmlns="http://www.w3.org/2000/svg">
 
-  <defs>
-    <!-- Circular text path for rotating text -->
-    <path id="circle-text-path" d="
-      M 400,400
-      m -310,0
-      a 310,310 0 1,1 620,0
-      a 310,310 0 1,1 -620,0
-    " fill="none"/>
-
-    <!-- Reusable text on path -->
-    <text id="circle-text" font-family="Ubuntu, Cantarell, sans-serif" font-size="28" font-weight="600" letter-spacing="6" fill="#ffffff" opacity="0.85">
-      <textPath href="#circle-text-path" startOffset="0%">HUMAN MADE &#x2022; VIBE VERIFIED &#x2022; HUMAN MADE &#x2022; VIBE VERIFIED &#x2022;&#160;</textPath>
-    </text>
-  </defs>
-
   <!-- Background circle -->
   <circle cx="400" cy="400" r="390" fill="#0078d4"/>
 
   <!-- Inner subtle ring -->
   <circle cx="400" cy="400" r="360" fill="none" stroke="#ffffff" stroke-opacity="0.15" stroke-width="2"/>
 
-  <!-- Rotating text group -->
-  <g>
-    <use href="#circle-text"/>
-    <animateTransform
-      attributeName="transform"
-      attributeType="XML"
-      type="rotate"
-      from="0 400 400"
-      to="360 400 400"
-      dur="20s"
-      repeatCount="indefinite"
-    />
-  </g>
+  <!-- Large white "O" — Outlook style, readable at 64px -->
+  <text x="400" y="460" font-family="Ubuntu, Cantarell, sans-serif" font-size="300" font-weight="700" fill="#ffffff" text-anchor="middle">O</text>
 
-  <!-- Center: Outlook-style envelope icon -->
-  <g transform="translate(400, 400)">
-    <!-- Envelope body -->
-    <rect x="-110" y="-75" width="220" height="150" rx="12" fill="#ffffff"/>
-    <!-- Envelope flap (top triangle) -->
-    <path d="M -110,-63 L 0,20 L 110,-63" fill="none" stroke="#0078d4" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
-    <!-- Envelope bottom fold lines -->
-    <path d="M -110,63 L -30,0" fill="none" stroke="#0078d4" stroke-width="4" stroke-linecap="round" opacity="0.4"/>
-    <path d="M 110,63 L 30,0" fill="none" stroke="#0078d4" stroke-width="4" stroke-linecap="round" opacity="0.4"/>
-    <!-- Outlook "O" accent dot -->
-    <circle cx="0" cy="-28" r="18" fill="#0078d4"/>
-    <text x="0" y="-20" font-family="Ubuntu, Cantarell, sans-serif" font-size="24" font-weight="700" fill="#ffffff" text-anchor="middle">O</text>
+  <!-- White envelope below the O — mail context -->
+  <g transform="translate(400, 590) scale(0.55)">
+    <rect x="-110" y="-55" width="220" height="110" rx="10" fill="#ffffff"/>
+    <path d="M -110,-45 L 0,15 L 110,-45" fill="none" stroke="#0078d4" stroke-width="9" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="M -110,45 L -35,0" fill="none" stroke="#0078d4" stroke-width="5" stroke-linecap="round" opacity="0.4"/>
+    <path d="M 110,45 L 35,0" fill="none" stroke="#0078d4" stroke-width="5" stroke-linecap="round" opacity="0.4"/>
   </g>
-
-  <!-- Small decorative dots at cardinal points (static) -->
-  <circle cx="400" cy="30" r="5" fill="#ffffff" opacity="0.4"/>
-  <circle cx="400" cy="770" r="5" fill="#ffffff" opacity="0.4"/>
-  <circle cx="30" cy="400" r="5" fill="#ffffff" opacity="0.4"/>
-  <circle cx="770" cy="400" r="5" fill="#ffffff" opacity="0.4"/>
 
 </svg>
