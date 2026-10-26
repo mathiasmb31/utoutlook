@@ -1,6 +1,7 @@
 import {BrowserWindow, app, shell, ipcMain} from 'electron';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {t} from '../i18n.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,7 +32,7 @@ export function openAboutWindow() {
         fullscreenable: false,
         frame: false,
         transparent: true,
-        title: "About UToutlook Mail",
+        title: t('tray.about'),
         autoHideMenuBar: true,
         backgroundColor: '#00000000',
         webPreferences: {
@@ -41,12 +42,17 @@ export function openAboutWindow() {
         },
     });
 
-    // Build URL with query parameters for version and links
+    // Build URL with query parameters for version, links, and translations
     const htmlPath = path.join(__dirname, "../about.html");
     const params = new URLSearchParams({
         version: version,
         github: githubUrl,
         donate: donateUrl,
+        appName: t('app.name'),
+        description: t('about.description'),
+        tagline: t('about.tagline'),
+        basedOn: t('about.basedOn'),
+        reportIssue: t('about.reportIssue'),
     });
 
     aboutWindow.loadFile(htmlPath, {

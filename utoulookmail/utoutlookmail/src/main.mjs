@@ -4,6 +4,8 @@ import AccountManager from './account-manager.mjs';
 import {TrayController} from './controller/tray-controller.mjs';
 import {startSocketServer, stopSocketServer} from './ipc-socket.mjs';
 import {logger} from './logger.mjs';
+import {setLanguage} from './i18n.mjs';
+import {resolveLanguage} from './settings.mjs';
 import {
     CONFIG_DIR,
     HEARTBEAT_FILE,
@@ -109,6 +111,11 @@ class ProspectMail {
     // init the main app
     initApp() {
         app.on("ready", () => {
+            // Initialize i18n language from settings
+            const lang = resolveLanguage();
+            setLanguage(lang);
+            logger.info(`Language: ${lang}`);
+
             this.createControllers();
             this.startSocketServer();
             this.registerShortcuts();

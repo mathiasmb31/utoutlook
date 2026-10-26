@@ -10,6 +10,7 @@ export UTOUTLOOK_CONFIG_DIR="/home/phablet/.config/utoutlook.mathias"
 export UTOUTLOOK_CACHE_DIR="/home/phablet/.cache/utoutlook.mathias"
 export UTOUTLOOK_DATA_DIR="${UTOUTLOOK_CONFIG_DIR}/data"
 export UTOUTLOOK_PID_FILE="${UTOUTLOOK_DATA_DIR}/__prospect.pid"
+export UTOUTLOOK_LANG_FILE="${UTOUTLOOK_CONFIG_DIR}/lang"
 
 # Singleton lock files (Electron)
 export UTOUTLOOK_LOCK="${UTOUTLOOK_CONFIG_DIR}/prospect-mail/SingletonLock"
@@ -25,6 +26,100 @@ export UTOUTLOOK_SOCKET="${UTOUTLOOK_CONFIG_DIR}/utoutlook.sock"
 
 # --- Binary shortcuts (embedded in click, AppArmor-confined) ---
 UTOUTLOOK_BIN="${WD}/bin"
+
+# ============================================================
+# i18n — Read language from lang file (written by Electron)
+# Falls back to LANG env var, then to 'fr'
+# ============================================================
+utoutlook_get_lang() {
+	if [ -f "${UTOUTLOOK_LANG_FILE}" ]; then
+		cat "${UTOUTLOOK_LANG_FILE}" 2>/dev/null | tr -d '[:space:]'
+	else
+		echo "${LANG:-fr}" | cut -d_ -f1 | cut -d. -f1
+	fi
+}
+
+# ============================================================
+# i18n — Translate a key for the current language
+# Usage: utoutlook_t "shell.welcome"
+# ============================================================
+utoutlook_t() {
+	local key="$1"
+	local lang
+	lang=$(utoutlook_get_lang)
+	[ -z "${lang}" ] && lang="fr"
+
+	case "${key}" in
+		# --- Shell notifications ---
+		"shell.welcome")
+			case "${lang}" in
+				en) echo "Welcome to UToutlook Mail" ;;
+				es) echo "Bienvenido a UToutlook Mail" ;;
+				de) echo "Willkommen bei UToutlook Mail" ;;
+				it) echo "Benvenuto in UToutlook Mail" ;;
+				pt) echo "Bem-vindo ao UToutlook Mail" ;;
+				zh) echo "欢迎使用 UToutlook Mail" ;;
+				ar) echo "مرحباً بك في UToutlook Mail" ;;
+				*)  echo "Bienvenue dans UToutlook Mail" ;;
+			esac ;;
+		"shell.waitClose")
+			case "${lang}" in
+				en) echo "Please wait for UToutlook to close" ;;
+				es) echo "Espera a que UToutlook se cierre" ;;
+				de) echo "Bitte warte, bis UToutlook geschlossen wird" ;;
+				it) echo "Attendi la chiusura di UToutlook" ;;
+				pt) echo "Aguarde o fecho do UToutlook" ;;
+				zh) echo "请等待 UToutlook 关闭" ;;
+				ar) echo "الرجاء الانتظار حتى يغلق UToutlook" ;;
+				*)  echo "Veuillez attendre la fermeture d'UToutlook" ;;
+			esac ;;
+		"shell.cleaning")
+			case "${lang}" in
+				en) echo "Cleaning UToutlook Mail" ;;
+				es) echo "Limpiando UToutlook Mail" ;;
+				de) echo "UToutlook Mail wird bereinigt" ;;
+				it) echo "Pulizia di UToutlook Mail" ;;
+				pt) echo "Limpando UToutlook Mail" ;;
+				zh) echo "正在清理 UToutlook Mail" ;;
+				ar) echo "جارٍ تنظيف UToutlook Mail" ;;
+				*)  echo "Nettoyage d'UToutlook Mail" ;;
+			esac ;;
+		"shell.noNetwork")
+			case "${lang}" in
+				en) echo "No network access... quitting" ;;
+				es) echo "Sin acceso a la red... cerrando" ;;
+				de) echo "Kein Netzwerkzugriff... wird beendet" ;;
+				it) echo "Nessun accesso di rete... chiusura" ;;
+				pt) echo "Sem acesso à rede... a encerrar" ;;
+				zh) echo "无网络访问...正在退出" ;;
+				ar) echo "لا يوجد وصول للشبكة... جارٍ الخروج" ;;
+				*)  echo "Pas d'accès réseau... fermeture" ;;
+			esac ;;
+		"shell.goodbye")
+			case "${lang}" in
+				en) echo "Goodbye UToutlook Mail!" ;;
+				es) echo "¡Adiós UToutlook Mail!" ;;
+				de) echo "Auf Wiedersehen UToutlook Mail!" ;;
+				it) echo "Arrivederci UToutlook Mail!" ;;
+				pt) echo "Adeus UToutlook Mail!" ;;
+				zh) echo "再见 UToutlook Mail！" ;;
+				ar) echo "وداعاً UToutlook Mail!" ;;
+				*)  echo "Au revoir UToutlook Mail !" ;;
+			esac ;;
+		"shell.resetDone")
+			case "${lang}" in
+				en) echo "Reset done... launch UToutlook Mail" ;;
+				es) echo "Restablecimiento hecho... inicia UToutlook Mail" ;;
+				de) echo "Zurücksetzen erledigt... starte UToutlook Mail" ;;
+				it) echo "Ripristino completato... avvia UToutlook Mail" ;;
+				pt) echo "Redefinição concluída... inicie o UToutlook Mail" ;;
+				zh) echo "重置完成...请启动 UToutlook Mail" ;;
+				ar) echo "اكتمل إعادة التعيين... شغّل UToutlook Mail" ;;
+				*)  echo "Réinitialisation effectuée... lancez UToutlook Mail" ;;
+			esac ;;
+		*) echo "${key}" ;;
+	esac
+}
 
 # ============================================================
 # Send a JSON command to the Electron app via Unix socket

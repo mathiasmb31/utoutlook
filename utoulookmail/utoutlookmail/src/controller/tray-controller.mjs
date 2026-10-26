@@ -1,6 +1,7 @@
 import {app, dialog, Menu, nativeImage, shell, Tray,} from 'electron';
 import {spawn} from 'child_process';
 import {settings} from "../settings.mjs";
+import {t, getAvailableLanguages, setLanguage, LANGUAGES} from "../i18n.mjs";
 import {fileURLToPath} from 'url';
 import path from 'node:path';
 
@@ -83,6 +84,17 @@ export class TrayController {
     buildContextMenu() {
         const activeId = this.accountManager.getActiveId();
         const accounts = this.accountManager.getAccounts();
+        const currentLang = settings.get('language') || 'auto';
+
+        // Build language submenu
+        const langSubmenu = Object.entries(getAvailableLanguages()).map(([code, name]) => ({
+            label: `${code === currentLang ? '● ' : '○ '}${name}`,
+            click: () => this.setLanguage(code),
+        }));
+        langSubmenu.unshift({
+            label: `${currentLang === 'auto' ? '● ' : '○ '}${t('tray.darkMode.auto')}`,
+            click: () => this.setLanguage('auto'),
+        });
 
         // Build accounts submenu
         const accountsSubmenu = accounts.map(acct => {
@@ -98,14 +110,14 @@ export class TrayController {
         // Add "Add account" and separator
         accountsSubmenu.push({type: "separator"});
         accountsSubmenu.push({
-            label: "+ Ajouter un compte",
+            label: t('tray.addAccount'),
             click: () => this.promptAddAccount(),
         });
 
         // Add "Remove account" for non-primary accounts
         if (accounts.length > 1) {
             accountsSubmenu.push({
-                label: "− Supprimer un compte",
+                label: t('tray.removeAccount'),
                 submenu: accounts
                     .filter(a => a.id !== activeId)
                     .map(acct => ({
@@ -116,92 +128,97 @@ export class TrayController {
         }
 
         const context = Menu.buildFromTemplate([
-            {label: "Show", click: () => this.forceShow()},
-            {label: "Reload", click: () => this.reloadWindow()},
+            {label: t('tray.show'), click: () => this.forceShow()},
+            {label: t('tray.reload'), click: () => this.reloadWindow()},
             {type: "separator"},
 
             {
-                label: "Comptes",
+                label: t('tray.accounts'),
                 submenu: accountsSubmenu,
             },
 
             {type: "separator"},
 
             {
-                label: "Settings",
+                label: t('tray.settings'),
                 submenu: [
                     {
-                        label: "Start Minimized",
+                        label: t('tray.startMinimized'),
                         type: "checkbox",
                         checked: settings.get("startMinimized"),
                         click: () => this.toggleStartMinimized(),
                     },
                     {type: "separator"},
                     {
-                        label: "Hide on Close",
+                        label: t('tray.hideOnClose'),
                         type: "checkbox",
                         checked: settings.get("hideOnClose"),
                         click: () => this.toggleHideOnClose(),
                     },
                     {
-                        label: "Hide on Minimize",
+                        label: t('tray.hideOnMinimize'),
                         type: "checkbox",
                         checked: settings.get("hideOnMinimize"),
                         click: () => this.toggleHideOnMinimize(),
                     },
                     {
-                        label: "Show Window Frame",
+                        label: t('tray.showWindowFrame'),
                         type: "checkbox",
                         checked: settings.get("showWindowFrame"),
                         click: () => this.toggleWindowFrame(),
                     },
                     {type: "separator"},
                     {
-                        label: "Mode lecture concentrée",
+                        label: t('tray.focusMode'),
                         type: "checkbox",
                         checked: settings.get("focusMode"),
                         click: () => this.toggleFocusMode(),
                     },
                     {
-                        label: "Mode sombre",
+                        label: t('tray.darkMode'),
                         submenu: [
-                            {label: "Auto (système)", click: () => this.setDarkMode('auto')},
-                            {label: "Toujours activé", click: () => this.setDarkMode('on')},
-                            {label: "Toujours désactivé", click: () => this.setDarkMode('off')},
+                            {label: t('tray.darkMode.auto'), click: () => this.setDarkMode('auto')},
+                            {label: t('tray.darkMode.on'), click: () => this.setDarkMode('on')},
+                            {label: t('tray.darkMode.off'), click: () => this.setDarkMode('off')},
                         ],
                     },
                     {
-                        label: "Couleur d'accent",
+                        label: t('tray.accentColor'),
                         submenu: [
-                            {label: "Bleu Outlook (défaut)", click: () => this.setAccentColor('#0078d4')},
-                            {label: "Vert", click: () => this.setAccentColor('#107c10')},
-                            {label: "Violet", click: () => this.setAccentColor('#5c2d91')},
-                            {label: "Rose", click: () => this.setAccentColor('#e3008c')},
-                            {label: "Orange", click: () => this.setAccentColor('#d83b01')},
-                            {label: "Rouge", click: () => this.setAccentColor('#a4262c')},
-                            {label: "Turquoise", click: () => this.setAccentColor('#00b7c3')},
+                            {label: t('color.blue'), click: () => this.setAccentColor('#0078d4')},
+                            {label: t('color.green'), click: () => this.setAccentColor('#107c10')},
+                            {label: t('color.purple'), click: () => this.setAccentColor('#5c2d91')},
+                            {label: t('color.pink'), click: () => this.setAccentColor('#e3008c')},
+                            {label: t('color.orange'), click: () => this.setAccentColor('#d83b01')},
+                            {label: t('color.red'), click: () => this.setAccentColor('#a4262c')},
+                            {label: t('color.turquoise'), click: () => this.setAccentColor('#00b7c3')},
                         ],
                     },
                     {type: "separator"},
                     {
-                        label: "Exporter les paramètres",
+                        label: t('tray.language'),
+                        submenu: langSubmenu,
+                    },
+                    {type: "separator"},
+                    {
+                        label: t('tray.exportSettings'),
                         click: () => this.exportSettings(),
                     },
                     {
-                        label: "Importer les paramètres",
+                        label: t('tray.importSettings'),
                         click: () => this.importSettings(),
                     },
                     {type: "separator"},
                     {
-                        label: "Show settings file",
+                        label: t('tray.showSettingsFile'),
                         click: () => shell.showItemInFolder(path.resolve(settings.path)),
                     },
                     {
-                        label: "Restore Default Settings",
+                        label: t('tray.restoreDefaults'),
                         click: () => this.restoreDefaultSettings(),
                     },
                     {
-                        label: "Reset Application Data",
+                        label: t('tray.resetAppData'),
                         click: () => this.confirmFullReset(),
                     },
                 ],
@@ -209,13 +226,29 @@ export class TrayController {
 
             {type: "separator"},
             {
-                label: "About UToutlook Mail",
+                label: t('tray.about'),
                 click: () => openAboutWindow(),
             },
-            {label: "Quit", click: () => this.cleanupAndQuit()},
+            {label: t('tray.quit'), click: () => this.cleanupAndQuit()},
         ]);
 
         this.tray.setContextMenu(context);
+    }
+
+    /**
+     * Change the application language.
+     * @param {string} lang - Language code or 'auto'
+     */
+    async setLanguage(lang) {
+        settings.set('language', lang);
+        const {setLanguage: setI18nLang, getLanguage} = await import('../i18n.mjs');
+        const {resolveLanguage} = await import('../settings.mjs');
+        const effectiveLang = resolveLanguage();
+        setI18nLang(effectiveLang);
+        logger.info(`Language changed to: ${effectiveLang}`);
+        this.buildContextMenu();
+        // Reload all windows to apply new language to injected content
+        this.accountManager.reloadAll();
     }
 
     createTrayIcon(value) {
@@ -334,7 +367,7 @@ export class TrayController {
      */
     async exportSettings() {
         const result = await dialog.showSaveDialog({
-            title: "Exporter les paramètres",
+            title: t('dialog.export.title'),
             defaultPath: "utoutlook-settings.json",
             filters: [{name: "JSON", extensions: ["json"]}],
         });
@@ -347,14 +380,14 @@ export class TrayController {
             logger.info(`Settings exported to: ${result.filePath}`);
             await dialog.showMessageBox({
                 type: "info",
-                buttons: ["OK"],
-                title: "Export réussi",
-                message: "Paramètres exportés.",
-                detail: `Fichier : ${result.filePath}`,
+                buttons: [t('common.ok')],
+                title: t('dialog.export.success.title'),
+                message: t('dialog.export.success.message'),
+                detail: t('dialog.export.success.detail', {path: result.filePath}),
             });
         } catch (error) {
             logger.error('Export failed:', error);
-            dialog.showErrorBox("Export échoué", error.message);
+            dialog.showErrorBox(t('dialog.export.error'), error.message);
         }
     }
 
@@ -363,7 +396,7 @@ export class TrayController {
      */
     async importSettings() {
         const result = await dialog.showOpenDialog({
-            title: "Importer les paramètres",
+            title: t('dialog.import.title'),
             filters: [{name: "JSON", extensions: ["json"]}],
             properties: ["openFile"],
         });
@@ -379,16 +412,16 @@ export class TrayController {
             logger.info(`Settings imported from: ${result.filePaths[0]}`);
             await dialog.showMessageBox({
                 type: "info",
-                buttons: ["OK"],
-                title: "Import réussi",
-                message: "Paramètres importés. Redémarrage recommandé.",
-                detail: "L'application va redémarrer pour appliquer tous les changements.",
+                buttons: [t('common.ok')],
+                title: t('dialog.import.success.title'),
+                message: t('dialog.import.success.message'),
+                detail: t('dialog.import.success.detail'),
             });
             app.relaunch();
             app.exit(0);
         } catch (error) {
             logger.error('Import failed:', error);
-            dialog.showErrorBox("Import échoué", `Fichier invalide : ${error.message}`);
+            dialog.showErrorBox(t('dialog.import.error'), t('dialog.import.error.detail', {error: error.message}));
         }
     }
 
@@ -398,13 +431,12 @@ export class TrayController {
     async promptAddAccount() {
         const {response} = await dialog.showMessageBox({
             type: "info",
-            buttons: ["Annuler", "Ajouter"],
+            buttons: [t('common.cancel'), t('dialog.addAccount.confirm')],
             defaultId: 1,
             cancelId: 0,
-            title: "Ajouter un compte",
-            message: "Ajouter un nouveau compte Outlook",
-            detail: "Un nouveau compte sera ajouté avec l'URL Outlook par défaut. " +
-                     "Vous devrez vous connecter séparément dans la nouvelle fenêtre.",
+            title: t('dialog.addAccount.title'),
+            message: t('dialog.addAccount.message'),
+            detail: t('dialog.addAccount.detail'),
         });
 
         if (response !== 1) return;
@@ -413,7 +445,7 @@ export class TrayController {
         const newId = `account-${Date.now()}`;
         this.accountManager.addAccount({
             id: newId,
-            name: `Compte ${accounts.length + 1}`,
+            name: t('account.new', {n: accounts.length + 1}),
             url: settings.get('urlMainWindow'),
             partition: `persist:utoutlook-${newId}`,
             enabled: true,
@@ -429,13 +461,12 @@ export class TrayController {
     async confirmRemoveAccount(id, name) {
         const {response} = await dialog.showMessageBox({
             type: "warning",
-            buttons: ["Annuler", "Supprimer"],
+            buttons: [t('common.cancel'), t('dialog.removeAccount.confirm')],
             defaultId: 1,
             cancelId: 0,
-            title: "Supprimer le compte",
-            message: `Supprimer le compte "${name}" ?`,
-            detail: "Les données de session de ce compte seront supprimées. " +
-                     "Vous devrez vous reconnecter si vous le réajoutez plus tard.",
+            title: t('dialog.removeAccount.title'),
+            message: t('dialog.removeAccount.message', {name}),
+            detail: t('dialog.removeAccount.detail'),
         });
 
         if (response !== 1) return;
@@ -445,13 +476,12 @@ export class TrayController {
     async restoreDefaultSettings() {
         const {response} = await dialog.showMessageBox({
             type: "warning",
-            buttons: ["Cancel", "Restore settings"],
+            buttons: [t('common.cancel'), t('dialog.restore.confirm')],
             defaultId: 1,
             cancelId: 0,
-            title: "Confirm Restore Settings",
-            message: "Restore all settings to default values?",
-            detail:
-                "This will restore all settings to their factory defaults but preserve your app data.",
+            title: t('dialog.restore.title'),
+            message: t('dialog.restore.message'),
+            detail: t('dialog.restore.detail'),
         });
 
         if (response !== 1) return;
@@ -470,8 +500,8 @@ export class TrayController {
             app.exit(0);
         } catch (error) {
             dialog.showErrorBox(
-                "Restore Failed",
-                `Could not Restore settings: ${error.message}`
+                t('dialog.export.error'),
+                `${error.message}`
             );
         }
     }
@@ -479,13 +509,12 @@ export class TrayController {
     async confirmFullReset() {
         const {response} = await dialog.showMessageBox({
             type: "warning",
-            buttons: ["Cancel", "Reset Everything"],
+            buttons: [t('common.cancel'), t('dialog.reset.confirm')],
             defaultId: 1,
             cancelId: 0,
-            title: "Confirm Full Reset",
-            message: "Clear ALL application data?",
-            detail:
-                "This will permanently delete:\n- All settings\n- Cached emails\n- Local data\n\nThe application will quit after completion and you will need to re-enter your login information.",
+            title: t('dialog.reset.title'),
+            message: t('dialog.reset.message'),
+            detail: t('dialog.reset.detail'),
         });
 
         if (response !== 1) return;
@@ -498,17 +527,17 @@ export class TrayController {
 
             await dialog.showMessageBox({
                 type: "info",
-                buttons: ["OK"],
-                title: "Reset Complete",
-                message: "All app data has been deleted.",
-                detail: "The application will now close.",
+                buttons: [t('common.ok')],
+                title: t('dialog.reset.success.title'),
+                message: t('dialog.reset.success.message'),
+                detail: t('dialog.reset.success.detail'),
             });
 
             app.exit(0);
         } catch (error) {
             await dialog.showErrorBox(
-                "Reset Failed",
-                `Could not clear app data:\n${error.message}`
+                t('dialog.export.error'),
+                `${error.message}`
             );
         }
     }

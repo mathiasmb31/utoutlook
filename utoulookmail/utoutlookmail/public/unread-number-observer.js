@@ -13,6 +13,24 @@ const CONFIG = {
   handlerRetryAgainDelayMs: 10000,   // 10 seconds for subsequent retry attempts
 };
 
+// i18n: translations injected by the main process
+const I18N = window.__utoutlookI18n || {
+  newMessagesTitle: 'New Messages',
+  newMessagesBody: '{count} unread message(s)',
+  calendarTitle: '{count} Calendar Reminder(s)',
+  appName: 'UToutlook Mail',
+};
+
+function tr(key, vars) {
+  let str = I18N[key] || key;
+  if (vars) {
+    for (const [k, v] of Object.entries(vars)) {
+      str = str.replace(new RegExp('\\{' + k + '\\}', 'g'), String(v));
+    }
+  }
+  return str;
+}
+
 let unreadCheckTimer;
 let lastUnreadNotificationTime;
 let lastCalendarNotificationTime;
@@ -73,8 +91,8 @@ const observeUnreadHandlers = {
 
           if (!lastUnreadNotificationTime || timeSinceLastNotification > CONFIG.unreadEmailThrottleMs) {
             showNotification(
-              "Prospect Mail: New Messages",
-              `There are ${unread} unread messages.`
+              `${I18N.appName}: ${tr('newMessagesTitle')}`,
+              tr('newMessagesBody', { count: unread })
             );
             lastUnreadNotificationTime = now;
           } else {
@@ -179,7 +197,7 @@ const observeUnreadHandlers = {
 
           console.log('Showing calendar notification:', reminderDetails);
           showNotification(
-            `Prospect Mail: ${reminderCount} Calendar Reminder${reminderCount > 1 ? 's' : ''}`,
+            `${I18N.appName}: ${tr('calendarTitle', { count: reminderCount })}`,
             reminderDetails.join('\n')
           );
           lastCalendarNotificationTime = now;

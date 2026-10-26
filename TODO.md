@@ -21,6 +21,7 @@
 - [x] Fix: preload.js — ajout de reload() manquant (référencé par offline.html)
 - [x] Tests: ajout tests validation darkMode
 - [x] Logo "Human made, vibe verified" — texte rotatif autour du cercle sur splash + about
+- [x] i18n — 8 langues (FR/EN/ES/DE/IT/PT/ZH/AR) : tray menu, dialogs, notifications, offline, splash, about, shell scripts
 
 ## Idées en réserve (non prioritaires)
 

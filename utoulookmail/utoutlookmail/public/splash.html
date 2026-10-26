@@ -51,8 +51,17 @@
 </head>
 <body>
   <div class="logo"><img src="../assets/logo-vibe.svg" alt="UToutlook Mail"></div>
-  <div class="app-name">UToutlook Mail</div>
-  <div class="app-sub">Chargement...</div>
+  <div class="app-name" id="app-name">UToutlook Mail</div>
+  <div class="app-sub" id="app-sub">Chargement...</div>
   <div class="spinner"></div>
+  <script>
+    (function() {
+      const params = new URLSearchParams(window.location.search);
+      const loading = params.get('loading');
+      const appName = params.get('appName');
+      if (loading) document.getElementById('app-sub').textContent = loading;
+      if (appName) document.getElementById('app-name').textContent = appName;
+    })();
+  </script>
 </body>
 </html>

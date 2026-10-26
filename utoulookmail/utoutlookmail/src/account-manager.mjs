@@ -9,6 +9,7 @@
 import MailWindowController from './controller/mail-window-controller.mjs';
 import {settings} from './settings.mjs';
 import {logger} from './logger.mjs';
+import {t} from './i18n.mjs';
 
 /**
  * @typedef {Object} AccountConfig
@@ -48,7 +49,7 @@ export class AccountManager {
         if (this.controllers.size === 0) {
             const fallback = {
                 id: 'default',
-                name: 'Compte principal',
+                name: t('account.default'),
                 url: settings.get('urlMainWindow'),
                 partition: 'persist:utoutlook-default',
                 enabled: true,
