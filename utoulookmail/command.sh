@@ -17,7 +17,7 @@ function cleanup() {
 function launch_prospect() {
 	cleanup
 	if [[ -f ${lock} ]]; then
-      notify "$(utoutlook_t 'shell.waitClose')"
+      "${WD}"/bin/notify "$(utoutlook_t 'shell.waitClose')"
 	fi
 	launchtry=$((launchtry + 1))
 	if [ "$launchtry" -gt 3 ]; then

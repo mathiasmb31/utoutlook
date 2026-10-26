@@ -1,8 +1,5 @@
 import {test} from 'node:test';
 import assert from 'node:assert';
-import path from 'node:path';
-import fs from 'node:fs';
-import os from 'node:os';
 
 // ============================================================
 // Tests for config.mjs — path constants
@@ -204,5 +201,18 @@ test('i18n: all languages have tray.quit translation', async () => {
         const translated = t('tray.quit');
         assert.ok(translated !== 'tray.quit', `Missing tray.quit for ${lang}`);
         assert.ok(translated.length > 0, `Empty tray.quit for ${lang}`);
+    }
+});
+
+test('i18n: all languages have context menu translations', async () => {
+    const {t, setLanguage, getAvailableLanguages} = await import('../src/i18n.mjs');
+    const ctxKeys = ['ctx.undo', 'ctx.redo', 'ctx.cut', 'ctx.copy', 'ctx.paste', 'ctx.selectAll', 'ctx.openLink', 'ctx.copyLink', 'ctx.inspect'];
+    for (const lang of Object.keys(getAvailableLanguages())) {
+        setLanguage(lang);
+        for (const key of ctxKeys) {
+            const translated = t(key);
+            assert.ok(translated !== key, `Missing ${key} for ${lang}`);
+            assert.ok(translated.length > 0, `Empty ${key} for ${lang}`);
+        }
     }
 });

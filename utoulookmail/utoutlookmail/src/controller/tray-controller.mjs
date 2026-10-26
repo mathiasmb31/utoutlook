@@ -1,7 +1,7 @@
 import {app, dialog, Menu, nativeImage, shell, Tray,} from 'electron';
 import {spawn} from 'child_process';
 import {settings} from "../settings.mjs";
-import {t, getAvailableLanguages, setLanguage, LANGUAGES} from "../i18n.mjs";
+import {t, getAvailableLanguages} from "../i18n.mjs";
 import {fileURLToPath} from 'url';
 import path from 'node:path';
 
@@ -241,7 +241,7 @@ export class TrayController {
      */
     async setLanguage(lang) {
         settings.set('language', lang);
-        const {setLanguage: setI18nLang, getLanguage} = await import('../i18n.mjs');
+        const {setLanguage: setI18nLang} = await import('../i18n.mjs');
         const {resolveLanguage} = await import('../settings.mjs');
         const effectiveLang = resolveLanguage();
         setI18nLang(effectiveLang);
@@ -306,9 +306,13 @@ export class TrayController {
         this.buildContextMenu();
         // Recreate all account windows with the new frame setting
         global.preventAutoCloseApp = true;
-        this.accountManager.quitAll();
-        this.accountManager.controllers.clear();
-        this.accountManager.init();
+        try {
+            this.accountManager.quitAll();
+            this.accountManager.controllers.clear();
+            this.accountManager.init();
+        } finally {
+            global.preventAutoCloseApp = false;
+        }
     }
 
     toggleHideOnClose() {

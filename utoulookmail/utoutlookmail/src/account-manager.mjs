@@ -127,24 +127,6 @@ export class AccountManager {
     }
 
     /**
-     * Show a specific account's window (without changing the active account).
-     * @param {string} id
-     */
-    showAccount(id) {
-        const controller = this.controllers.get(id);
-        if (controller) controller.show();
-    }
-
-    /**
-     * Toggle a specific account's window visibility.
-     * @param {string} id
-     */
-    toggleAccount(id) {
-        const controller = this.controllers.get(id);
-        if (controller) controller.toggleWindow();
-    }
-
-    /**
      * Add a new account.
      * @param {AccountConfig} config
      * @returns {MailWindowController}
@@ -259,15 +241,6 @@ export class AccountManager {
     reloadAll() {
         for (const controller of this.controllers.values()) {
             controller.reloadWindow();
-        }
-    }
-
-    /**
-     * Show all account windows.
-     */
-    showAll() {
-        for (const controller of this.controllers.values()) {
-            controller.show();
         }
     }
 

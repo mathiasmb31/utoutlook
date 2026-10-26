@@ -16,23 +16,11 @@ import {
 } from '../config.mjs';
 import {logger} from '../logger.mjs';
 
-let mainMailServiceUrl;
-let deeplinkUrls;
-let safelinksUrls;
-let mailServicesUrls;
-let showWindowFrame;
-let loginPage;
 const __filenameNew = fileURLToPath(import.meta.url);
 const __dirnameNew = path.dirname(__filenameNew);
 
-// Setted by cmdLine to initial minimization
-const initialMinimization = {
-    domReady: false,
-};
-
 // Zoom levels for mobile (step through with zoomIn/zoomOut)
 const ZOOM_LEVELS = [0.75, 0.85, 1.0, 1.15, 1.3, 1.5];
-let currentZoomIndex = 2; // start at 1.0
 
 /**
  * MailWindowController — Orchestre la fenêtre principale Electron affichant Outlook Web.
@@ -48,7 +36,16 @@ let currentZoomIndex = 2; // start at 1.0
  */
 class MailWindowController {
     constructor(accountConfig = null) {
-        loginPage = 0;
+        // Per-instance state (was module-level — caused cross-account leaks)
+        this.mainMailServiceUrl = null;
+        this.deeplinkUrls = [];
+        this.safelinksUrls = [];
+        this.mailServicesUrls = [];
+        this.showWindowFrame = true;
+        this.loginPage = 0;
+        this.currentZoomIndex = 2; // start at 1.0
+        this.initialMinimization = { domReady: false };
+
         this.cssKeys = { main: null, noFrame: null, dark: null, focus: null, accent: null };
         this.cacheWatcher = null;
         this.triggerTimers = new Map(); // debounce timers for file triggers
@@ -63,7 +60,7 @@ class MailWindowController {
         // Check both command-line flag and settings for initial minimization
         const hasMinimizedFlag = global.cmdLine.indexOf("--minimized") !== -1;
         const startMinimizedSetting = settings.get("startMinimized");
-        initialMinimization.domReady = hasMinimizedFlag || startMinimizedSetting;
+        this.initialMinimization.domReady = hasMinimizedFlag || startMinimizedSetting;
     }
 
     /**
@@ -71,23 +68,26 @@ class MailWindowController {
      * pour les URLs internes, externes et safelinks.
      */
     reloadSettings() {
-        showWindowFrame = settings.get("showWindowFrame");
+        this.showWindowFrame = settings.get("showWindowFrame");
         // Use account-specific URL if configured, fall back to global setting
-        mainMailServiceUrl = this.accountConfig?.url || settings.get("urlMainWindow");
-        deeplinkUrls = settings.get("urlsInternal");
-        mailServicesUrls = settings.get("urlsExternal");
-        safelinksUrls = settings.get("safelinksUrls");
+        this.mainMailServiceUrl = this.accountConfig?.url || settings.get("urlMainWindow");
+        this.deeplinkUrls = settings.get("urlsInternal");
+        this.mailServicesUrls = settings.get("urlsExternal");
+        this.safelinksUrls = settings.get("safelinksUrls");
         this.focusMode = settings.get("focusMode") || false;
         this.accentColor = settings.get("accentColor") || '#0078d4';
 
         logger.info("Loaded settings", {
-            mainMailServiceUrl, deeplinkUrls, mailServicesUrls, safelinksUrls,
+            mainMailServiceUrl: this.mainMailServiceUrl,
+            deeplinkUrls: this.deeplinkUrls,
+            mailServicesUrls: this.mailServicesUrls,
+            safelinksUrls: this.safelinksUrls,
         });
 
         const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        this.safelinksPattern = new RegExp(safelinksUrls.map(escapeRegex).join("|"));
-        this.deeplinkPattern = new RegExp(deeplinkUrls.map(escapeRegex).join("|"));
-        this.mailServicesPattern = new RegExp(mailServicesUrls.map(escapeRegex).join("|"));
+        this.safelinksPattern = new RegExp(this.safelinksUrls.map(escapeRegex).join("|"));
+        this.deeplinkPattern = new RegExp(this.deeplinkUrls.map(escapeRegex).join("|"));
+        this.mailServicesPattern = new RegExp(this.mailServicesUrls.map(escapeRegex).join("|"));
     }
 
     /**
@@ -135,17 +135,17 @@ class MailWindowController {
     handleZoomCommand(action) {
         if (!this.win || this.win.isDestroyed()) return;
         if (action === 'in') {
-            currentZoomIndex = Math.min(currentZoomIndex + 1, ZOOM_LEVELS.length - 1);
+            this.currentZoomIndex = Math.min(this.currentZoomIndex + 1, ZOOM_LEVELS.length - 1);
         } else if (action === 'out') {
-            currentZoomIndex = Math.max(currentZoomIndex - 1, 0);
+            this.currentZoomIndex = Math.max(this.currentZoomIndex - 1, 0);
         } else if (action === 'reset') {
-            currentZoomIndex = 2;
+            this.currentZoomIndex = 2;
         } else if (typeof action === 'number') {
             this.win.webContents.setZoomFactor(action);
             return;
         }
-        this.win.webContents.setZoomFactor(ZOOM_LEVELS[currentZoomIndex]);
-        logger.info(`Zoom set to ${ZOOM_LEVELS[currentZoomIndex]}`);
+        this.win.webContents.setZoomFactor(ZOOM_LEVELS[this.currentZoomIndex]);
+        logger.info(`Zoom set to ${ZOOM_LEVELS[this.currentZoomIndex]}`);
     }
 
     /**
@@ -244,9 +244,10 @@ class MailWindowController {
      * Envoie une notification Ubuntu Touch via le binary `notify` (D-Bus Postal).
      * @param {string} title - Titre de la notification
      * @param {string} [body] - Corps de la notification
+     * @param {Function} [onError] - Callback appelé si le spawn échoue (async)
      * @returns {boolean} true si la notification a été envoyée
      */
-    sendUbportsNotification(title, body) {
+    sendUbportsNotification(title, body, onError) {
         const notifyPath = this.getNotifyBinaryPath();
         if (!notifyPath) return false;
         try {
@@ -255,6 +256,7 @@ class MailWindowController {
             child.unref();
             child.on('error', (err) => {
                 logger.error('Failed to spawn notify binary:', err);
+                if (onError) onError();
             });
             return true;
         } catch (err) {
@@ -399,8 +401,9 @@ class MailWindowController {
             [class*="upgradeBanner"] {
                 display: none !important;
             }
-            /* Hide reading pane header actions (keep essential) */
-            [class*="commandBar"] button:not([aria-label*="Répondre"]):not([aria-label*="Reply"]):not([aria-label*="Transférer"]):not([aria-label*="Forward"]) {
+            /* Hide reading pane header actions (keep first 3 primary buttons: Reply, Forward, etc.) */
+            [class*="commandBar"] button:nth-child(n+4),
+            [class*="commandBar"] [role="button"]:nth-child(n+4) {
                 display: none !important;
             }
             /* Maximize email content area */
@@ -573,7 +576,7 @@ class MailWindowController {
         this.win = new BrowserWindow({
             x: 100, y: 100,
             width: 1400, height: 900,
-            frame: showWindowFrame,
+            frame: this.showWindowFrame,
             autoHideMenuBar: true,
             show: false,
             title: `UToulookMail — ${this.accountName}`,
@@ -602,11 +605,11 @@ class MailWindowController {
             `Mozilla/5.0 ${userAgentOS} AppleWebKit/537.36 (KHTML, like Gecko) ` +
             `Chrome/${chromeVersion} Safari/537.36 Edg/${chromeVersion}`;
 
-        this.win.loadURL(mainMailServiceUrl, {userAgent: customUserAgent});
+        this.win.loadURL(this.mainMailServiceUrl, {userAgent: customUserAgent});
 
         this.win.webContents.on('did-finish-load', () => {
-            loginPage++;
-            if (loginPage < 2) logger.info("LOGIN WINDOW");
+            this.loginPage++;
+            if (this.loginPage < 2) logger.info("LOGIN WINDOW");
         });
 
         fs.writeFile(LOGIN_FLAG_FILE, 'notif!', err => { if (err) logger.error(err); });
@@ -627,41 +630,41 @@ class MailWindowController {
             const menuTemplate = [];
             if (params.isEditable) {
                 menuTemplate.push(
-                    {label: "Undo", role: "undo"},
-                    {label: "Redo", role: "redo"},
+                    {label: t('ctx.undo'), role: "undo"},
+                    {label: t('ctx.redo'), role: "redo"},
                     {type: "separator"},
-                    {label: "Cut", role: "cut", enabled: params.editFlags.canCut},
-                    {label: "Copy", role: "copy", enabled: params.editFlags.canCopy},
-                    {label: "Paste", role: "paste", enabled: params.editFlags.canPaste},
+                    {label: t('ctx.cut'), role: "cut", enabled: params.editFlags.canCut},
+                    {label: t('ctx.copy'), role: "copy", enabled: params.editFlags.canCopy},
+                    {label: t('ctx.paste'), role: "paste", enabled: params.editFlags.canPaste},
                     {type: "separator"},
-                    {label: "Select All", role: "selectAll"}
+                    {label: t('ctx.selectAll'), role: "selectAll"}
                 );
             } else {
                 if (params.selectionText) {
-                    menuTemplate.push({label: "Copy", role: "copy"});
+                    menuTemplate.push({label: t('ctx.copy'), role: "copy"});
                 }
                 if (params.linkURL) {
                     if (menuTemplate.length > 0) menuTemplate.push({type: "separator"});
                     menuTemplate.push(
                         {
-                            label: "Open Link in Browser",
+                            label: t('ctx.openLink'),
                             click: () => { this.openExternalLink(params.linkURL); },
                         },
                         {
-                            label: "Copy Link Address",
+                            label: t('ctx.copyLink'),
                             click: () => { clipboard.writeText(params.linkURL); },
                         }
                     );
                 }
                 if (params.selectionText || params.pageURL) {
                     if (menuTemplate.length > 0) menuTemplate.push({type: "separator"});
-                    menuTemplate.push({label: "Select All", role: "selectAll"});
+                    menuTemplate.push({label: t('ctx.selectAll'), role: "selectAll"});
                 }
             }
             if (isDev) {
                 if (menuTemplate.length > 0) menuTemplate.push({type: "separator"});
                 menuTemplate.push({
-                    label: "Inspect Element",
+                    label: t('ctx.inspect'),
                     click: () => { this.win.webContents.inspectElement(params.x, params.y); },
                 });
             }
@@ -746,10 +749,23 @@ class MailWindowController {
         fs.writeFile(NOTIF_FLAG_FILE, 'notif!', err => { if (err) logger.error(err); });
 
         // Relay to Ubuntu Touch notifications (D-Bus Postal / Lomiri)
-        const sentToUbports = this.sendUbportsNotification(title, body);
+        const sentToUbports = this.sendUbportsNotification(title, body, () => {
+            // Async spawn failure — fall back to Electron native
+            this.showElectronNotification(title, body, icon);
+        });
         if (sentToUbports) return;
 
         // Fallback: Electron native notification (desktop)
+        this.showElectronNotification(title, body, icon);
+    }
+
+    /**
+     * Affiche une notification native Electron (fallback desktop).
+     * @param {string} title
+     * @param {string} body
+     * @param {string|null} icon
+     */
+    showElectronNotification(title, body, icon) {
         if (!Notification.isSupported()) return;
         const notificationConfig = {title, body};
         const iconPath = icon || ICON_PATH;
@@ -782,7 +798,7 @@ class MailWindowController {
                 );
             }
 
-            if (!initialMinimization.domReady) {
+            if (!this.initialMinimization.domReady) {
                 this.win.show();
             }
         });
@@ -884,7 +900,7 @@ class MailWindowController {
         this.win.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
             // Network-related error codes
             const networkErrors = [-3, -100, -101, -102, -105, -106, -109, -118, -121, -137, -323];
-            if (networkErrors.includes(errorCode) && !validatedURL.startsWith('file://')) {
+            if (networkErrors.includes(errorCode) && validatedURL && !validatedURL.startsWith('file://')) {
                 logger.warn(`Network error ${errorCode}: ${errorDescription} — showing offline overlay`);
                 this.showOfflineOverlay();
                 this.startConnectivityMonitor();
@@ -984,7 +1000,7 @@ class MailWindowController {
 
         // Insert fresh CSS
         this.cssKeys.main = await this.win.webContents.insertCSS(getClientFile("main.css"));
-        if (!showWindowFrame) {
+        if (!this.showWindowFrame) {
             this.cssKeys.noFrame = await this.win.webContents.insertCSS(getClientFile("no-frame.css"));
         }
         if (this.shouldUseDarkMode()) {
@@ -1030,7 +1046,7 @@ class MailWindowController {
         if (this.win.isVisible()) {
             this.win.hide();
         } else {
-            initialMinimization.domReady = false;
+            this.initialMinimization.domReady = false;
             this.show();
         }
     }
@@ -1039,7 +1055,7 @@ class MailWindowController {
      * Recharge la page Outlook.
      */
     reloadWindow() {
-        initialMinimization.domReady = false;
+        this.initialMinimization.domReady = false;
         this.win.reload();
     }
 
@@ -1047,8 +1063,8 @@ class MailWindowController {
      * Affiche la fenêtre principale (restore si minimisée).
      * Extrait également le token fb_dtsg de la page.
      */
-    show() {
-        initialMinimization.domReady = false;
+    async show() {
+        this.initialMinimization.domReady = false;
         if (this.win.isMinimized()) {
             this.win.restore();
         } else {
@@ -1057,12 +1073,14 @@ class MailWindowController {
         this.win.focus();
 
         // Extract fb_dtsg token from the page
-        this.win.webContents.executeJavaScript(
-            `(() => { const el = document.querySelector('input[name="fb_dtsg"]'); return el ? el.value : null; })()`,
-            (result) => {
-                if (result) logger.debug("fb_dtsg token retrieved");
-            }
-        );
+        try {
+            const result = await this.win.webContents.executeJavaScript(
+                `(() => { const el = document.querySelector('input[name="fb_dtsg"]'); return el ? el.value : null; })()`
+            );
+            if (result) logger.debug("fb_dtsg token retrieved");
+        } catch (err) {
+            logger.debug("Could not extract fb_dtsg token:", err.message);
+        }
     }
 }
 

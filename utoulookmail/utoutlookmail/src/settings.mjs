@@ -162,6 +162,9 @@ for (const key of ['showWindowFrame', 'hideOnClose', 'hideOnMinimize', 'startMin
 // Language setting + lang file for shell scripts
 // ============================================================
 
+// Cache for the Electron app reference (avoids repeated require calls)
+let cachedApp = null;
+
 /**
  * Resolve the effective language code from the setting.
  * @returns {string} Language code (fr, en, es, ...)
@@ -171,8 +174,10 @@ export function resolveLanguage() {
     if (lang === 'auto') {
         // Detect from Electron's locale (set by the OS)
         try {
-            const {app} = require('electron');
-            return detectLanguage(app.getLocale());
+            if (!cachedApp) {
+                cachedApp = require('electron').app;
+            }
+            return detectLanguage(cachedApp.getLocale());
         } catch {
             return detectLanguage(process.env.LANG || 'fr');
         }
@@ -183,7 +188,7 @@ export function resolveLanguage() {
 /**
  * Write the current language to a file so shell scripts can read it.
  */
-function writeLangFile() {
+export function writeLangFile() {
     const lang = resolveLanguage();
     try {
         fs.mkdirSync(path.dirname(LANG_FILE), {recursive: true});

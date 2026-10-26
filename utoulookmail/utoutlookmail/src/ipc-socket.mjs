@@ -141,14 +141,3 @@ function handleCommand(msg, handlers) {
             return {ok: false, error: `Unknown command: ${cmd}`};
     }
 }
-
-/**
- * Send a message to all connected clients (e.g., for push notifications).
- * @param {Object} message
- */
-export function broadcast(message) {
-    const data = JSON.stringify(message) + '\n';
-    for (const socket of activeConnections) {
-        socket.write(data);
-    }
-}
