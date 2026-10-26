@@ -34,6 +34,17 @@
 - [x] Fix: cleanup observer avant réinjection (évite les doublons)
 - [x] Tests: 8 nouveaux tests (30 total, 25 pass + 5 skip Electron)
 
+## Fait (v3.2.2 — fix notifs scripts shell)
+
+- [x] Fix: notify binary — return exit code 1 si D-Bus échoue (main.cpp)
+- [x] Fix: notify binary — timeout D-Bus 5s au lieu de 25s (pushclient.cpp)
+- [x] Fix: utoutlook_notify — retry 3x avec délai 2s (common.sh)
+- [x] Fix: utoutlook_wait_notifications — attente service notif (15s max)
+- [x] Fix: command.sh — remplacer appels directs notify par utoutlook_notify
+- [x] Fix: command.sh — attendre notif service avant welcome
+- [x] Fix: reset_zoom.sh — utiliser utoutlook_notify
+- [x] Tests: 7 nouveaux tests (37 total, 32 pass + 5 skip Electron)
+
 ## Idées en réserve (non prioritaires)
 
 - [ ] Raccourcis clavier personnalisables
