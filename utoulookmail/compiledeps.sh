@@ -35,9 +35,23 @@ echo "[3/4] Install dependencies..."
 cd ${BUILD_DIR}
 DEPENDENCIES="libhybris-utils notify-osd xdotool libmaliit-glib2 libxdo3 x11-utils"
 
+# libmaliit-glib2 n'existe pas dans le dépôt focal (20.04) du conteneur : c'est
+# un paquet noble (24.04). La cible étant Ubuntu Touch 24.04 (noble), on le
+# télécharge depuis le pool noble de ports.ubuntu.com (ou on réutilise le cache).
+MALIIT_GLIB2_URL="http://ports.ubuntu.com/ubuntu-ports/pool/universe/m/maliit-framework/libmaliit-glib2_2.3.0-4build5_arm64.deb"
+
 for dep in $DEPENDENCIES; do
-	apt download $dep:arm64
-	mv ${dep}_*.deb ${dep}.deb
+	if [ "$dep" = "libmaliit-glib2" ]; then
+		if [ ! -f "${dep}.deb" ]; then
+			echo "libmaliit-glib2 absent de focal -> pool noble"
+			wget -q "$MALIIT_GLIB2_URL" -O "${dep}.deb"
+		else
+			echo "Using cached ${dep}.deb"
+		fi
+	else
+		apt download $dep:arm64
+		mv ${dep}_*.deb ${dep}.deb
+	fi
 	rm -rvf "${dep}.deb_extract_chsdjksd" || true
 	mkdir "${dep}.deb_extract_chsdjksd"
 	dpkg-deb -x "${dep}.deb" "${dep}.deb_extract_chsdjksd"
