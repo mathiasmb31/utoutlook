@@ -70,6 +70,20 @@
 - [x] Fix: skip checkUnread quand le title inbox est absent (garde re-render SPA)
 - [x] Tests: 2 nouveaux tests (59 total, 54 pass + 5 skip Electron)
 
+## Fait (v3.2.2 — hotfix #9 élément inbox périmé, fausses notifications)
+
+- [x] Fix: inboxElement const → let, re-querié à chaque checkUnread (la SPA Outlook recrée le nœud DOM à la navigation)
+- [x] Fix: garde document.contains() — ignorer un élément déconnecté du DOM (titre périmé = faux compte non lus)
+- [x] Fix: zeroUnreadConfirmCount — 2 lectures nulles consécutives requises avant d'accepter une chute à 0
+- [x] (pas de nouveaux tests — fix ciblé sur unread-number-observer.js)
+
+## Fait (v3.2.2 — hotfix #10 debounce badge + trace sources de notification)
+
+- [x] Trace: console.log('[UTOUTLOOK NOTIF]') dans showNotification() + logger.info('[NOTIFICATION] …') dans handleNotification()
+- [x] Fix: updateUnreadDebounced() — badge différé de 2 s (anti-scintillement pendant les re-renders SPA)
+- [x] Fix: ignorer updateUnread(0) tant que le zéro n'est pas confirmé
+- [x] (pas de nouveaux tests — fix ciblé observer + contrôleur)
+
 ## Idées en réserve (non prioritaires)
 
 - [ ] Raccourcis clavier personnalisables
