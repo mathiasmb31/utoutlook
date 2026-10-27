@@ -617,3 +617,34 @@ test('mail-window-controller: loop detector uses cookie sync instead of clear se
     assert.ok(!loopHandlerSection.includes('clearOutlookSession()'),
         'Loop detector should NOT clear session (cookie sync replaces that approach)');
 });
+
+// ============================================================
+// Tests for hotfix #8 — persistent observer state (no false notifications)
+// ============================================================
+
+test('observer: state persists in window.__utoutlookState across re-injections', async () => {
+    const fs = await import('node:fs');
+    const obsPath = path.resolve(__dirname, '../public/unread-number-observer.js');
+    const content = fs.readFileSync(obsPath, 'utf-8');
+    assert.ok(content.includes('window.__utoutlookState'),
+        'Observer should use window.__utoutlookState for persistent state across re-injections');
+    assert.ok(content.includes('const state = window.__utoutlookState'),
+        'Observer should reference persistent state via a local const alias');
+    // Should NOT have standalone lastUnreadCount / lastReminderCount as let variables
+    // (they would reset on re-injection)
+    const standaloneMatches = content.match(/^let (lastUnreadCount|lastReminderCount|lastUnreadNotificationTime|lastCalendarNotificationTime)/gm) || [];
+    assert.strictEqual(standaloneMatches.length, 0,
+        `Observer should NOT declare lastUnread* as standalone let variables (found: ${standaloneMatches.join(', ')})`);
+});
+
+test('observer: skips check when inbox title is missing (SPA re-render guard)', async () => {
+    const fs = await import('node:fs');
+    const obsPath = path.resolve(__dirname, '../public/unread-number-observer.js');
+    const content = fs.readFileSync(obsPath, 'utf-8');
+    assert.ok(content.includes('titleValid'),
+        'Observer should track title validity to detect SPA re-render');
+    assert.ok(content.includes('!titleValid'),
+        'Observer should skip check when title is missing/unparseable');
+    assert.ok(content.includes('DOM mid-render'),
+        'Observer should log when skipping due to mid-render DOM');
+});
