@@ -1,21 +1,33 @@
 #!/bin/bash
 set -e # Exit immediately on error
 
+FORCE_BUILD=0
+if [ "$1" = "--force" ]; then
+	FORCE_BUILD=1
+fi
+
 echo "[1/4] Building notify ..."
 cd $ROOT
 
-cmake .
-make 
-
-
+# Cache: skip rebuild if binary exists and --force not passed
+if [ "$FORCE_BUILD" -eq 0 ] && [ -x "$ROOT/notify" ]; then
+	echo "notify binary already exists, skipping (use --force to rebuild)"
+else
+	cmake .
+	make
+fi
 
 echo "[2/4] Building fake xdg-open ..."
-cp -r ${ROOT}/utils/xdg-open/ ${BUILD_DIR}/
-cd ${BUILD_DIR}/xdg-open/
-mkdir -p build
-cd build
-cmake ..
-make
+if [ "$FORCE_BUILD" -eq 0 ] && [ -x "${BUILD_DIR}/xdg-open/build/xdg-open-test" ]; then
+	echo "xdg-open-test already built, skipping (use --force to rebuild)"
+else
+	cp -r ${ROOT}/utils/xdg-open/ ${BUILD_DIR}/
+	cd ${BUILD_DIR}/xdg-open/
+	mkdir -p build
+	cd build
+	cmake ..
+	make
+fi
 echo "Copying libnotify"
 cp ${BUILD_DIR}/libnotify/libnotify-0.8.3/obj-aarch64-linux-gnu/libnotify/* $INSTALL_DIR/lib/aarch64-linux-gnu/ || true
 echo "[3/4] Install dependencies..."
@@ -23,9 +35,23 @@ echo "[3/4] Install dependencies..."
 cd ${BUILD_DIR}
 DEPENDENCIES="libhybris-utils notify-osd xdotool libmaliit-glib2 libxdo3 x11-utils"
 
+# libmaliit-glib2 n'existe pas dans le dépôt focal (20.04) du conteneur : c'est
+# un paquet noble (24.04). La cible étant Ubuntu Touch 24.04 (noble), on le
+# télécharge depuis le pool noble de ports.ubuntu.com (ou on réutilise le cache).
+MALIIT_GLIB2_URL="http://ports.ubuntu.com/ubuntu-ports/pool/universe/m/maliit-framework/libmaliit-glib2_2.3.0-4build5_arm64.deb"
+
 for dep in $DEPENDENCIES; do
-	apt download $dep:arm64
-	mv ${dep}_*.deb ${dep}.deb
+	if [ "$dep" = "libmaliit-glib2" ]; then
+		if [ ! -f "${dep}.deb" ]; then
+			echo "libmaliit-glib2 absent de focal -> pool noble"
+			wget -q "$MALIIT_GLIB2_URL" -O "${dep}.deb"
+		else
+			echo "Using cached ${dep}.deb"
+		fi
+	else
+		apt download $dep:arm64
+		mv ${dep}_*.deb ${dep}.deb
+	fi
 	rm -rvf "${dep}.deb_extract_chsdjksd" || true
 	mkdir "${dep}.deb_extract_chsdjksd"
 	dpkg-deb -x "${dep}.deb" "${dep}.deb_extract_chsdjksd"

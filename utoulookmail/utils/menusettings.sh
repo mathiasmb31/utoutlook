@@ -1,3 +1,4 @@
+#!/bin/bash
 set -x
 trap 'printf "%3d: " "$LINENO"' DEBUG
 export QML_XHR_ALLOW_FILE_WRITE=1

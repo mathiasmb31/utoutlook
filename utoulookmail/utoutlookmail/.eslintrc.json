@@ -1,0 +1,38 @@
+{
+  "root": true,
+  "env": {
+    "es2022": true,
+    "node": true
+  },
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "module"
+  },
+  "rules": {
+    "no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+    "no-console": "off",
+    "prefer-const": "warn",
+    "no-var": "error",
+    "eqeqeq": ["warn", "always"],
+    "semi": ["warn", "always"],
+    "indent": ["warn", 4],
+    "quotes": ["warn", "single", { "avoidEscape": true }],
+    "comma-dangle": ["warn", "never"],
+    "eol-last": ["warn", "always"],
+    "no-trailing-spaces": "warn"
+  },
+  "overrides": [
+    {
+      "files": ["src/controller/preload.js", "src/controller/about-preload.js"],
+      "parserOptions": { "sourceType": "script" },
+      "rules": {
+        "no-undef": "off"
+      }
+    },
+    {
+      "files": ["public/*.js"],
+      "env": { "browser": true },
+      "parserOptions": { "sourceType": "script" }
+    }
+  ]
+}
