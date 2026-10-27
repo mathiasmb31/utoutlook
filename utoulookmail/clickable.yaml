@@ -1,4 +1,5 @@
 clickable_minimum_required: 8.4.0
+framework: ubuntu-touch-24.04-1.x
 builder: custom
 skip_review: false
 kill: prospect-mail
@@ -65,6 +66,3 @@ install_root_data:
 dependencies_host: ["netcat-traditional","libnotify-bin","notify-osd","psmisc","g++","jq","libgtk2.0-dev","libgtk-3-dev","libmaliit-glib-dev","build-essential","meson","libtool","m4","automake","squashfs-tools","qemu-user-static" , "tree" , "patchelf", "git", "jq", "curl", "build-essential", "python3", "python3-pip", "libudev-dev", "dpkg", "moreutils","libssl-dev", "libsqlite3-dev", "libcrypto++-dev", "libsqlcipher-dev", "npm", "git-lfs", "execstack", "imagemagick", "librsvg2-bin", "debhelper-compat", "xauth", "xvfb",'squashfs-tools']
 
 dependencies_target: [ "netcat-traditional","iputils-ping","notify-osd","libnotify-bin","psmisc","qemu-user-static","g++", "fuse", "zlib1g","libfuse2","squashfs-tools","libgtk2.0-dev","libgtk-3-dev","libmaliit-glib-dev"]
-
-env_vars:
-  CCACHE_DIR: /mnt/five/vibeworkspace/utoutlook/utoulookmail/.ccache
