@@ -92,6 +92,15 @@
 - [x] Tests: 1 nouveau test (60 total, 55 pass + 5 skip Electron)
 - [x] Vérifié sur téléphone : fix présent dans l'asar, livraison `com.lomiri.Postal.Post` OK (`[POST SUCCESS]`)
 
+## Fait (v3.2.2 — hotfix #12 heartbeat auto-exit + badge launcher)
+
+- [x] Fix: heartbeat auto-exit ne tue plus l'app en arrière-plan — `windowEverVisible` garde une trace si la fenêtre a déjà été affichée ; une fois visible, l'app reste en vie pour les notifications (hotfix #12)
+- [x] Fix: `setBadgeCount()` utilise `com.lomiri.Postal.SetCounter` au lieu de `com.lomiri.LauncherEntry.Update` (inexistant sur UT 24.04) — le badge launcher fonctionne
+- [x] Fix: suppression des appels `updateCount()` dans le constructeur et `send()` de PushClient — ils réinitialisaient le badge à 0 à chaque notification
+- [x] Fix: suppression de `makeLauncherPath` (LauncherEntry plus utilisé)
+- [x] Tests: 3 nouveaux tests (63 total, 58 pass + 5 skip Electron)
+- [x] Click 3.2.2 rebuildé et installé sur téléphone (27/10 18:47) — heartbeat vérifié actif
+
 ## Idées en réserve (non prioritaires)
 
 - [ ] Raccourcis clavier personnalisables
