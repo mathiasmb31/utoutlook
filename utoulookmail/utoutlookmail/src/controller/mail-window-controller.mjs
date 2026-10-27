@@ -1021,6 +1021,7 @@ class MailWindowController {
      * @param {string|null} icon
      */
     handleNotification(title, body, icon) {
+        logger.info(`[NOTIFICATION] title="${title}" body="${body}"`);
         fs.writeFile(NOTIF_FLAG_FILE, 'notif!', err => { if (err) logger.error(err); });
 
         // Relay to Ubuntu Touch notifications (D-Bus Postal / Lomiri)

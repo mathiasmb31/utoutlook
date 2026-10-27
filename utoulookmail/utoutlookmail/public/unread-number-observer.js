@@ -72,14 +72,33 @@ if (!window.__utoutlookState) {
     // updating lastUnreadCount. Prevents false notifications caused by
     // temporary "(0 unread)" titles during SPA re-renders.
     zeroUnreadConfirmCount: 0,
+    // Debounce timer for updateUnread badge updates
+    updateUnreadTimer: null,
   };
 }
 const state = window.__utoutlookState;
 
 // Helper to create and show notifications using native Electron notifications
 const showNotification = (title, body) => {
+  // Always log to console — captured by the main process console-message handler
+  console.log('[UTOUTLOOK NOTIF]', title, '|', body);
   debug('showNotification:', { title, body });
   window.electronAPI.showNotification(title, body);
+};
+
+// Debounced updateUnread: prevents badge flickering when the unread count
+// fluctuates temporarily during SPA re-renders. The badge only updates
+// after the value has been stable for 2 seconds.
+// Timer persists in window.__utoutlookState across re-injections.
+const updateUnreadDebounced = (unread) => {
+  if (state.updateUnreadTimer) {
+    clearTimeout(state.updateUnreadTimer);
+  }
+  state.updateUnreadTimer = setTimeout(() => {
+    state.updateUnreadTimer = null;
+    window.electronAPI.updateUnread(unread);
+    debug(`updateUnread(${unread}) sent after debounce`);
+  }, 2000);
 };
 
 const observeUnreadHandlers = {
@@ -132,8 +151,36 @@ const observeUnreadHandlers = {
 
       debug(`Found ${unread} unread message(s)`);
 
+      // Update tracked count.
+      // When unread drops to 0 while previously > 0, require two consecutive
+      // zero readings before updating — prevents false "new message"
+      // notifications when a SPA re-render temporarily shows "(0 unread)"
+      // and then reverts to the real count (e.g. 5 > 0 → false notification).
+      let zeroPendingConfirmation = false;
+      if (unread === 0 && state.lastUnreadCount > 0) {
+        state.zeroUnreadConfirmCount++;
+        if (state.zeroUnreadConfirmCount >= 2) {
+          state.lastUnreadCount = 0;
+          state.zeroUnreadConfirmCount = 0;
+          debug('Zero unread confirmed (2 consecutive readings)');
+        } else {
+          debug(`Zero unread pending confirmation (${state.zeroUnreadConfirmCount}/2) — not updating lastUnreadCount`);
+          zeroPendingConfirmation = true;
+        }
+      } else {
+        state.zeroUnreadConfirmCount = 0;
+        state.lastUnreadCount = unread;
+      }
+
+      // Update the launcher badge (debounced to prevent flickering during
+      // SPA re-renders). Skip badge update for unconfirmed zeros — if this
+      // is a temporary "(0 unread)" from a re-render, the badge would
+      // flicker to 0 and back, which the user perceives as an envelope
+      // notification appearing/disappearing.
       if (unread > 0 || !checkOnlyZeroUnread) {
-        window.electronAPI.updateUnread(unread);
+        if (!(unread === 0 && zeroPendingConfirmation)) {
+          updateUnreadDebounced(unread);
+        }
 
         // Only show notification if unread count increased
         if (unread > state.lastUnreadCount && !checkOnlyZeroUnread) {
@@ -153,27 +200,6 @@ const observeUnreadHandlers = {
             debug(`Unread notification suppressed by anti-spam (need to wait ${CONFIG.unreadEmailThrottleMs}ms)`);
           }
         }
-      }
-
-      // Update tracked count.
-      // When unread drops to 0 while previously > 0, require two consecutive
-      // zero readings before updating — prevents false "new message"
-      // notifications when a SPA re-render temporarily shows "(0 unread)"
-      // and then reverts to the real count (e.g. 5 > 0 → false notification).
-      if (unread === 0 && state.lastUnreadCount > 0) {
-        state.zeroUnreadConfirmCount++;
-        if (state.zeroUnreadConfirmCount >= 2) {
-          state.lastUnreadCount = 0;
-          state.zeroUnreadConfirmCount = 0;
-          debug('Zero unread confirmed (2 consecutive readings)');
-        } else {
-          debug(`Zero unread pending confirmation (${state.zeroUnreadConfirmCount}/2) — not updating lastUnreadCount`);
-          // Still update the badge so the UI reflects current state
-          return;
-        }
-      } else {
-        state.zeroUnreadConfirmCount = 0;
-        state.lastUnreadCount = unread;
       }
     };
 
@@ -300,6 +326,7 @@ window.__utoutlookObserverCleanup = () => {
   if (notificationObserver) { notificationObserver.disconnect(); notificationObserver = null; }
   if (unreadCheckTimer) { clearInterval(unreadCheckTimer); unreadCheckTimer = null; }
   if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+  if (state.updateUnreadTimer) { clearTimeout(state.updateUnreadTimer); state.updateUnreadTimer = null; }
   window.__utoutlookObserverActive = false;
 };
 
