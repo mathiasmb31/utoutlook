@@ -648,3 +648,36 @@ test('observer: skips check when inbox title is missing (SPA re-render guard)', 
     assert.ok(content.includes('DOM mid-render'),
         'Observer should log when skipping due to mid-render DOM');
 });
+
+// ============================================================
+// Tests for hotfix #11 — regression: new-mail notification never fired.
+// hotfix #9 assigned state.lastUnreadCount = unread BEFORE the
+// "unread > lastUnreadCount" comparison, so the comparison was always
+// false (unread > unread) and showNotification() was never reached.
+// ============================================================
+
+test('observer: new-mail notification compares against previous count (hotfix #11)', async () => {
+    const fs = await import('node:fs');
+    const obsPath = path.resolve(__dirname, '../public/unread-number-observer.js');
+    const content = fs.readFileSync(obsPath, 'utf-8');
+
+    // The previous unread count must be captured BEFORE state.lastUnreadCount
+    // is updated, so the "increased?" test uses the real previous value.
+    const captureIdx = content.indexOf('const previousUnreadCount = state.lastUnreadCount');
+    assert.ok(captureIdx !== -1,
+        'Observer should capture previousUnreadCount = state.lastUnreadCount before updating it');
+
+    const updateIdx = content.indexOf('state.lastUnreadCount = unread;');
+    assert.ok(updateIdx !== -1, 'Observer should update state.lastUnreadCount');
+    assert.ok(captureIdx < updateIdx,
+        'previousUnreadCount must be captured BEFORE state.lastUnreadCount is updated');
+
+    // The new-mail notification must compare unread against the PREVIOUS count,
+    // not the just-updated state.lastUnreadCount (which equals unread → always false).
+    assert.ok(content.includes('unread > previousUnreadCount && !checkOnlyZeroUnread'),
+        'New-mail notification should compare unread > previousUnreadCount');
+
+    // The zero-unread confirmation must also key off the previous count.
+    assert.ok(content.includes('unread === 0 && previousUnreadCount > 0'),
+        'Zero-unread confirmation should use previousUnreadCount');
+});
