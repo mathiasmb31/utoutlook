@@ -64,6 +64,12 @@
 - [x] Fix: CSP — ajout *.live.net dans toutes les directives
 - [x] Tests: 5 nouveaux tests (57 total, 52 pass + 5 skip Electron)
 
+## Fait (v3.2.2 — hotfix #8 fausses notifications enveloppe)
+
+- [x] Fix: état observer persistant dans window.__utoutlookState (survit aux re-injections)
+- [x] Fix: skip checkUnread quand le title inbox est absent (garde re-render SPA)
+- [x] Tests: 2 nouveaux tests (59 total, 54 pass + 5 skip Electron)
+
 ## Idées en réserve (non prioritaires)
 
 - [ ] Raccourcis clavier personnalisables
