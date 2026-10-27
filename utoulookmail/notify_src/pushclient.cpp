@@ -69,13 +69,13 @@ QJsonObject PushClient::buildNotification(const QString &title, const QString &b
     c["persist"] = true;
     c["icon"] = icon;
 
-    // Action "Ouvrir" — clicking the notification opens the app
-    QJsonArray actions;
-    QJsonObject action;
-    action["label"] = QString("Ouvrir");
-    action["activation"] = QString("app://utoutlook.mathias");
-    actions.append(action);
-    c["actions"] = actions;
+    // NOTE (hotfix #15): do NOT add an "actions" field here.
+    // The Lomiri Postal service fails to parse the card when "actions"
+    // is present and silently skips the popup (no Notify call to
+    // org.freedesktop.Notifications). The notification is still persisted
+    // in the drawer, but the user never sees the banner — making it look
+    // like notifications "don't work". Tapping the notification in the
+    // drawer still opens the app via the default activation.
 
     QJsonObject notification;
     notification["card"] = c;
