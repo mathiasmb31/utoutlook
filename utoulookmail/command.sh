@@ -94,6 +94,12 @@ echo "$WD"
 # Source shared functions and path constants
 source "${WD}/utils/common.sh"
 
+# D-Bus session bus — required by the notify binary (QDBusConnection::sessionBus).
+# Lomiri normally sets these, but be defensive: if they are missing, the notify
+# binary silently fails and welcome notifications never appear.
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR}/bus}"
+
 # Alias legacy variable names to common.sh constants (avoids changing every reference)
 export lock="${UTOUTLOOK_LOCK}"
 export lockcook="${UTOUTLOOK_LOCKCOOK}"

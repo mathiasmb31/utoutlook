@@ -110,6 +110,16 @@
 - [x] Tests: 3 nouveaux tests (66 total, 61 pass + 5 skip Electron)
 - [x] Click 3.2.2 rebuildé et installé sur téléphone (27/10 19:07) — heartbeat vérifié actif
 
+## Fait (v3.2.3 — hotfix #15 splash lifecycle + notif bienvenue)
+
+- [x] Fix: command.sh — export XDG_RUNTIME_DIR + DBUS_SESSION_BUS_ADDRESS (binaire notify Qt ne trouvait pas le bus D-Bus → pas de notif bienvenue)
+- [x] Fix: splash ne se ferme plus au premier dom-ready (redirects Outlook) — reste ouvert jusqu'à l'interface mail réelle ou page login
+- [x] Fix: did-finish-load ferme le splash quand URL = mail interface (`isMailInterfaceUrl`) ou login (`isLoginPageUrl`)
+- [x] Fix: closeSplashWindow idempotent (flag `splashClosed`) + affiche la fenêtre principale à la fermeture du splash
+- [x] Fix: pas de barre de progression bleue tant que le splash est ouvert (`did-start-loading` skip si `!splashClosed`)
+- [x] Fix: timeout splash augmenté 15s → 30s (connexions mobiles lentes)
+- [x] Tests: 8 nouveaux tests (74 total, 69 pass + 5 skip Electron)
+
 ## Idées en réserve (non prioritaires)
 
 - [ ] Raccourcis clavier personnalisables
