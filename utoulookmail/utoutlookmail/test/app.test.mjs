@@ -864,3 +864,160 @@ test('mail-window-controller: connectivity monitor does NOT reload the page (hot
     assert.ok(monBody.includes('notif.online.title'),
         'Connectivity monitor should still send online notification (hotfix #14)');
 });
+
+// ============================================================
+// Tests for hotfix #15 — splash lifecycle + welcome notification.
+//
+// Problem 1 (splash): the splash used to close on the FIRST dom-ready,
+// which fires during Outlook's redirect chain (outlook.com →
+// outlook.office.com → …). The user saw: splash → half-loaded page
+// with Outlook's envelope loading screen → blue progress bar →
+// fully loaded mail. Fix: keep the splash open until did-finish-load
+// fires on the actual mail interface URL (or a login page).
+//
+// Problem 2 (welcome notification): command.sh called the notify
+// binary without DBUS_SESSION_BUS_ADDRESS / XDG_RUNTIME_DIR. The
+// Qt binary uses QDBusConnection::sessionBus() which needs these
+// env vars — without them, the D-Bus call silently fails.
+// ============================================================
+
+test('mail-window-controller: splash is NOT closed on dom-ready (hotfix #15)', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+
+    // Find the dom-ready handler body.
+    const domReadyStart = content.indexOf('"dom-ready"');
+    const domReadyEnd = content.indexOf('did-navigate-in-page', domReadyStart);
+    const domReadyBody = content.slice(domReadyStart, domReadyEnd);
+
+    // The dom-ready handler must NOT close the splash or show the window.
+    assert.ok(!domReadyBody.includes('closeSplashWindow()'),
+        'dom-ready handler must NOT close the splash (hotfix #15) — did-finish-load decides');
+    assert.ok(!domReadyBody.includes('this.win.show()'),
+        'dom-ready handler must NOT show the window (hotfix #15)');
+});
+
+test('mail-window-controller: splash closes on did-finish-load with mail/login URL (hotfix #15)', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+
+    // Find the did-finish-load handler in loadMainUrl.
+    const dfLoadStart = content.indexOf("'did-finish-load'");
+    const dfLoadEnd = content.indexOf('fs.writeFile(LOGIN_FLAG_FILE', dfLoadStart);
+    const dfLoadBody = content.slice(dfLoadStart, dfLoadEnd);
+
+    // Must check isMailInterfaceUrl and isLoginPageUrl.
+    assert.ok(dfLoadBody.includes('isMailInterfaceUrl'),
+        'did-finish-load must check isMailInterfaceUrl (hotfix #15)');
+    assert.ok(dfLoadBody.includes('isLoginPageUrl'),
+        'did-finish-load must check isLoginPageUrl (hotfix #15)');
+    assert.ok(dfLoadBody.includes('closeSplashWindow()'),
+        'did-finish-load must close the splash when URL is mail interface or login (hotfix #15)');
+});
+
+test('mail-window-controller: isMailInterfaceUrl detects mail pages correctly (hotfix #15)', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+
+    // Extract the isMailInterfaceUrl method body.
+    const start = content.indexOf('isMailInterfaceUrl(url)');
+    const end = content.indexOf('isLoginPageUrl(url)', start);
+    const body = content.slice(start, end);
+
+    assert.ok(body.includes("/mail/"), 'isMailInterfaceUrl must check for /mail/ path');
+    assert.ok(body.includes("login"), 'isMailInterfaceUrl must exclude login URLs');
+    assert.ok(body.includes("oauth"), 'isMailInterfaceUrl must exclude oauth URLs');
+});
+
+test('mail-window-controller: isLoginPageUrl detects login pages correctly (hotfix #15)', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+
+    const start = content.indexOf('isLoginPageUrl(url)');
+    const end = content.indexOf('createWindow()', start);
+    const body = content.slice(start, end);
+
+    assert.ok(body.includes('login.live.com'), 'isLoginPageUrl must detect login.live.com');
+    assert.ok(body.includes('login.microsoftonline.com'), 'isLoginPageUrl must detect login.microsoftonline.com');
+    assert.ok(body.includes('oauth'), 'isLoginPageUrl must detect oauth URLs');
+});
+
+test('mail-window-controller: closeSplashWindow is guarded by splashClosed flag (hotfix #15)', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+
+    const start = content.indexOf('closeSplashWindow()');
+    const end = content.indexOf('isMailInterfaceUrl(url)', start);
+    const body = content.slice(start, end);
+
+    assert.ok(body.includes('if (this.splashClosed) return;'),
+        'closeSplashWindow must be idempotent — guard with splashClosed flag (hotfix #15)');
+    assert.ok(body.includes('this.splashClosed = true'),
+        'closeSplashWindow must set splashClosed = true (hotfix #15)');
+    assert.ok(body.includes('this.win.show()'),
+        'closeSplashWindow must show the main window when splash closes (hotfix #15)');
+});
+
+test('mail-window-controller: progress bar is skipped while splash is open (hotfix #15)', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+
+    // Find the method definition (not the call site in init()).
+    const start = content.indexOf('    setupLoadingIndicators() {');
+    const end = content.indexOf('    setupContextMenu()', start);
+    const body = content.slice(start, end);
+
+    assert.ok(body.includes('if (!this.splashClosed) return;'),
+        'did-start-loading must skip setProgressBar while splash is open (hotfix #15)');
+});
+
+test('mail-window-controller: splash timeout is 30s (not 15s) (hotfix #15)', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+
+    const start = content.indexOf('splashTimeout = setTimeout');
+    const end = content.indexOf('}, 30000);', start) + 10;
+    const body = content.slice(start, end);
+
+    assert.ok(body.includes('30000'),
+        'Splash safety timeout must be 30s (not 15s) for slow mobile connections (hotfix #15)');
+});
+
+test('command.sh: exports D-Bus environment variables for notify binary (hotfix #15)', async () => {
+    const fs = await import('node:fs');
+    const cmdPath = path.resolve(__dirname, '../../command.sh');
+    const content = fs.readFileSync(cmdPath, 'utf-8');
+
+    assert.ok(content.includes('XDG_RUNTIME_DIR'),
+        'command.sh must export XDG_RUNTIME_DIR for the notify binary (hotfix #15)');
+    assert.ok(content.includes('DBUS_SESSION_BUS_ADDRESS'),
+        'command.sh must export DBUS_SESSION_BUS_ADDRESS for the notify binary (hotfix #15)');
+    assert.ok(content.includes('unix:path='),
+        'DBUS_SESSION_BUS_ADDRESS must use unix:path= scheme (hotfix #15)');
+});
+
+test('notify pushclient.cpp: buildNotification does NOT include actions field (hotfix #15)', async () => {
+    const fs = await import('node:fs');
+    const cppPath = path.resolve(__dirname, '../../notify_src/pushclient.cpp');
+    const content = fs.readFileSync(cppPath, 'utf-8');
+
+    // Extract buildNotification method body.
+    const start = content.indexOf('PushClient::buildNotification(const QString &title, const QString &body)');
+    const end = content.indexOf('PushClient::buildSummaryMessage', start);
+    const body = content.slice(start, end);
+
+    // The "actions" field must NOT be present — it causes the Lomiri Postal
+    // service to silently skip the popup (no Notify call to org.freedesktop.Notifications).
+    // Verified on device: notifications with "actions" never appear as banners.
+    assert.ok(!body.includes('c["actions"]'),
+        'buildNotification must NOT include "actions" field (hotfix #15) — Postal skips popup when actions present');
+    assert.ok(!body.includes('QJsonArray actions'),
+        'buildNotification must NOT declare actions array (hotfix #15)');
+});
