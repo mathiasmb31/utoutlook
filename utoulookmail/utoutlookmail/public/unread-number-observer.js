@@ -67,6 +67,11 @@ if (!window.__utoutlookState) {
     lastReminderCount: 0,
     lastUnreadNotificationTime: null,
     lastCalendarNotificationTime: null,
+    // Confirmation counter for zero-unread: when unread drops to 0 while
+    // previously > 0, we require two consecutive zero readings before
+    // updating lastUnreadCount. Prevents false notifications caused by
+    // temporary "(0 unread)" titles during SPA re-renders.
+    zeroUnreadConfirmCount: 0,
   };
 }
 const state = window.__utoutlookState;
@@ -80,7 +85,10 @@ const showNotification = (title, body) => {
 const observeUnreadHandlers = {
   outlookWebAppUnread: () => {
     // Find inbox element by semantic attribute (more stable than CSS classes)
-    const inboxElement = document.querySelector('[data-folder-name="inbox"]');
+    // NOTE: use let, not const — Outlook SPA recreates this element on navigation,
+    // so we must re-query on every check to avoid reading a stale (disconnected)
+    // element that retains its old title with the old unread count.
+    let inboxElement = document.querySelector('[data-folder-name="inbox"]');
 
     if (!inboxElement) {
       debug('No inbox element found for unread monitoring');
@@ -88,10 +96,16 @@ const observeUnreadHandlers = {
     }
 
     const checkUnread = (checkOnlyZeroUnread) => {
-      if (!inboxElement) {
-        debug('Invalid inbox element');
+      // Re-query on every check: Outlook SPA recreates DOM nodes during navigation.
+      // A stale (disconnected) element keeps its old title attribute, causing
+      // false reads (e.g. old unread=5 when real count is now 4 → false notification).
+      const currentInbox = document.querySelector('[data-folder-name="inbox"]');
+      if (!currentInbox || !document.contains(currentInbox)) {
+        debug('Inbox element not found or disconnected — skipping check');
         return false;
       }
+      // Update reference for future checks
+      inboxElement = currentInbox;
 
       // Extract unread count from title attribute: "Inbox - 263 items (217 unread)"
       // Language-agnostic: look for a parenthesized number as the last item
@@ -141,8 +155,26 @@ const observeUnreadHandlers = {
         }
       }
 
-      // Update tracked count
-      state.lastUnreadCount = unread;
+      // Update tracked count.
+      // When unread drops to 0 while previously > 0, require two consecutive
+      // zero readings before updating — prevents false "new message"
+      // notifications when a SPA re-render temporarily shows "(0 unread)"
+      // and then reverts to the real count (e.g. 5 > 0 → false notification).
+      if (unread === 0 && state.lastUnreadCount > 0) {
+        state.zeroUnreadConfirmCount++;
+        if (state.zeroUnreadConfirmCount >= 2) {
+          state.lastUnreadCount = 0;
+          state.zeroUnreadConfirmCount = 0;
+          debug('Zero unread confirmed (2 consecutive readings)');
+        } else {
+          debug(`Zero unread pending confirmation (${state.zeroUnreadConfirmCount}/2) — not updating lastUnreadCount`);
+          // Still update the badge so the UI reflects current state
+          return;
+        }
+      } else {
+        state.zeroUnreadConfirmCount = 0;
+        state.lastUnreadCount = unread;
+      }
     };
 
     // Find the navigation pane using semantic attribute (more stable than CSS classes)
