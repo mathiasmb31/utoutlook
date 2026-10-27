@@ -54,6 +54,7 @@ class MailWindowController {
         this.cacheWatcher = null;
         this.triggerTimers = new Map(); // debounce timers for file triggers
         this.splashWindow = null;
+        this.splashClosed = false; // true once splash has been dismissed (URL match or timeout)
         this.cookieFlushInterval = null; // periodic cookie flush to disk
         this.observerHealthCheck = null; // periodic observer connectivity check
         this.observerWasActive = false; // true once observer connected at least once
@@ -780,11 +781,19 @@ class MailWindowController {
         });
         this.splashWindow.loadFile(splashPath, {search: splashParams.toString()});
 
-        // Safety timeout: close splash after 15s even if dom-ready never fires
-        this.splashTimeout = setTimeout(() => this.closeSplashWindow(), 15000);
+        // Safety timeout: close splash after 30s even if the mail interface
+        // URL is never detected (slow connection, login wall, error page).
+        // 15s was too short for Outlook on mobile — the splash would vanish
+        // before the page finished loading, revealing a half-rendered page.
+        this.splashTimeout = setTimeout(() => {
+            logger.warn('Splash timeout (30s) — forcing splash close');
+            this.closeSplashWindow();
+        }, 30000);
     }
 
     closeSplashWindow() {
+        if (this.splashClosed) return;
+        this.splashClosed = true;
         if (this.splashTimeout) {
             clearTimeout(this.splashTimeout);
             this.splashTimeout = null;
@@ -793,6 +802,43 @@ class MailWindowController {
             this.splashWindow.close();
             this.splashWindow = null;
         }
+        // Show the main window when the splash closes — the user should see
+        // the app content (mail interface, login page, or offline overlay)
+        // immediately after the splash disappears, never a blank screen.
+        if (this.win && !this.win.isDestroyed() && !this.initialMinimization.domReady) {
+            this.win.show();
+        }
+    }
+
+    /**
+     * Détecte si l'URL est l'interface mail réelle (pas une page de redirect
+     * ou de login). Outlook redirige plusieurs fois au démarrage :
+     * outlook.com → outlook.office.com → (login) → outlook.office.com/mail/
+     * Le splash doit rester ouvert pendant ces redirects intermédiaires.
+     * @param {string} url
+     * @returns {boolean}
+     */
+    isMailInterfaceUrl(url) {
+        return url.includes('/mail/') &&
+               !url.includes('login') &&
+               !url.includes('oauth') &&
+               !url.includes('consent') &&
+               !url.includes('error');
+    }
+
+    /**
+     * Détecte si l'URL est une page de login. Dans ce cas, le splash doit
+     * se fermer pour que l'utilisateur puisse interagir avec le formulaire.
+     * @param {string} url
+     * @returns {boolean}
+     */
+    isLoginPageUrl(url) {
+        return url.includes('login.live.com') ||
+               url.includes('login.microsoftonline.com') ||
+               url.includes('login.microsoft.com') ||
+               url.includes('account.microsoft.com') ||
+               url.includes('oauth') ||
+               url.includes('consent');
     }
 
     createWindow() {
@@ -834,6 +880,17 @@ class MailWindowController {
             this.loginPage++;
             const url = this.win.webContents.getURL();
             logger.info(`Page loaded #${this.loginPage}: ${url}`);
+
+            // --- Splash lifecycle (hotfix #15) ---
+            // The splash stays open during intermediate redirects (outlook.com →
+            // outlook.office.com → …). Only close it when we reach the actual
+            // mail interface OR a login page (user must be able to interact).
+            // This prevents the jarring flash: splash → half-loaded page with
+            // Outlook envelope loading screen → progress bar → fully loaded.
+            if (!this.splashClosed && (this.isMailInterfaceUrl(url) || this.isLoginPageUrl(url))) {
+                logger.info(`Splash closing — URL is ${this.isMailInterfaceUrl(url) ? 'mail interface' : 'login page'}`);
+                this.closeSplashWindow();
+            }
 
             // --- Cookie sync for personal accounts (hotfix #7c) ---
             // When outlook.office.com/mail/ loads with an auth code (#code=...),
@@ -893,6 +950,11 @@ class MailWindowController {
 
     setupLoadingIndicators() {
         this.win.webContents.on('did-start-loading', () => {
+            // hotfix #15: don't show the blue progress bar while the splash
+            // is still open. The progress bar on a hidden window can still
+            // appear as a blue line in the Lomiri app header — jarring when
+            // the splash (blue background) is showing on top.
+            if (!this.splashClosed) return;
             this.win.setProgressBar(0.3);
         });
         // did-stop-loading handled in setupWebContentsEvents (merged to avoid
@@ -1081,9 +1143,13 @@ class MailWindowController {
             logger.warn(`Load failed [${errorCode}] ${errorDescription}: ${validatedURL} (mainFrame=${isMainFrame})`);
         });
 
-        // Insert styles and observer on first DOM ready
+        // Insert styles and observer on DOM ready.
+        // NOTE (hotfix #15): the splash is NOT closed here anymore. dom-ready
+        // fires on every redirect during Outlook's startup chain. Closing the
+        // splash here would reveal a half-loaded page (envelope icon + blue
+        // progress bar). The splash is now closed by did-finish-load when the
+        // URL is the actual mail interface or a login page.
         this.win.webContents.on("dom-ready", () => {
-            this.closeSplashWindow();
             this.injectStyles().catch(() => {});
             this.addUnreadNumberObserver().catch(() => {});
             this.injectGestures();
@@ -1097,10 +1163,6 @@ class MailWindowController {
                 this.win.webContents.executeJavaScript(
                     `document.documentElement.classList.remove('dark-mode');`
                 ).catch(() => {});
-            }
-
-            if (!this.initialMinimization.domReady) {
-                this.win.show();
             }
         });
 
