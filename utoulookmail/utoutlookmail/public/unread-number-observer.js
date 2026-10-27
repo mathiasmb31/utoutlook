@@ -50,14 +50,26 @@ if (window.__utoutlookObserverCleanup) {
 
 // State — module-level so cleanup can access it
 let unreadCheckTimer = null;
-let lastUnreadNotificationTime = null;
-let lastCalendarNotificationTime = null;
-let lastUnreadCount = 0;
-let lastReminderCount = 0;
 let unreadObserver = null;
 let notificationObserver = null;
 let retryTimer = null;
 let retryDelay = CONFIG.initialRetryDelayMs;
+
+// Persistent state across re-injections.
+// The observer script is re-injected on dom-ready, did-navigate-in-page,
+// did-stop-loading, and by the health check (every 10s). Without persistence,
+// lastUnreadCount resets to 0 on each re-injection, causing false "new message"
+// notifications when the user has unread mail (5 > 0 triggers a notification).
+// Storing in window.__utoutlookState survives re-injection.
+if (!window.__utoutlookState) {
+  window.__utoutlookState = {
+    lastUnreadCount: 0,
+    lastReminderCount: 0,
+    lastUnreadNotificationTime: null,
+    lastCalendarNotificationTime: null,
+  };
+}
+const state = window.__utoutlookState;
 
 // Helper to create and show notifications using native Electron notifications
 const showNotification = (title, body) => {
@@ -85,12 +97,23 @@ const observeUnreadHandlers = {
       // Language-agnostic: look for a parenthesized number as the last item
       const title = inboxElement.getAttribute('title');
       let unread = 0;
+      let titleValid = false;
       if (title) {
         // Match the last parenthesized number in the title (e.g. "(217 unread)" or "(217 non lus)")
         const matches = [...title.matchAll(/\((\d+)\)/g)];
         if (matches.length > 0) {
           unread = parseInt(matches[matches.length - 1][1], 10);
+          titleValid = true;
         }
+      }
+
+      // If the title is missing or has no parseable count, the DOM is likely
+      // mid-render (SPA navigation between folders/messages). Skip this check
+      // entirely — do NOT update state.lastUnreadCount, otherwise a temporary
+      // 0 would cause a false "new message" notification when the title returns.
+      if (!titleValid) {
+        debug('Title missing or unparseable — skipping check (DOM mid-render?)');
+        return false;
       }
 
       debug(`Found ${unread} unread message(s)`);
@@ -99,19 +122,19 @@ const observeUnreadHandlers = {
         window.electronAPI.updateUnread(unread);
 
         // Only show notification if unread count increased
-        if (unread > lastUnreadCount && !checkOnlyZeroUnread) {
+        if (unread > state.lastUnreadCount && !checkOnlyZeroUnread) {
           // Anti-spam: only show notification if enough time has passed
           const now = new Date();
-          const timeSinceLastNotification = lastUnreadNotificationTime
-            ? now - lastUnreadNotificationTime
+          const timeSinceLastNotification = state.lastUnreadNotificationTime
+            ? now - state.lastUnreadNotificationTime
             : Infinity;
 
-          if (!lastUnreadNotificationTime || timeSinceLastNotification > CONFIG.unreadEmailThrottleMs) {
+          if (!state.lastUnreadNotificationTime || timeSinceLastNotification > CONFIG.unreadEmailThrottleMs) {
             showNotification(
               `${I18N.appName}: ${tr('newMessagesTitle')}`,
               tr('newMessagesBody', { count: unread })
             );
-            lastUnreadNotificationTime = now;
+            state.lastUnreadNotificationTime = now;
           } else {
             debug(`Unread notification suppressed by anti-spam (need to wait ${CONFIG.unreadEmailThrottleMs}ms)`);
           }
@@ -119,7 +142,7 @@ const observeUnreadHandlers = {
       }
 
       // Update tracked count
-      lastUnreadCount = unread;
+      state.lastUnreadCount = unread;
     };
 
     // Find the navigation pane using semantic attribute (more stable than CSS classes)
@@ -182,14 +205,14 @@ const observeUnreadHandlers = {
       debug(`Found ${reminderCount} calendar reminder(s)`);
 
       // Only show notification if reminder count increased
-      if (reminderCount > lastReminderCount && !suppressNotification) {
+      if (reminderCount > state.lastReminderCount && !suppressNotification) {
         // Anti-spam: only show notification if enough time has passed
         const now = new Date();
-        const timeSinceLastNotification = lastCalendarNotificationTime
-          ? now - lastCalendarNotificationTime
+        const timeSinceLastNotification = state.lastCalendarNotificationTime
+          ? now - state.lastCalendarNotificationTime
           : Infinity;
 
-        if (!lastCalendarNotificationTime || timeSinceLastNotification > CONFIG.calendarReminderThrottleMs) {
+        if (!state.lastCalendarNotificationTime || timeSinceLastNotification > CONFIG.calendarReminderThrottleMs) {
           const reminderDetails = [];
           reminderElements.forEach((reminder) => {
             const subject = reminder.getAttribute('subject') || 'Reminder';
@@ -210,14 +233,14 @@ const observeUnreadHandlers = {
             `${I18N.appName}: ${tr('calendarTitle', { count: reminderCount })}`,
             reminderDetails.join('\n')
           );
-          lastCalendarNotificationTime = now;
+          state.lastCalendarNotificationTime = now;
         } else {
           debug(`Calendar notification suppressed by anti-spam (need to wait ${CONFIG.calendarReminderThrottleMs}ms)`);
         }
       }
 
       // Update tracked count
-      lastReminderCount = reminderCount;
+      state.lastReminderCount = reminderCount;
     };
 
     // Observe for DOM changes
