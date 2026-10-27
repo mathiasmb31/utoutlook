@@ -1,8 +1,8 @@
 {
     "name": "utoutlook.mathias",
-    "description": "utoutlook",
+    "description": "UToutlook Mail — Outlook pour Ubuntu Touch",
     "architecture": "@CLICK_ARCH@",
-    "title": "utoutlook",
+    "title": "UToutlook Mail",
     "hooks": {
         "utoutlook": {
             "apparmor": "utoutlook.apparmor",
@@ -14,7 +14,7 @@
              "push-helper": "push.json"
             }
     },
-    "version": "2.1.1",
+    "version": "3.2.2",
     "maintainer": "mathias <email@domain.org>",
     "framework" : "@CLICK_FRAMEWORK@"
 }

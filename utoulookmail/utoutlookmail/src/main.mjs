@@ -1,0 +1,287 @@
+import path from 'node:path';
+import {app, BrowserWindow, globalShortcut, session} from 'electron';
+import AccountManager from './account-manager.mjs';
+import {TrayController} from './controller/tray-controller.mjs';
+import {startSocketServer, stopSocketServer} from './ipc-socket.mjs';
+import {logger} from './logger.mjs';
+import {setLanguage} from './i18n.mjs';
+import {resolveLanguage, writeLangFile, settings} from './settings.mjs';
+import {
+    CONFIG_DIR,
+    HEARTBEAT_FILE,
+    EXIT_CLIENT_FILE,
+    CLOSE_FLAG_FILE,
+} from './config.mjs';
+import fs from 'node:fs';
+
+// ============================================================
+// Global error handlers — prevent silent crashes
+// ============================================================
+process.on('uncaughtException', (err) => {
+    logger.error('Uncaught exception:', err);
+    fs.writeFile(`${CONFIG_DIR}/crash.log`,
+        `${new Date().toISOString()}\n${err.stack}\n`, {flag: 'a'},
+        () => app.exit(1)
+    );
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    logger.error('Unhandled rejection at:', promise, 'reason:', reason);
+    fs.writeFile(`${CONFIG_DIR}/crash.log`,
+        `${new Date().toISOString()} [unhandledRejection] ${reason}\n`, {flag: 'a'},
+        () => {}
+    );
+});
+
+// Ensure config directory exists
+fs.mkdirSync(CONFIG_DIR, {recursive: true});
+
+// Heartbeat: write a counter to a file so the shell wrapper (command.sh) can
+// detect whether the Electron process is still alive.
+let heartbeatSeconds = 0;
+let heartbeatExiting = false;
+// hotfix #12: remember whether the window has ever been shown. The heartbeat
+// auto-exit is only a startup-failure safety net (the window never appears).
+// Once the window has been visible at least once, the app must keep running in
+// the background (screen off / app backgrounded) so new-mail notifications keep
+// being delivered. hideOnClose/hideOnMinimize hide the window on background,
+// which makes isVisible() false — that must NOT kill the app anymore.
+let windowEverVisible = false;
+const heartbeatInterval = setInterval(() => {
+    if (heartbeatExiting) return;
+    heartbeatSeconds++;
+    const content = heartbeatSeconds.toString();
+
+    const visibleCount = BrowserWindow.getAllWindows()
+        .filter(b => b.isVisible())
+        .length;
+
+    if (visibleCount > 0) {
+        windowEverVisible = true;
+    }
+
+    // After 60 heartbeats (~2 min) during which the window NEVER appeared,
+    // signal exit and quit (startup failure: window never showed up).
+    // 10s was too short — Outlook web app can take 30s+ to load on slow devices,
+    // causing the app to kill itself before the window ever appears (crash
+    // at startup ~1 in 2 launches depending on network speed).
+    // Once the window has been shown at least once, NEVER auto-exit: keep the
+    // app alive in the background (screen off / app backgrounded) so that
+    // new-mail notifications keep being delivered.
+    if (!windowEverVisible && heartbeatSeconds > 60) {
+        fs.writeFile(EXIT_CLIENT_FILE, content, err => {
+            if (err) logger.error(err);
+        });
+        app.exit(0);
+        return;
+    }
+
+    // Once the window has been shown, keep the counter cycling so command.sh's
+    // watcher keeps seeing it change (a static counter = dead/frozen app).
+    if (windowEverVisible && heartbeatSeconds > 60) {
+        heartbeatSeconds = 0;
+    }
+
+    fs.writeFile(HEARTBEAT_FILE, content, err => {
+        if (err) logger.error(err);
+    });
+
+    // Check for external close flag from the shell wrapper (fallback for socket).
+    // Delete the file after reading so a stale flag from a previous SIGKILL
+    // doesn't prevent the next launch (app would exit within 2s).
+    if (fs.existsSync(CLOSE_FLAG_FILE)) {
+        try { fs.unlinkSync(CLOSE_FLAG_FILE); } catch (e) { /* ignore */ }
+        app.exit(0);
+    }
+}, 2000);
+
+// Set the app name to use kebab-case for config directory (avoids spaces in path)
+// This must be set before app is ready
+app.setPath("userData", path.join(app.getPath("appData"), "prospect-mail"));
+
+// Set desktop name for proper notification handling on Linux
+app.setDesktopName("UToutlookmail");
+
+//Store commandline for global purpose
+global.cmdLine = process.argv;
+
+class ProspectMail {
+    constructor() {
+        this.accountManager = null;
+        this.trayController = null;
+        this.isQuitting = false;
+        this.socketServer = null;
+    }
+
+    /**
+     * Get the primary (active) account's MailWindowController.
+     * Provides backward compatibility with code expecting a single controller.
+     * @returns {MailWindowController|undefined}
+     */
+    get mailController() {
+        return this.accountManager?.getPrimary();
+    }
+
+    // init method, the entry point of the app
+    init() {
+        app.on("second-instance", () => {
+            const primary = this.mailController;
+            if (primary) primary.show();
+        });
+        this.initApp();
+    }
+
+    // init the main app
+    initApp() {
+        app.on("ready", () => {
+            // Initialize i18n language from settings
+            const lang = resolveLanguage();
+            setLanguage(lang);
+            logger.info(`Language: ${lang}`);
+            // Ensure lang file exists (re-write if deleted manually)
+            writeLangFile();
+
+            this.createControllers();
+            this.startSocketServer();
+            this.registerShortcuts();
+        });
+
+        app.on("browser-window-blur", () => {
+            // Don't auto-quit when hideOnClose is active — windows are hidden, not closed
+            if (settings.get("hideOnClose")) return;
+            const count = BrowserWindow.getAllWindows()
+                .filter(b => b.isVisible())
+                .length;
+            if (count === 0) {
+                app.exit(0);
+            }
+        });
+
+        app.on("will-quit", (e) => {
+            if (this.isQuitting) return;
+            e.preventDefault();
+            this.isQuitting = true;
+            this.cleanupAndExit();
+        });
+
+        app.on("before-quit", (e) => {
+            if (this.isQuitting) return;
+            e.preventDefault();
+            this.isQuitting = true;
+            this.cleanupAndExit();
+        });
+
+        // 'quit' is not preventable — just clean up
+        app.on("quit", () => {
+            heartbeatExiting = true;
+            clearInterval(heartbeatInterval);
+            globalShortcut.unregisterAll();
+            stopSocketServer();
+        });
+
+        process.on("SIGINT", () => {
+            this.cleanupAndExit();
+        });
+
+        process.on("SIGTERM", () => {
+            this.cleanupAndExit();
+        });
+
+        app.on("window-all-closed", () => {
+            fs.writeFile(EXIT_CLIENT_FILE, "quitclient", err => {
+                if (err) logger.error(err);
+            });
+            app.exit(0);
+        });
+    }
+
+    startSocketServer() {
+        this.socketServer = startSocketServer({
+            onQuit: () => {
+                logger.info("Socket: quit command received");
+                this.cleanupAndExit();
+            },
+            onZoom: (action) => {
+                if (this.mailController) {
+                    this.mailController.handleZoomCommand(action);
+                }
+            },
+            onText: (text) => {
+                if (this.mailController) {
+                    this.mailController.insertText(text);
+                }
+            },
+            onReload: () => {
+                if (this.mailController) {
+                    this.mailController.reloadWindow();
+                }
+            },
+        });
+    }
+
+    registerShortcuts() {
+        // Global shortcuts (work even when app is not focused)
+        try {
+            globalShortcut.register('CommandOrControl+Shift+M', () => {
+                if (this.mailController) this.mailController.show();
+            });
+            globalShortcut.register('CommandOrControl+Shift+R', () => {
+                if (this.mailController) this.mailController.reloadWindow();
+            });
+            globalShortcut.register('CommandOrControl+Shift+F', () => {
+                if (this.mailController) this.mailController.toggleFocusMode();
+            });
+            globalShortcut.register('CommandOrControl+Shift+D', () => {
+                if (this.mailController) this.mailController.toggleDarkMode();
+            });
+            globalShortcut.register('CommandOrControl+Shift+Q', () => {
+                this.cleanupAndExit();
+            });
+        } catch (err) {
+            logger.warn("Could not register global shortcuts:", err.message);
+        }
+    }
+
+    async cleanupAndExit() {
+        if (this.isQuitting) return;
+        this.isQuitting = true;
+        heartbeatExiting = true;
+        clearInterval(heartbeatInterval);
+        stopSocketServer();
+
+        // Flush all session cookies to disk before exiting so the login
+        // session survives app restarts (Chromium normally flushes every
+        // ~30s, but we may be killed before that).
+        // Await each flushStore() — without await, app.exit() races ahead
+        // and the cookies never reach disk.
+        try {
+            const accounts = settings.get('accounts') || [];
+            for (const acct of accounts) {
+                if (acct.partition) {
+                    try {
+                        await session.fromPartition(acct.partition).cookies.flushStore();
+                    } catch (e) { /* partition may not exist yet */ }
+                }
+            }
+            // Also flush the default session
+            try {
+                await session.defaultSession.cookies.flushStore();
+            } catch (e) { /* ignore */ }
+        } catch (err) {
+            logger.warn('Failed to flush session cookies on exit:', err.message);
+        }
+
+        fs.writeFile(`${CONFIG_DIR}/killedmail`, "quitclient", err => {
+            if (err) logger.error(err);
+        });
+        app.exit(0);
+    }
+
+    createControllers() {
+        this.accountManager = new AccountManager();
+        this.accountManager.init();
+        this.trayController = new TrayController(this.accountManager);
+    }
+}
+
+new ProspectMail().init();

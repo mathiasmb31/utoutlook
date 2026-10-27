@@ -1,35 +1,24 @@
 #!/bin/bash
 
-trap close_command 1
-trap close_command 3
-trap close_command 6
-trap close_command 1
-trap close_command 15
+trap close_command EXIT
 
 function sleep_int() {
+	"${WD}"/bin/sleep $1
 
-	for ((target = $((SECONDS + $1)); SECONDS < target; true)); do :; done
 }
 
 function cleanup() {
 
-	"${WD}"/bin/pkill -9 prospect-mail
-	"${WD}"/bin/pkill -9 prospect-mail
-	"${WD}"/bin/pkill -9 prospect-mail
-	"${WD}"/bin/pkill prospect-mail
-	"${WD}"/bin/pkill prospect-mail
-	"${WD}"/bin/rm -f ${lock}
-	"${WD}"/bin/rm -f ${lockcook}
-	"${WD}"/bin/rm -f ${locksock}
-	"${WD}"/bin/rm -f ${exitclient}
-	"${WD}"/bin/rm -f ${killedclient}
-	"${WD}"/bin/rm -f "/home/phablet/.config/utoutlook.mathias/close"
-	"${WD}"/bin/rm -f ${exitcommand}
+	utoutlook_kill_app
+	utoutlook_cleanup_locks
+	"${WD}"/bin/rm -f "${UTOUTLOOK_EXITCOMMAND}" 2>/dev/null || true
 }
 
 function launch_prospect() {
 	cleanup
-
+	if [[ -f ${lock} ]]; then
+		utoutlook_notify "$(utoutlook_t 'shell.waitClose')"
+	fi
 	launchtry=$((launchtry + 1))
 	if [ "$launchtry" -gt 3 ]; then
 		cleanup
@@ -38,7 +27,10 @@ function launch_prospect() {
 		exit 0
 	fi
 	export APPDIR=${WD}/bin/App/
-	"${WD}"/bin/notify "Welcome to utoutlook"
+	# Wait for notification service to be ready before sending welcome
+	# (D-Bus Postal may not be up yet on first launch / boot)
+	utoutlook_wait_notifications 15
+	utoutlook_notify "$(utoutlook_t 'shell.welcome')"
 
 	"${WD}"/bin/App/prospect-mail "$dpioptions" "$sandboxoptions" "$gpuoptions" &
 	i+=1
@@ -56,9 +48,10 @@ function verify_prospect_life() {
 		echo ${follow}
 		echo ${oldfollow}
 		echo "tried too more " >${exitcommand}
-		echo "******" && qmlscene "${WD}"/qml/exit.qml && exit 0
+		echo "******" && utoutlook_notify "$(utoutlook_t 'shell.cleaning')" && exit 0
 	else
 		clientalive=1
+		touch ${lock}
 	fi
 	oldfollow=${follow}
 	if [ ${clientalive} -eq 1 ]; then
@@ -81,44 +74,50 @@ function test_net() {
 		echo "we have connectivity"
 	else
 
-		"${WD}"/bin/notify "No network access..quit"
+		utoutlook_notify "$(utoutlook_t 'shell.noNetwork')"
 		qmlscene "${WD}"/qml/nonetwork.qml
 		close_command
 	fi
 }
 function close_command() {
-
-	echo "closed" >/home/phablet/.config/utoutlook.mathias/close
-	"${WD}"/bin/notify "close outlookmail !"
-
+	# Send quit command via Unix socket (primary method)
+	utoutlook_send_socket_cmd '{"cmd":"quit"}'
+	# Fallback: write close flag file (picked up by heartbeat)
+	echo "closed" >"${UTOUTLOOK_EXITCOMMAND}"
+	utoutlook_notify "$(utoutlook_t 'shell.goodbye')"
 	exit 0
 }
 
 export WD=$(pwd)
 echo "$WD"
 
+# Source shared functions and path constants
+source "${WD}/utils/common.sh"
+
+# Alias legacy variable names to common.sh constants (avoids changing every reference)
+export lock="${UTOUTLOOK_LOCK}"
+export lockcook="${UTOUTLOOK_LOCKCOOK}"
+export locksock="${UTOUTLOOK_LOCKSOCK}"
+export exitclient="${UTOUTLOOK_EXITCLIENT}"
+export killedclient="${UTOUTLOOK_KILLEDCLIENT}"
+export filelifefollow="${UTOUTLOOK_FILELIFE}"
+export exitcommand="${UTOUTLOOK_EXITCOMMAND}"
+export socketpath="${UTOUTLOOK_SOCKET}"
+
 ###init
 declare -i i=0
-
 test_net
 export launchtry=1
-export lock="/home/phablet/.config/utoutlook.mathias/prospect-mail/SingletonLock"
-export lockcook="/home/phablet/.config/utoutlook.mathias/prospect-mail/SingletonCookie"
-export locksock="/home/phablet/.config/utoutlook.mathias/prospect-mail/SingletonSocket"
-export exitclient="/home/phablet/.config/utoutlook.mathias/exitclient"
-export killedclient="/home/phablet/.config/utoutlook.mathias/killedmail"
-export filelifefollow="/home/phablet/.config/utoutlook.mathias/follow"
-export exitcommand="/home/phablet/.config/utoutlook.mathias/close"
+
 oldfollow="0"
 "${WD}"/bin/rm -f ${exitclient}
 "${WD}"/bin/rm -f ${killedclient}
 "${WD}"/bin/rm -f /home/phablet/.config/utoutlook.mathias/close
 cleanup
-utils/mkdir
+"${WD}"/utils/mkdir
 "${WD}"/bin/rm -f "/home/phablet/.cache/utoutlook.mathias/quit"
 "${WD}"/bin/rm -f "/home/phablet/.config/utoutlook.mathias/close"
 echo "################################################"
-trap 'printf "%3d: " "$LINENO"' DEBUG
 export GDK_SCALE=2
 export GTK_IM_MODULE=Maliit
 export GTK_IM_MODULE_FILE=/home/phablet/.config/utoutlook.mathias/immodules.cache
@@ -129,7 +128,6 @@ export XDG_CONFIG_HOME=/home/phablet/.config/utoutlook.mathias/
 export XDG_DATA_HOME=/home/phablet/.config/utoutlook.mathias/
 export XDG_DESKTOP_DIR=/home/phablet/.config/utoutlook.mathias/
 export LD_LIBRARY_PATH=$PWD/lib/aarch64-linux-gnu/
-trap 'printf "%3d: " "$LINENO"' DEBUG
 
 echo "\"$PWD/lib/aarch64-linux-gnu/gtk-3.0/3.0.0/immodules/im-maliit.so\"" >/home/phablet/.config/utoutlook.mathias/immodules.cache
 echo "\"Maliit\" \"Maliit Input Method\" \"maliit\" \"\" \"en:ja:ko:zh:*\"" >>/home/phablet/.config/utoutlook.mathias/immodules.cache
@@ -178,7 +176,7 @@ scaling="$((appScaling / 115)).$(printf '%02d' "$((appScaling % 115))")"
 
 dpioptions="--high-dpi-support=1 --force-device-scale-factor=$scaling  --text-font-size=$textFontSize --span-font-size=$spanFontSize"
 sandboxoptions="--no-sandbox"
-gpuoptions="--use-gl=egl --enable-gpu-rasterization --enable-zero-copy --ignore-gpu-blocklist --enable-features=UseSkiaRenderer,VaapiVideoDecoder --disable-frame-rate-limit --disable-gpu-vsync --enable-oop-rasterization"
+gpuoptions="--disable-gpu --disable-gpu-compositing --disable-software-rasterizer --disable-features=VaapiVideoDecoder,AcceleratedVideoDecoder"
 
 echo "launch utoutlookmail"
 

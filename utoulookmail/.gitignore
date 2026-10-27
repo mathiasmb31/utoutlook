@@ -1,5 +1,40 @@
 ../build/
 build/
+build-ninja/
 prospect-mail.snap
 *.old
 /.clickable/
+/.ccache
+
+# CMake build artifacts
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+!Makefile
+*.cmake
+!CMakeLists.txt
+/notify
+/notify_autogen/
+
+# Stray files
+/test
+/q
+
+# IDE files
+.idea/
+*.iml
+*.swp
+*.swo
+.TODO.swp
+
+# Editor / OS files
+.DS_Store
+
+# Root node_modules
+/node_modules/
+
+# Electron app (utoutlookmail/)
+utoutlookmail/node_modules/
+utoutlookmail/dist/
+utoutlookmail/npm-debug.log
