@@ -49,7 +49,6 @@ private:
     QJsonObject buildSummaryMessage(const QString &msg);  // legacy
     bool send(const QJsonObject &message);  // internal: D-Bus send
     QByteArray makePath(const QString &appId, const QString &prefix);
-    QByteArray makeLauncherPath(const QString &appId);
     QStringList getPersistent();
 
     QDBusConnection m_conn;

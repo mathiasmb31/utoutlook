@@ -681,3 +681,97 @@ test('observer: new-mail notification compares against previous count (hotfix #1
     assert.ok(content.includes('unread === 0 && previousUnreadCount > 0'),
         'Zero-unread confirmation should use previousUnreadCount');
 });
+
+// ============================================================
+// Tests for hotfix #12 — the heartbeat auto-exit used to kill the
+// app ~2 min after it was backgrounded: hideOnClose/hideOnMinimize
+// hide the window on background, isVisible() becomes false, and the
+// old "no visible window for 60 heartbeats" rule exited the app, so
+// background notifications stopped. The auto-exit must now be a
+// startup-failure safety net only: once the window has been shown at
+// least once (windowEverVisible), the app must never auto-exit.
+// ============================================================
+
+test('main: heartbeat auto-exit only fires if the window never appeared (hotfix #12)', async () => {
+    const fs = await import('node:fs');
+    const mainPath = path.resolve(__dirname, '../src/main.mjs');
+    const content = fs.readFileSync(mainPath, 'utf-8');
+
+    // windowEverVisible must be tracked and set once a window is visible.
+    assert.ok(content.includes('let windowEverVisible = false'),
+        'Heartbeat should declare windowEverVisible (hotfix #12)');
+    assert.ok(content.includes('windowEverVisible = true'),
+        'windowEverVisible should be set once a window is visible (hotfix #12)');
+
+    // The auto-exit must require the window to have NEVER been visible.
+    // Gating on the *current* visibleCount would kill the app in the
+    // background (window hidden -> isVisible() false).
+    assert.ok(content.includes('!windowEverVisible && heartbeatSeconds > 60'),
+        'Auto-exit must be gated on !windowEverVisible, not the current visible count (hotfix #12)');
+
+    // Once shown, the counter keeps cycling (command.sh treats a static
+    // counter as a dead/frozen app) instead of exiting.
+    assert.ok(content.includes('windowEverVisible && heartbeatSeconds > 60'),
+        'Counter reset should key off windowEverVisible so the app lives on in background (hotfix #12)');
+});
+
+// ============================================================
+// Tests for the launcher badge fix (feature/notifications).
+// setBadgeCount() used to call com.lomiri.LauncherEntry.Update, which
+// does not exist on UT 24.04 -> the badge never showed. It must now use
+// the official com.lomiri.Postal.SetCounter API (which drives the Lomiri
+// launcher badge). Also, the constructor and send() must NOT call
+// updateCount(): utoutlook posts one-shot notifications without a tag,
+// so m_tags stays empty and updateCount() resets the badge (unread
+// count) to 0 on every notify invocation.
+// ============================================================
+
+test('notify pushclient.cpp: setBadgeCount drives the badge via Postal.SetCounter (badge fix)', async () => {
+    const fs = await import('node:fs');
+    const clientPath = path.resolve(__dirname, '../../notify_src/pushclient.cpp');
+    const content = fs.readFileSync(clientPath, 'utf-8');
+
+    const badgeStart = content.indexOf('bool PushClient::setBadgeCount');
+    assert.ok(badgeStart !== -1, 'pushclient.cpp should define setBadgeCount');
+    const badgeEnd = content.indexOf('bool PushClient::', badgeStart + 1);
+    const badgeBody = content.slice(badgeStart, badgeEnd === -1 ? undefined : badgeEnd);
+
+    assert.ok(badgeBody.includes('"SetCounter"'),
+        'setBadgeCount should call com.lomiri.Postal.SetCounter (drives the Lomiri launcher badge)');
+    assert.ok(badgeBody.includes('<< count << (count > 0)'),
+        'setBadgeCount should pass (count, count>0) to SetCounter');
+
+    // The dead com.lomiri.LauncherEntry path must be gone entirely.
+    assert.ok(!content.includes('#define LAUNCHER_SERVICE'),
+        'LAUNCHER_SERVICE define should be removed (com.lomiri.LauncherEntry absent on UT 24.04)');
+    assert.ok(!content.includes('makeLauncherPath'),
+        'makeLauncherPath should be removed (LauncherEntry no longer used)');
+});
+
+test('notify pushclient.cpp/.h: constructor and send() no longer reset the badge (badge fix)', async () => {
+    const fs = await import('node:fs');
+    const clientPath = path.resolve(__dirname, '../../notify_src/pushclient.cpp');
+    const headerPath = path.resolve(__dirname, '../../notify_src/pushclient.h');
+    const content = fs.readFileSync(clientPath, 'utf-8');
+    const header = fs.readFileSync(headerPath, 'utf-8');
+    // Ignore // comments so the explanatory hotfix notes don't count as calls.
+    const code = content.replace(/\/\/[^\n]*/g, '');
+
+    // Constructor must not call updateCount() (resets badge to 0, m_tags empty).
+    const ctorStart = code.indexOf('PushClient::PushClient');
+    const ctorEnd = code.indexOf('QJsonObject PushClient::buildNotification', ctorStart);
+    const ctorBody = code.slice(ctorStart, ctorEnd === -1 ? undefined : ctorEnd);
+    assert.ok(!ctorBody.includes('updateCount('),
+        'Constructor must not call updateCount() — it wipes the unread badge on every notify run');
+
+    // send() must not call updateCount(tag) after posting.
+    const sendStart = code.indexOf('bool PushClient::send(const QJsonObject &message)');
+    const sendEnd = code.indexOf('bool PushClient::setBadgeCount', sendStart);
+    const sendBody = code.slice(sendStart, sendEnd === -1 ? undefined : sendEnd);
+    assert.ok(!sendBody.includes('updateCount('),
+        'send() must not call updateCount(tag) — it wipes the unread badge after each notification');
+
+    // makeLauncherPath declaration removed from the header too.
+    assert.ok(!header.includes('makeLauncherPath'),
+        'pushclient.h should no longer declare makeLauncherPath');
+});

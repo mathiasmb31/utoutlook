@@ -40,6 +40,13 @@ fs.mkdirSync(CONFIG_DIR, {recursive: true});
 // detect whether the Electron process is still alive.
 let heartbeatSeconds = 0;
 let heartbeatExiting = false;
+// hotfix #12: remember whether the window has ever been shown. The heartbeat
+// auto-exit is only a startup-failure safety net (the window never appears).
+// Once the window has been visible at least once, the app must keep running in
+// the background (screen off / app backgrounded) so new-mail notifications keep
+// being delivered. hideOnClose/hideOnMinimize hide the window on background,
+// which makes isVisible() false — that must NOT kill the app anymore.
+let windowEverVisible = false;
 const heartbeatInterval = setInterval(() => {
     if (heartbeatExiting) return;
     heartbeatSeconds++;
@@ -49,20 +56,30 @@ const heartbeatInterval = setInterval(() => {
         .filter(b => b.isVisible())
         .length;
 
-    // After 60 heartbeats (60s) with no visible window, signal exit and quit.
+    if (visibleCount > 0) {
+        windowEverVisible = true;
+    }
+
+    // After 60 heartbeats (~2 min) during which the window NEVER appeared,
+    // signal exit and quit (startup failure: window never showed up).
     // 10s was too short — Outlook web app can take 30s+ to load on slow devices,
     // causing the app to kill itself before the window ever appears (crash
     // at startup ~1 in 2 launches depending on network speed).
-    if (heartbeatSeconds > 60) {
-        if (visibleCount > 0) {
-            heartbeatSeconds = 0;
-        } else {
-            fs.writeFile(EXIT_CLIENT_FILE, content, err => {
-                if (err) logger.error(err);
-            });
-            app.exit(0);
-            return;
-        }
+    // Once the window has been shown at least once, NEVER auto-exit: keep the
+    // app alive in the background (screen off / app backgrounded) so that
+    // new-mail notifications keep being delivered.
+    if (!windowEverVisible && heartbeatSeconds > 60) {
+        fs.writeFile(EXIT_CLIENT_FILE, content, err => {
+            if (err) logger.error(err);
+        });
+        app.exit(0);
+        return;
+    }
+
+    // Once the window has been shown, keep the counter cycling so command.sh's
+    // watcher keeps seeing it change (a static counter = dead/frozen app).
+    if (windowEverVisible && heartbeatSeconds > 60) {
+        heartbeatSeconds = 0;
     }
 
     fs.writeFile(HEARTBEAT_FILE, content, err => {
