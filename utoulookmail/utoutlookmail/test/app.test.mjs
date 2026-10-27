@@ -1002,3 +1002,22 @@ test('command.sh: exports D-Bus environment variables for notify binary (hotfix 
     assert.ok(content.includes('unix:path='),
         'DBUS_SESSION_BUS_ADDRESS must use unix:path= scheme (hotfix #15)');
 });
+
+test('notify pushclient.cpp: buildNotification does NOT include actions field (hotfix #15)', async () => {
+    const fs = await import('node:fs');
+    const cppPath = path.resolve(__dirname, '../../notify_src/pushclient.cpp');
+    const content = fs.readFileSync(cppPath, 'utf-8');
+
+    // Extract buildNotification method body.
+    const start = content.indexOf('PushClient::buildNotification(const QString &title, const QString &body)');
+    const end = content.indexOf('PushClient::buildSummaryMessage', start);
+    const body = content.slice(start, end);
+
+    // The "actions" field must NOT be present — it causes the Lomiri Postal
+    // service to silently skip the popup (no Notify call to org.freedesktop.Notifications).
+    // Verified on device: notifications with "actions" never appear as banners.
+    assert.ok(!body.includes('c["actions"]'),
+        'buildNotification must NOT include "actions" field (hotfix #15) — Postal skips popup when actions present');
+    assert.ok(!body.includes('QJsonArray actions'),
+        'buildNotification must NOT declare actions array (hotfix #15)');
+});
