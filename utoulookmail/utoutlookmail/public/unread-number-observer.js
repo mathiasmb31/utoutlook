@@ -151,13 +151,20 @@ const observeUnreadHandlers = {
 
       debug(`Found ${unread} unread message(s)`);
 
+      // Capture the previous tracked count BEFORE any update below.
+      // The "did unread increase?" comparison further down must use this
+      // previous value — hotfix #9 updated the tracked count before
+      // comparing, so the increase test was always false and new-mail
+      // notifications never fired (fixed in hotfix #11).
+      const previousUnreadCount = state.lastUnreadCount;
+
       // Update tracked count.
       // When unread drops to 0 while previously > 0, require two consecutive
       // zero readings before updating — prevents false "new message"
       // notifications when a SPA re-render temporarily shows "(0 unread)"
       // and then reverts to the real count (e.g. 5 > 0 → false notification).
       let zeroPendingConfirmation = false;
-      if (unread === 0 && state.lastUnreadCount > 0) {
+      if (unread === 0 && previousUnreadCount > 0) {
         state.zeroUnreadConfirmCount++;
         if (state.zeroUnreadConfirmCount >= 2) {
           state.lastUnreadCount = 0;
@@ -182,8 +189,11 @@ const observeUnreadHandlers = {
           updateUnreadDebounced(unread);
         }
 
-        // Only show notification if unread count increased
-        if (unread > state.lastUnreadCount && !checkOnlyZeroUnread) {
+        // Only show notification if unread count increased.
+        // Compare against previousUnreadCount (captured above, before the
+        // update) — NOT state.lastUnreadCount, which now equals unread and
+        // would make this comparison always false (hotfix #11).
+        if (unread > previousUnreadCount && !checkOnlyZeroUnread) {
           // Anti-spam: only show notification if enough time has passed
           const now = new Date();
           const timeSinceLastNotification = state.lastUnreadNotificationTime

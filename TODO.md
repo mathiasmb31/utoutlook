@@ -84,6 +84,14 @@
 - [x] Fix: ignorer updateUnread(0) tant que le zéro n'est pas confirmé
 - [x] (pas de nouveaux tests — fix ciblé observer + contrôleur)
 
+## Fait (v3.2.2 — hotfix #11 régression notif nouveau mail)
+
+- [x] Fix: checkUnread — capturer `previousUnreadCount` AVANT la mise à jour de `lastUnreadCount` (le hotfix #9 mettait à jour avant la comparaison → `unread > lastUnreadCount` était toujours faux → aucune notification de nouveau mail)
+- [x] Fix: comparaison notification `unread > previousUnreadCount` (au lieu de `state.lastUnreadCount`, déjà mis à jour)
+- [x] Fix: `zeroUnreadConfirmCount` s'appuie aussi sur `previousUnreadCount`
+- [x] Tests: 1 nouveau test (60 total, 55 pass + 5 skip Electron)
+- [x] Vérifié sur téléphone : fix présent dans l'asar, livraison `com.lomiri.Postal.Post` OK (`[POST SUCCESS]`)
+
 ## Idées en réserve (non prioritaires)
 
 - [ ] Raccourcis clavier personnalisables
