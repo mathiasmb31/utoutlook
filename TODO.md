@@ -55,6 +55,15 @@
 - [x] Fix: AppArmor — /usr/bin/touch embarqué dans le click (clickable.yaml)
 - [x] Tests: 4 nouveaux tests (41 total, 36 pass + 5 skip Electron)
 
+## Fait (v3.2.2 — hotfix #7c boucle infinie comptes personnels)
+
+- [x] Fix: syncCookiesToLiveCom() — copie cookies office.com → live.com avec SameSite=None
+- [x] Fix: will-navigate login_hint — synchronise cookies avant chargement (garde login_hint)
+- [x] Fix: détecteur boucle — sync cookies au lieu de clear session + retry max 3
+- [x] Fix: did-finish-load — sync cookies early quand #code= détecté (auth code)
+- [x] Fix: CSP — ajout *.live.net dans toutes les directives
+- [x] Tests: 5 nouveaux tests (57 total, 52 pass + 5 skip Electron)
+
 ## Idées en réserve (non prioritaires)
 
 - [ ] Raccourcis clavier personnalisables
