@@ -775,3 +775,92 @@ test('notify pushclient.cpp/.h: constructor and send() no longer reset the badge
     assert.ok(!header.includes('makeLauncherPath'),
         'pushclient.h should no longer declare makeLauncherPath');
 });
+
+// ============================================================
+// Tests for hotfix #13 — the observer fires show-notification on
+// every unread-count change, including SPA re-renders that cause
+// temporary fluctuations. When the app is already in the foreground
+// (window visible + focused), showing a Lomiri notification is
+// jarring: the blue banner slides down, shows the envelope icon,
+// then dismisses — while the user is already looking at the app.
+// The IPC handler must suppress the notification in this case.
+// The badge (updateUnread) still updates normally via its own channel.
+// ============================================================
+
+test('mail-window-controller: show-notification IPC suppressed when window is visible+focused (hotfix #13)', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+
+    // The IPC handler must check visibility before calling handleNotification.
+    assert.ok(content.includes('this.win.isVisible() && this.win.isFocused()'),
+        'show-notification handler should check isVisible() && isFocused() (hotfix #13)');
+
+    // The suppression must return early (skip handleNotification).
+    assert.ok(content.includes('[NOTIFICATION SUPPRESSED]'),
+        'show-notification handler should log suppression and return early (hotfix #13)');
+
+    // handleNotification must still exist for background notifications.
+    assert.ok(content.includes('handleNotification(title, body, icon)'),
+        'handleNotification must still be called for background notifications (hotfix #13)');
+
+    // The check must be inside the show-notification IPC handler, not global.
+    const ipcStart = content.indexOf('ipcMain.on("show-notification"');
+    const ipcEnd = content.indexOf('ipcMain.on(', ipcStart + 1);
+    const ipcBody = content.slice(ipcStart, ipcEnd === -1 ? undefined : ipcEnd);
+    assert.ok(ipcBody.includes('isVisible()') && ipcBody.includes('isFocused()'),
+        'Visibility check must be inside the show-notification IPC handler (hotfix #13)');
+    assert.ok(ipcBody.includes('return;'),
+        'Suppression must return early to skip handleNotification (hotfix #13)');
+});
+
+// ============================================================
+// Tests for hotfix #14 — false page reloads during normal use.
+// setupOfflineDetection() used to react to EVERY did-fail-load event,
+// including sub-resources (images, scripts, XHRs). A single failed
+// image would trigger the offline overlay + connectivity monitor,
+// which called win.reload() when navigator.onLine returned true.
+// This caused a jarring flash: blue progress bar → page reload →
+// Outlook splash envelope animation → back to app.
+// Fix: filter did-fail-load to isMainFrame only, and remove the
+// reload from the connectivity monitor (SPA reconnects on its own).
+// ============================================================
+
+test('mail-window-controller: did-fail-load offline detection only fires on main frame (hotfix #14)', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+
+    // Find the setupOfflineDetection did-fail-load handler (not the logger one).
+    const offlineStart = content.indexOf('setupOfflineDetection()');
+    const offlineEnd = content.indexOf('showOfflineOverlay()', offlineStart);
+    const offlineBody = content.slice(offlineStart, offlineEnd);
+
+    // The handler must accept isMainFrame and filter on it.
+    assert.ok(offlineBody.includes('isMainFrame'),
+        'setupOfflineDetection did-fail-load handler must accept isMainFrame (hotfix #14)');
+    assert.ok(offlineBody.includes('if (!isMainFrame) return;'),
+        'setupOfflineDetection must skip non-main-frame failures (hotfix #14)');
+});
+
+test('mail-window-controller: connectivity monitor does NOT reload the page (hotfix #14)', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+
+    // Find startConnectivityMonitor and extract its body.
+    const monStart = content.indexOf('startConnectivityMonitor()');
+    const monEnd = content.indexOf('async injectStyles()', monStart);
+    const monBody = content.slice(monStart, monEnd);
+
+    // The connectivity monitor must NOT call win.reload() — that causes
+    // the jarring flash (progress bar → reload → Outlook splash → back).
+    assert.ok(!monBody.includes('this.win.reload()'),
+        'Connectivity monitor must not reload the page (hotfix #14) — SPA reconnects on its own');
+
+    // It should still hide the overlay and send a notification.
+    assert.ok(monBody.includes('hideOfflineOverlay()'),
+        'Connectivity monitor should still hide the offline overlay (hotfix #14)');
+    assert.ok(monBody.includes('notif.online.title'),
+        'Connectivity monitor should still send online notification (hotfix #14)');
+});

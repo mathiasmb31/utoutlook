@@ -981,6 +981,16 @@ class MailWindowController {
 
         ipcMain.on("show-notification", (event, {title, body, icon}) => {
             if (this.win && event.sender === this.win.webContents) {
+                // hotfix #13: skip notification when the app is in the foreground.
+                // The observer fires on every unread-count change (including SPA
+                // re-renders that cause temporary fluctuations). Showing a Lomiri
+                // notification while the user is already looking at the app is
+                // jarring — the blue banner slides down, shows the envelope icon,
+                // then dismisses. The badge (updateUnread) still updates normally.
+                if (this.win.isVisible() && this.win.isFocused()) {
+                    logger.info(`[NOTIFICATION SUPPRESSED] foreground — title="${title}" body="${body}"`);
+                    return;
+                }
                 this.handleNotification(title, body, icon);
             }
         });
@@ -1233,7 +1243,13 @@ class MailWindowController {
         this.connectivityTimer = null;
 
         // Detect network failures on page load
-        this.win.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+        this.win.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+            // hotfix #14: only react to main-frame failures, not sub-resources.
+            // Outlook SPA loads many images/scripts/XHRs — a single failed image
+            // must NOT trigger the offline overlay + connectivity monitor, which
+            // would reload the entire page (jarring flash: progress bar → reload
+            // → Outlook splash envelope → back to app).
+            if (!isMainFrame) return;
             // Network-related error codes.
             // NOTE: -3 (ERR_ABORTED) is intentionally excluded — Outlook SPA triggers
             // it during normal redirects/navigations, causing false offline overlays.
@@ -1312,12 +1328,15 @@ class MailWindowController {
             try {
                 const online = await this.win.webContents.executeJavaScript('navigator.onLine');
                 if (online) {
-                    logger.info('Connectivity restored — reloading');
+                    // hotfix #14: do NOT reload the page. A full reload causes
+                    // a jarring flash (progress bar → page reload → Outlook splash
+                    // envelope animation → back to app). Just hide the overlay —
+                    // the Outlook SPA reconnects and refreshes on its own.
+                    logger.info('Connectivity restored — hiding offline overlay');
                     clearInterval(this.connectivityTimer);
                     this.connectivityTimer = null;
                     this.hideOfflineOverlay();
                     this.sendUbportsNotification(t('app.name'), t('notif.online.title'));
-                    this.win.reload();
                 }
             } catch (err) {
                 // Page might not be ready, keep polling
