@@ -15,8 +15,8 @@ build:
 - cp "$ROOT"/utoutlookmail/dist/prospect-mail-*-arm64.tar.gz $INSTALL_DIR/bin/App/prospect.tar.gz
 - cd $INSTALL_DIR/bin/App && tar xvfz prospect.tar.gz --strip-components=1 
 - rm -f $INSTALL_DIR/bin/App/prospect.tar.gz
-- ccache gcc $ROOT/utils/mkdir.c -o $ROOT/utils/mkdir
-- ccache gcc $ROOT/utils/firstinstall.c -o $ROOT/utils/firstinstall
+- gcc $ROOT/utils/mkdir.c -o $ROOT/utils/mkdir
+- gcc $ROOT/utils/firstinstall.c -o $ROOT/utils/firstinstall
 - rm -rf ${ROOT}/squashfs-root/
 - echo '-----Compile debs and patches'
 - ${ROOT}/compiledeps.sh
