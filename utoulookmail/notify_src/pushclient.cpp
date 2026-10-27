@@ -29,9 +29,6 @@
 #define POSTAL_SERVICE "com.lomiri.Postal"
 #define POSTAL_PATH_PREFIX "/com/lomiri/Postal/"
 #define POSTAL_IFACE "com.lomiri.Postal"
-#define LAUNCHER_SERVICE "com.lomiri.LauncherEntry"
-#define LAUNCHER_PATH_PREFIX "/com/lomiri/LauncherEntry/"
-#define LAUNCHER_IFACE "com.lomiri.LauncherEntry"
 
 // D-Bus call timeout in milliseconds.
 // Default is 25s — too long for startup notifications.
@@ -50,7 +47,10 @@ PushClient *PushClient::instance()
 PushClient::PushClient(QObject *parent) : QObject(parent),
     m_conn(QDBusConnection::sessionBus())
 {
-    updateCount();
+    // hotfix (badge): do NOT call updateCount() here. utoutlook posts one-shot
+    // notifications without a tag, so m_tags stays empty and updateCount() would
+    // reset the launcher badge (unread count set by setBadgeCount) to 0 on every
+    // notify invocation.
 }
 
 // ============================================================
@@ -129,9 +129,9 @@ bool PushClient::send(const QJsonObject &message)
         return false;
     }
     qDebug() << "[POST SUCCESS] >> Message posted.";
-    QJsonObject n = message.value("notification").toObject();
-    QString tag = n.value("tag").toString();
-    updateCount(tag);
+    // hotfix (badge): do NOT call updateCount(tag) here — utoutlook posts
+    // one-shot notifications without a tag, so m_tags stays empty and
+    // updateCount() would reset the launcher badge (unread count) to 0.
     return true;
 }
 
@@ -140,18 +140,18 @@ bool PushClient::send(const QJsonObject &message)
 // ============================================================
 bool PushClient::setBadgeCount(int count)
 {
+    // hotfix (badge): com.lomiri.LauncherEntry does not exist on UT 24.04, so
+    // the old "Update" call always failed and the badge never showed. Use the
+    // official com.lomiri.Postal.SetCounter API instead — it drives the Lomiri
+    // launcher badge (com.lomiri.Shell.Launcher.Item count/countVisible).
+    // Verified on device: SetCounter(appId, 9, true) -> count=9, countVisible=true.
     QDBusMessage msg = QDBusMessage::createMethodCall(
-        LAUNCHER_SERVICE,
-        makeLauncherPath(PUSH_APP_ID),
-        LAUNCHER_IFACE,
-        "Update"
+        POSTAL_SERVICE,
+        makePath(PUSH_APP_ID, POSTAL_PATH_PREFIX),
+        POSTAL_IFACE,
+        "SetCounter"
     );
-
-    QVariantMap props;
-    props["count"] = QVariant::fromValue<qint64>(count);
-    props["count-visible"] = (count > 0);
-
-    msg << QString(PUSH_APP_ID) << props;
+    msg << QString(PUSH_APP_ID) << count << (count > 0);
 
     qDebug() << "[BADGE] >> Setting badge count to" << count;
 
@@ -258,11 +258,6 @@ QByteArray PushClient::makePath(const QString &appId, const QString &prefix)
     }
     qDebug() << "[PATH] >> " << path;
     return path;
-}
-
-QByteArray PushClient::makeLauncherPath(const QString &appId)
-{
-    return makePath(appId, LAUNCHER_PATH_PREFIX);
 }
 
 QStringList PushClient::getPersistent()
