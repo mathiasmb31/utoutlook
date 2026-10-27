@@ -555,3 +555,65 @@ test('assets: simplified logo exists for launcher icon', async () => {
     assert.strictEqual(launcherSize, simpleSize,
         'Launcher logo should be the simplified version (same as logo-simple.png)');
 });
+
+// ============================================================
+// Tests for hotfix #7c — cookie sync office.com → live.com
+// ============================================================
+
+test('mail-window-controller: has syncCookiesToLiveCom method', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+    assert.ok(content.includes('async syncCookiesToLiveCom()'),
+        'Controller should have syncCookiesToLiveCom method for personal account cookie sync');
+    assert.ok(content.includes("sameSite: 'no_restriction'"),
+        'Synced cookies should use SameSite=None (no_restriction) for cross-site office.com ↔ live.com');
+});
+
+test('mail-window-controller: loopDetectorRetries capped at 3', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+    assert.ok(content.includes('this.loopDetectorRetries'),
+        'Controller should track loopDetectorRetries to prevent infinite loops');
+    assert.ok(content.includes('this.loopDetectorRetries >= 3'),
+        'Loop detector should give up after 3 retries and navigate to office.com for fresh login');
+});
+
+test('mail-window-controller: CSP includes live.net domains', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+    // Count occurrences of *.live.net in CSP directives
+    const liveNetMatches = content.match(/\*\.live\.net/g) || [];
+    assert.ok(liveNetMatches.length >= 5,
+        `CSP should include *.live.net in multiple directives (found ${liveNetMatches.length}, need >= 5)`);
+});
+
+test('mail-window-controller: login_hint intercept syncs cookies', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+    // The will-navigate handler for login_hint should call syncCookiesToLiveCom
+    const willNavigateStart = content.indexOf("on('will-navigate'");
+    assert.ok(willNavigateStart !== -1, 'Controller should have will-navigate handler');
+    const willNavigateSection = content.slice(willNavigateStart, willNavigateStart + 1500);
+    assert.ok(willNavigateSection.includes('syncCookiesToLiveCom'),
+        'will-navigate login_hint handler should call syncCookiesToLiveCom before loading');
+    assert.ok(willNavigateSection.includes('login_hint preserved') || willNavigateSection.includes('keep login_hint'),
+        'will-navigate handler should preserve login_hint (not strip it)');
+});
+
+test('mail-window-controller: loop detector uses cookie sync instead of clear session', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+    // In the redirect loop handler, should call syncCookiesToLiveCom, not clearOutlookSession
+    const loopHandlerStart = content.indexOf('Redirect loop detected');
+    assert.ok(loopHandlerStart !== -1, 'Should have redirect loop detection logic');
+    const loopHandlerSection = content.slice(loopHandlerStart, loopHandlerStart + 1200);
+    assert.ok(loopHandlerSection.includes('syncCookiesToLiveCom'),
+        'Loop detector should sync cookies (not just clear session)');
+    assert.ok(!loopHandlerSection.includes('clearOutlookSession()'),
+        'Loop detector should NOT clear session (cookie sync replaces that approach)');
+});

@@ -46,6 +46,7 @@ class MailWindowController {
         this.pageLoadTimes = []; // timestamps of recent page loads for loop detection
         this.redirectLoopDetected = false;
         this.loginHintIntercepts = 0; // count of login_hint redirects intercepted
+        this.loopDetectorRetries = 0; // count of loop detector activations (max 3)
         this.currentZoomIndex = 2; // start at 1.0
         this.initialMinimization = { domReady: false };
 
@@ -294,6 +295,70 @@ class MailWindowController {
         }
     }
 
+    /**
+     * Copy session/auth cookies from office.com domains to live.com domains.
+     * Personal Microsoft accounts get redirected from outlook.office.com to
+     * outlook.live.com after login, but the session cookies set on .office.com
+     * are not sent to .live.com — causing an infinite loop with oauthRedirect.html.
+     * This copies the cookies so the session is valid on both domains.
+     */
+    async syncCookiesToLiveCom() {
+        try {
+            const ses = session.fromPartition(this.sessionPartition);
+            const cookies = await ses.cookies.get({});
+            let copied = 0;
+            for (const cookie of cookies) {
+                const domain = (cookie.domain || '').toLowerCase();
+                // Map source domains to live.com equivalents.
+                // Also copy login.live.com cookies to outlook.live.com specifically,
+                // and office.com cookies to .live.com (parent domain) for sharing.
+                const targets = [];
+                if (domain === '.office.com' || domain === '.office365.com') {
+                    targets.push('.live.com');
+                } else if (domain === 'outlook.office.com' || domain === 'outlook.office365.com') {
+                    targets.push('outlook.live.com', '.live.com');
+                } else if (domain === '.microsoft.com' || domain === '.microsoftonline.com' ||
+                           domain === 'login.microsoftonline.com' || domain === 'outlook.microsoft.com') {
+                    targets.push('.live.com', 'outlook.live.com');
+                } else if (domain === '.msauth.net' || domain === '.msocdn.com' ||
+                           domain === '.msftauth.net' || domain === '.msecnd.net') {
+                    targets.push('.live.com', 'outlook.live.com');
+                } else if (domain === 'login.live.com') {
+                    // login.live.com cookies → outlook.live.com (same parent, but be explicit)
+                    targets.push('outlook.live.com');
+                }
+                for (const newDomain of targets) {
+                    const host = newDomain.replace(/^\./, '');
+                    const url = `https://${host}${cookie.path || '/'}`;
+                    await ses.cookies.set({
+                        url,
+                        name: cookie.name,
+                        value: cookie.value,
+                        domain: newDomain,
+                        path: cookie.path || '/',
+                        secure: true,           // required for SameSite=None
+                        httpOnly: cookie.httpOnly,
+                        expirationDate: cookie.expirationDate,
+                        // Force SameSite=None so cookies are sent cross-site
+                        // (office.com ↔ live.com are different sites)
+                        sameSite: 'no_restriction',
+                    });
+                    copied++;
+                }
+            }
+            await ses.cookies.flushStore();
+            logger.info(`Synced ${copied} cookies → live.com (SameSite=None)`);
+            // Debug: log cookie names for troubleshooting
+            if (copied > 0) {
+                const liveCookies = await ses.cookies.get({ domain: '.live.com' });
+                const names = liveCookies.map(c => c.name).join(', ');
+                logger.info(`live.com cookies (${liveCookies.length}): ${names.substring(0, 500)}`);
+            }
+        } catch (err) {
+            logger.error('Failed to sync cookies to live.com:', err.message);
+        }
+    }
+
     // --- Observer health check ---
 
     /**
@@ -395,8 +460,9 @@ class MailWindowController {
                     'Content-Security-Policy': [
                         "default-src 'self' https://outlook.com https://*.outlook.com " +
                         "https://outlook.office.com https://*.office.com " +
-                        "https://*.office365.com https://*.live.com https://*.microsoft.com " +
-                        "https://*.microsoftonline.com https://*.msauth.net https://*.msocdn.com " +
+                        "https://*.office365.com https://*.live.com https://*.live.net " +
+                        "https://*.microsoft.com https://*.microsoftonline.com " +
+                        "https://*.msauth.net https://*.msocdn.com " +
                         "https://*.sharepoint.com https://*.msecnd.net https://*.msftauth.net " +
                         "https://*.cdn.office.net https://*.onecdn.static.microsoft " +
                         "https://*.github.com https://*.githubassets.com https://*.bing.com; " +
@@ -406,37 +472,41 @@ class MailWindowController {
                         "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: " +
                         "https://outlook.com https://*.outlook.com " +
                         "https://outlook.office.com https://*.office.com https://*.office365.com " +
-                        "https://*.live.com https://*.microsoft.com https://*.microsoftonline.com " +
+                        "https://*.live.com https://*.live.net " +
+                        "https://*.microsoft.com https://*.microsoftonline.com " +
                         "https://*.msocdn.com https://*.msauth.net https://*.msecnd.net " +
                         "https://*.msftauth.net https://*.cdn.office.net https://*.sharepoint.com " +
                         "https://*.onecdn.static.microsoft " +
                         "https://*.github.com https://*.githubassets.com https://*.bing.com; " +
                         "style-src 'self' 'unsafe-inline' https://outlook.com https://*.outlook.com " +
                         "https://outlook.office.com https://*.office.com " +
-                        "https://*.office365.com https://*.live.com https://*.microsoft.com " +
-                        "https://*.microsoftonline.com https://*.msocdn.com https://*.msauth.net " +
+                        "https://*.office365.com https://*.live.com https://*.live.net " +
+                        "https://*.microsoft.com https://*.microsoftonline.com " +
+                        "https://*.msocdn.com https://*.msauth.net " +
                         "https://*.msftauth.net https://*.cdn.office.net https://*.onecdn.static.microsoft " +
                         "https://*.github.com https://*.githubassets.com https://*.bing.com; " +
                         "img-src 'self' data: https: blob:; " +
                         "connect-src 'self' https://outlook.com https://*.outlook.com " +
                         "https://outlook.office.com wss://*.office.com " +
-                        "https://*.live.com https://*.office365.com https://*.sharepoint.com " +
+                        "https://*.live.com https://*.live.net " +
+                        "https://*.office365.com https://*.sharepoint.com " +
                         "https://*.microsoft.com https://*.microsoftonline.com https://*.msocdn.com " +
                         "https://*.msauth.net https://*.msecnd.net https://*.msftauth.net " +
                         "https://*.cdn.office.net https://*.onecdn.static.microsoft " +
                         "https://*.github.com https://*.githubassets.com https://*.bing.com " +
-                        "wss://*.live.com wss://*.office365.com; " +
+                        "wss://*.live.com wss://*.live.net wss://*.office365.com; " +
                         "font-src 'self' https://outlook.com https://*.outlook.com " +
                         "https://outlook.office.com https://*.office.com " +
-                        "https://*.office365.com https://*.live.com https://*.microsoft.com " +
-                        "https://*.microsoftonline.com https://*.msocdn.com https://*.msauth.net " +
+                        "https://*.office365.com https://*.live.com https://*.live.net " +
+                        "https://*.microsoft.com https://*.microsoftonline.com " +
+                        "https://*.msocdn.com https://*.msauth.net " +
                         "https://*.msftauth.net https://*.cdn.office.net https://*.onecdn.static.microsoft " +
                         "https://*.github.com https://*.githubassets.com https://*.bing.com data:; " +
                         "media-src 'self' https: blob:; " +
                         "frame-src 'self' https://outlook.com https://*.outlook.com " +
                         "https://outlook.office.com https://*.office.com " +
-                        "https://*.office365.com https://*.live.com https://*.microsoft.com " +
-                        "https://*.microsoftonline.com https://*.sharepoint.com; " +
+                        "https://*.office365.com https://*.live.com https://*.live.net " +
+                        "https://*.microsoft.com https://*.microsoftonline.com https://*.sharepoint.com; " +
                         "worker-src 'self' blob:;"
                     ]
                 }
@@ -765,6 +835,16 @@ class MailWindowController {
             const url = this.win.webContents.getURL();
             logger.info(`Page loaded #${this.loginPage}: ${url}`);
 
+            // --- Cookie sync for personal accounts (hotfix #7c) ---
+            // When outlook.office.com/mail/ loads with an auth code (#code=...),
+            // the page will redirect to outlook.live.com/mail/?login_hint=... for
+            // personal accounts. Sync cookies NOW (before the redirect) so the
+            // session is valid on .live.com and the redirect loop is avoided.
+            if (url.includes('outlook.office.com/mail') && url.includes('#code=')) {
+                logger.info('Auth code detected — syncing cookies to live.com before redirect');
+                this.syncCookiesToLiveCom();
+            }
+
             // --- Redirect loop detection ---
             // Outlook sometimes loops: mail page → oauthRedirect.html → mail page → …
             // Detect when the same mail URL loads too many times in a short window
@@ -787,12 +867,24 @@ class MailWindowController {
 
             if (isMailPage && mailLoads.length >= 5 && !this.redirectLoopDetected) {
                 this.redirectLoopDetected = true;
-                logger.warn(`Redirect loop detected: ${mailLoads.length} mail page loads in 60s — clearing session`);
-                this.clearOutlookSession().then(() => {
-                    logger.info('Session cleared — reloading for fresh login');
-                    this.pageLoadTimes = [];
-                    this.win.reload();
-                }).catch(err => logger.error('Failed to clear session:', err));
+                this.loopDetectorRetries++;
+                logger.warn(`Redirect loop detected (retry ${this.loopDetectorRetries}/3): ${mailLoads.length} mail page loads in 60s`);
+                // Sync cookies from office.com → live.com and reload the clean mail URL.
+                // The loop happens because session cookies don't transfer across domains.
+                this.pageLoadTimes = [];
+                if (this.loopDetectorRetries >= 3) {
+                    logger.error('Loop detector: max retries reached — navigating to office.com for fresh login');
+                    this.win.loadURL('https://outlook.office.com/mail/');
+                    return;
+                }
+                this.syncCookiesToLiveCom().then(() => {
+                    const currentUrl = this.win.webContents.getURL();
+                    const cleanUrl = currentUrl.split('?')[0].split('#')[0];
+                    logger.info(`Reloading ${cleanUrl} after cookie sync`);
+                    this.win.loadURL(cleanUrl);
+                    // Allow detector to fire again if loop persists
+                    this.redirectLoopDetected = false;
+                });
             }
         });
 
@@ -1010,26 +1102,22 @@ class MailWindowController {
             this.injectGestures();
         });
 
-        // Intercept cross-domain redirect loop (hotfix #7):
+        // Intercept login_hint redirect and sync cookies (hotfix #7c):
         // After login on outlook.office.com, Microsoft redirects personal accounts
-        // to outlook.live.com/mail/?login_hint=... which loops with oauthRedirect.html.
-        // Strip the login_hint parameter to break the loop — the page loads
-        // outlook.live.com/mail/ directly. If the session is valid the mail UI
-        // appears; otherwise the user sees the sign-in page (no infinite loop).
+        // to outlook.live.com/mail/?login_hint=... The session cookies set on
+        // .office.com are NOT sent to .live.com, so the page loops with
+        // oauthRedirect.html. Fix: copy cookies from office.com → live.com
+        // before loading. Keep the login_hint — the page needs it to identify
+        // the account, and the synced cookies provide the session.
         this.win.webContents.on('will-navigate', (event, url) => {
             if (url.includes('outlook.live.com/mail') && url.includes('login_hint=')) {
                 event.preventDefault();
-                const cleanUrl = url.split('?')[0]; // strip query params (login_hint)
                 this.loginHintIntercepts++;
-                logger.info(`Intercepted login_hint redirect #${this.loginHintIntercepts}: ${url} → ${cleanUrl}`);
-                // Safety: if intercepted too many times, the clean URL is also looping
-                if (this.loginHintIntercepts > 10) {
-                    logger.warn('Too many login_hint intercepts — falling back to office.com');
-                    this.loginHintIntercepts = 0;
-                    this.win.loadURL('https://outlook.office.com/mail/');
-                    return;
-                }
-                this.win.loadURL(cleanUrl);
+                logger.info(`Intercepted login_hint redirect #${this.loginHintIntercepts}: ${url}`);
+                this.syncCookiesToLiveCom().then(() => {
+                    logger.info(`Loading with synced cookies (login_hint preserved)`);
+                    this.win.loadURL(url); // keep login_hint
+                });
             }
         });
 
