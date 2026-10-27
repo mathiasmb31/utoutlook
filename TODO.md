@@ -101,6 +101,15 @@
 - [x] Tests: 3 nouveaux tests (63 total, 58 pass + 5 skip Electron)
 - [x] Click 3.2.2 rebuildé et installé sur téléphone (27/10 18:47) — heartbeat vérifié actif
 
+## Fait (v3.2.2 — hotfix #13 + #14 suppression notif foreground + faux reloads)
+
+- [x] Fix: show-notification IPC supprimé quand fenêtre visible+focusée (hotfix #13) — évite la bannière Lomiri quand l'utilisateur regarde déjà l'app
+- [x] Fix: badge continue de se mettre à jour normalement (canal updateUnread séparé)
+- [x] Fix: did-fail-load offline detection filtré sur isMainFrame=true (hotfix #14) — une image/XHR qui échoue ne déclenche plus l'overlay offline
+- [x] Fix: connectivity monitor ne fait plus win.reload() (hotfix #14) — retire juste l'overlay, la SPA Outlook se reconnecte seule (élimine le flash: bande bleue → reload → splash enveloppe → retour)
+- [x] Tests: 3 nouveaux tests (66 total, 61 pass + 5 skip Electron)
+- [x] Click 3.2.2 rebuildé et installé sur téléphone (27/10 19:07) — heartbeat vérifié actif
+
 ## Idées en réserve (non prioritaires)
 
 - [ ] Raccourcis clavier personnalisables
