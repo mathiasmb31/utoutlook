@@ -13,7 +13,7 @@ build:
 - echo $INSTALL_DIR/bin
 - cd $INSTALL_DIR/bin/App
 - ls
-- cp "$ROOT"/utoutlookmail/dist/prospect-mail-*-arm64.tar.gz $INSTALL_DIR/bin/App/prospect.tar.gz
+- cp $(ls -t "$ROOT"/utoutlookmail/dist/prospect-mail-*-arm64.tar.gz | head -1) $INSTALL_DIR/bin/App/prospect.tar.gz
 - cd $INSTALL_DIR/bin/App && tar xvfz prospect.tar.gz --strip-components=1 
 - rm -f $INSTALL_DIR/bin/App/prospect.tar.gz
 - gcc $ROOT/utils/mkdir.c -o $ROOT/utils/mkdir
