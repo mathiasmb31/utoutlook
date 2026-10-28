@@ -395,6 +395,21 @@ const T = {
         de: '{count} ungelesene Nachricht(en)', it: '{count} messaggio/i non letto/i', pt: '{count} mensagem(ns) não lida(s)',
         zh: '{count} 封未读邮件', ar: '{count} رسالة غير مقروءة',
     },
+    'notif.newMail.title': {
+        fr: 'Nouveau mail', en: 'New mail', es: 'Nuevo correo',
+        de: 'Neue E-Mail', it: 'Nuova email', pt: 'Novo e-mail',
+        zh: '新邮件', ar: 'بريد جديد',
+    },
+    'notif.newMail.body': {
+        fr: '{sender} : {subject}', en: '{sender}: {subject}', es: '{sender}: {subject}',
+        de: '{sender}: {subject}', it: '{sender}: {subject}', pt: '{sender}: {subject}',
+        zh: '{sender}：{subject}', ar: '{sender}: {subject}',
+    },
+    'notif.newMail.bodyNoSubject': {
+        fr: '{sender} (pas de sujet)', en: '{sender} (no subject)', es: '{sender} (sin asunto)',
+        de: '{sender} (kein Betreff)', it: '{sender} (nessun oggetto)', pt: '{sender} (sem assunto)',
+        zh: '{sender}（无主题）', ar: '{sender} (بدون موضوع)',
+    },
     'notif.calendar.title': {
         fr: '{count} rappel(s) calendrier', en: '{count} Calendar Reminder(s)', es: '{count} recordatorio(s) de calendario',
         de: '{count} Kalendererinnerung(en)', it: '{count} promemoria calendario', pt: '{count} lembrete(s) de calendário',
