@@ -1,7 +1,7 @@
 {
   "name": "prospect-mail",
   "productName": "Prospect Mail",
-  "version": "3.2.6",
+  "version": "3.2.8",
   "type:": "module",
   "main": "src/main.mjs",
   "description": "Unofficial desktop mail client for Microsoft Outlook",

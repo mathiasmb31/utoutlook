@@ -151,6 +151,16 @@
 - [x] Version bump: 3.2.5 → 3.2.6
 - [x] Installé et lancé sur FP4 (28/10 21:28) — prospect-mail PID 140841
 
+## Fait (v3.2.7-3.2.8 — fix notifications nouveau mail + i18n sujet)
+
+- [x] Fix: command.sh — suppression du message de bienvenue au démarrage (demande utilisateur)
+- [x] Fix: unread-number-observer.js — sélecteurs alternatifs pour trouver l'inbox (Outlook a changé son DOM, `[data-folder-name="inbox"]` ne fonctionnait plus)
+- [x] Fix: unread-number-observer.js — debug: true + logs de connexion explicites
+- [x] Fix: unread-number-observer.js — extraction du sujet + expéditeur du dernier mail (`getLatestMailInfo()`)
+- [x] Fix: notifications i18n — nouvelles clés `notif.newMail.title/body/bodyNoSubject` (8 langues)
+- [x] Fix: notification enrichie — "Nouveau mail — {sender}: {subject}" au lieu de "X messages non lus"
+- [x] Version bump: 3.2.6 → 3.2.8
+
 ## Idées en réserve (non prioritaires)
 
 - [ ] Raccourcis clavier personnalisables
