@@ -129,6 +129,8 @@
 - [x] Fix: main.css — `overscroll-behavior-y: contain` sur les conteneurs de liste + `none` sur html/body (anti-bounce)
 - [x] Fix: gestures.js — `e.preventDefault()` systématique au pull-down (dès le 1er pixel, plus de seuil à 0.3) pour bloquer l'enveloppe Outlook
 - [x] Fix: gestures.js — injection style inline `overscroll-behavior-y: none` en fallback du CSS insertCSS
+- [x] Fix: clickable.yaml — glob arm64 tar.gz matchait 2 fichiers (3.2.3 + 3.2.4) → `ls -t | head -1`
+- [x] Click 3.2.4 buildé et installé sur téléphone (28/10 20:11) — app lancée et fonctionnelle (prospect-mail PID 87876)
 
 ## Idées en réserve (non prioritaires)
 
