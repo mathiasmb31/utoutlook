@@ -122,6 +122,35 @@
 - [x] Tests: 9 nouveaux tests (75 total, 70 pass + 5 skip Electron)
 - [x] Click 3.2.3 rebuildé et installé — notif bienvenue + splash lifecycle vérifiés sur téléphone
 
+## Fait (v3.2.4 — hotfix #16 cache enveloppe pull-to-refresh)
+
+- [x] Fix: main.css — règles CSS pour cacher l'indicateur pull-to-refresh d'Outlook (enveloppe au pull-down) : sélecteurs `pullToRefresh`, `refreshIndicator`, `refreshControl`, `overscrollIndicator`
+- [x] Fix: main.css — cache l'indicateur de chargement en bas de liste (spinner/enveloppe au scroll-down) : `listLoading`, `loadingMore`, `ProgressRing` dans `messageList`/`listView`
+- [x] Fix: main.css — `overscroll-behavior-y: contain` sur les conteneurs de liste + `none` sur html/body (anti-bounce)
+- [x] Fix: gestures.js — `e.preventDefault()` systématique au pull-down (dès le 1er pixel, plus de seuil à 0.3) pour bloquer l'enveloppe Outlook
+- [x] Fix: gestures.js — injection style inline `overscroll-behavior-y: none` en fallback du CSS insertCSS
+- [x] Fix: clickable.yaml — glob arm64 tar.gz matchait 2 fichiers (3.2.3 + 3.2.4) → `ls -t | head -1`
+- [x] Click 3.2.4 buildé et installé sur téléphone (28/10 20:11) — app lancée et fonctionnelle (prospect-mail PID 87876)
+
+## Fait (v3.2.5 — hotfix #17 cache TOUS les cas d'enveloppe bleue Outlook)
+
+- [x] Fix: main.css — +225 lignes, 8 blocs de sélecteurs agressifs :
+  - Sélecteurs sémantiques ARIA (`role="progressbar"`, `aria-busy="true"`, `aria-label*="loading/chargement/refresh"`)
+  - `data-automation-id` (spinner, loading, progress, refresh, pull, sync)
+  - Classes Fluent UI (`fui-Spinner`, `fui-ProgressIndicator`, `fui-ProgressRing`, `ms-Spinner`)
+  - Enfants directs des conteneurs de liste (wrappers pull/refresh/indicator)
+  - Skeleton/shimmer/overlay/backdrop
+- [x] Fix: gestures.js — MutationObserver JS : surveille les conteneurs de liste, cache dynamiquement tout indicateur de chargement apparaissant après le chargement initial (SPA Outlook recrée les nœuds DOM)
+- [x] Fix: gestures.js — Réapplication périodique (3s) anti-régression SPA
+- [x] Version bump: 3.2.4 → 3.2.5
+
+## Fait (v3.2.6 — hotfix #18 supprime le reload() du pull-to-refresh)
+
+- [x] **Fix CRITIQUE**: gestures.js — suppression du `window.location.reload()` dans le pull-to-refresh → c'était LUI qui déclenchait le splash Outlook (enveloppe bleue plein écran qui tourne)
+- [x] Le pull-to-refresh est maintenant purement visuel (barre bleue) sans recharger la page
+- [x] Version bump: 3.2.5 → 3.2.6
+- [x] Installé et lancé sur FP4 (28/10 21:28) — prospect-mail PID 140841
+
 ## Idées en réserve (non prioritaires)
 
 - [ ] Raccourcis clavier personnalisables

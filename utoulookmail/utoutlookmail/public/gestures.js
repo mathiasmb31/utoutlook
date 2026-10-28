@@ -10,6 +10,168 @@
     if (window.__utoutlookGesturesLoaded) return;
     window.__utoutlookGesturesLoaded = true;
 
+    // --- Disable native overscroll/pull-to-refresh on the page ---
+    // Outlook web shows an envelope icon when the user pulls down from the
+    // top of the message list. Block it at the CSS level (inline style as a
+    // fallback — main.css also sets this with !important via insertCSS).
+    document.documentElement.style.overscrollBehaviorY = 'none';
+    document.body.style.overscrollBehaviorY = 'none';
+
+    // Ensure scroll containers don't bounce
+    const scrollStyle = document.createElement('style');
+    scrollStyle.textContent =
+        'html, body { overscroll-behavior-y: none !important; }' +
+        '[class*="messageList"], [class*="listView"], [role="list"], [role="grid"]' +
+        ' { overscroll-behavior-y: contain !important; }';
+    document.head.appendChild(scrollStyle);
+
+    // ============================================================
+    // MutationObserver — Cache dynamiquement les indicateurs de
+    // chargement (enveloppe bleue) qui apparaissent après le
+    // chargement initial (SPA Outlook). Le CSS statique ne suffit
+    // pas car Outlook recrée les nœuds DOM à chaque navigation.
+    // ============================================================
+    const HIDE_STYLE = 'display:none!important;visibility:hidden!important;opacity:0!important;height:0!important;min-height:0!important;max-height:0!important;overflow:hidden!important;pointer-events:none!important;';
+
+    // Sélecteurs pour détecter les indicateurs de chargement
+    const LOADING_SELECTORS = [
+        '[role="progressbar"]',
+        '[aria-busy="true"]',
+        '[aria-label*="loading" i]',
+        '[aria-label*="chargement" i]',
+        '[aria-label*="refresh" i]',
+        '[aria-label*="actualis" i]',
+        '[aria-label*="sync" i]',
+        '[data-automation-id*="spinner" i]',
+        '[data-automation-id*="loading" i]',
+        '[data-automation-id*="progress" i]',
+        '[data-automation-id*="refresh" i]',
+        '[data-automation-id*="pull" i]',
+        '[class*="pullToRefresh"]',
+        '[class*="refreshIndicator"]',
+        '[class*="refreshControl"]',
+        '[class*="overscrollIndicator"]',
+        '[class*="listLoading"]',
+        '[class*="loadingMore"]',
+        '[class*="loadMoreIndicator"]',
+        '[class*="messageListSpinner"]',
+        '[class*="loadingOverlay"]',
+        '[class*="loadingBackdrop"]',
+        '[class*="refreshOverlay"]',
+        '[class*="skeleton"]',
+        '[class*="Skeleton"]',
+        '[class*="shimmer"]',
+        '[class*="Shimmer"]',
+        '[class*="ProgressRing"]',
+        '[class*="progressRing"]',
+        '[class*="Spinner"]',
+        '[class*="spinner"]',
+        '[class*="spin"]',
+        '[class*="Spin"]',
+        '[class*="fui-Spinner"]',
+        '[class*="fui-ProgressIndicator"]',
+        '[class*="fui-ProgressRing"]',
+        '[class*="ms-Spinner"]',
+        '[class*="ms-ProgressIndicator"]',
+        '[class*="ProgressIndicator"]'
+    ];
+
+    // Containers de liste à surveiller
+    const LIST_SELECTORS = '[role="list"], [role="grid"], [class*="messageList"], [class*="listView"], [class*="virtualizedList"]';
+
+    function isInListContext(el) {
+        // Vérifier si l'élément est dans un conteneur de liste
+        return el.closest(LIST_SELECTORS) !== null;
+    }
+
+    function hideLoadingIndicators(root) {
+        if (!root || root.nodeType !== Node.ELEMENT_NODE) return;
+        for (const selector of LOADING_SELECTORS) {
+            try {
+                const elements = root.querySelectorAll(selector);
+                elements.forEach(el => {
+                    // Ne cacher que si dans un contexte de liste ou si c'est un overlay global
+                    if (isInListContext(el) || selector.includes('Overlay') || selector.includes('Backdrop') || selector.includes('pullToRefresh') || selector.includes('refreshIndicator') || selector.includes('overscroll')) {
+                        el.style.cssText += HIDE_STYLE;
+                        el.setAttribute('data-utoutlook-hidden', 'true');
+                    }
+                });
+                // Vérifier si le root lui-même correspond
+                if (root.matches && root.matches(selector)) {
+                    if (isInListContext(root) || selector.includes('Overlay') || selector.includes('Backdrop') || selector.includes('pullToRefresh')) {
+                        root.style.cssText += HIDE_STYLE;
+                        root.setAttribute('data-utoutlook-hidden', 'true');
+                    }
+                }
+            } catch (e) { /* sélecteur invalide, ignorer */ }
+        }
+    }
+
+    // Observer les mutations dans les conteneurs de liste
+    const listObserver = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            // Nouveaux nœuds ajoutés
+            for (const node of mutation.addedNodes) {
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                    hideLoadingIndicators(node);
+                }
+            }
+            // Attributs modifiés (aria-busy, class, etc.)
+            if (mutation.type === 'attributes' && mutation.target.nodeType === Node.ELEMENT_NODE) {
+                hideLoadingIndicators(mutation.target.parentElement || mutation.target);
+            }
+        }
+    });
+
+    function observeListContainer(container) {
+        if (!container || container.hasAttribute('data-utoutlook-observed')) return;
+        container.setAttribute('data-utoutlook-observed', 'true');
+        listObserver.observe(container, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'aria-busy', 'aria-label', 'style', 'data-automation-id'] });
+        hideLoadingIndicators(container);
+    }
+
+    // Observer le body pour détecter les nouveaux conteneurs de liste
+    const bodyObserver = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            for (const node of mutation.addedNodes) {
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                    // Nouveau conteneur de liste
+                    if (node.matches && node.matches(LIST_SELECTORS)) {
+                        observeListContainer(node);
+                    }
+                    // Chercher des conteneurs de liste dans le nouveau nœud
+                    if (node.querySelectorAll) {
+                        node.querySelectorAll(LIST_SELECTORS).forEach(observeListContainer);
+                    }
+                    // Cacher les indicateurs dans le nouveau nœud
+                    hideLoadingIndicators(node);
+                }
+            }
+        }
+    });
+
+    // Démarrer l'observation quand le DOM est prêt
+    function startObserving() {
+        bodyObserver.observe(document.body, { childList: true, subtree: true });
+        // Observer les conteneurs existants
+        document.querySelectorAll(LIST_SELECTORS).forEach(observeListContainer);
+        // Cacher les indicateurs existants
+        hideLoadingIndicators(document.body);
+        console.log('[gestures] Loading indicator observer started');
+    }
+
+    if (document.body) {
+        startObserving();
+    } else {
+        document.addEventListener('DOMContentLoaded', startObserving);
+    }
+
+    // Réappliquer périodiquement (sécurité anti-régression SPA)
+    setInterval(() => {
+        document.querySelectorAll(LIST_SELECTORS).forEach(observeListContainer);
+        hideLoadingIndicators(document.body);
+    }, 3000);
+
     // --- Swipe from left edge to go back (browser history) ---
     let touchStartX = 0;
     let touchStartY = 0;
@@ -70,8 +232,11 @@
         if (diff > 0) {
             const progress = Math.min(diff / 120, 1);
             createPullIndicator().style.transform = `scaleX(${progress})`;
-            // Prevent default pull-to-refresh of the browser
-            if (progress > 0.3) e.preventDefault();
+            // Always prevent default when pulling down from the top —
+            // blocks both the browser pull-to-refresh AND Outlook web's
+            // own envelope refresh indicator (which appears as soon as
+            // the user drags down, before any threshold).
+            e.preventDefault();
         }
     }, {passive: false});
 
@@ -81,9 +246,14 @@
         if (pullIndicator) {
             const currentScale = parseFloat(pullIndicator.style.transform.replace('scaleX(', '').replace(')', '')) || 0;
             if (currentScale > 0.7) {
-                console.log('[gestures] Pull-to-refresh triggered');
+                // NE PAS faire window.location.reload() — cela déclenche
+                // le splash screen d'Outlook web (enveloppe bleue plein
+                // écran qui tourne). La barre bleue est purement visuelle.
+                console.log('[gestures] Pull-to-refresh detected (visual only, no reload)');
                 pullIndicator.style.transform = 'scaleX(1)';
-                setTimeout(() => { window.location.reload(); }, 300);
+                setTimeout(() => {
+                    if (pullIndicator) pullIndicator.style.transform = 'scaleX(0)';
+                }, 500);
             } else {
                 pullIndicator.style.transform = 'scaleX(0)';
             }
