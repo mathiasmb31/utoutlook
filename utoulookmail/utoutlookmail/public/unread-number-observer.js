@@ -15,7 +15,7 @@ const CONFIG = {
   maxRetryDelayMs: 30000,            // 30 seconds max between retries
 
   // Debug logging (set to true to enable verbose console output)
-  debug: false,
+  debug: true,
 };
 
 // Debug logger — silent by default
@@ -25,6 +25,9 @@ const debug = (...args) => { if (CONFIG.debug) console.log(...args); };
 const I18N = window.__utoutlookI18n || {
   newMessagesTitle: 'New Messages',
   newMessagesBody: '{count} unread message(s)',
+  newMailTitle: 'New mail',
+  newMailBody: '{sender}: {subject}',
+  newMailBodyNoSubject: '{sender} (no subject)',
   calendarTitle: '{count} Calendar Reminder(s)',
   appName: 'UToutlook Mail',
 };
@@ -107,18 +110,127 @@ const observeUnreadHandlers = {
     // NOTE: use let, not const — Outlook SPA recreates this element on navigation,
     // so we must re-query on every check to avoid reading a stale (disconnected)
     // element that retains its old title with the old unread count.
-    let inboxElement = document.querySelector('[data-folder-name="inbox"]');
+    // Outlook a changé son DOM au fil du temps — on essaie plusieurs sélecteurs.
+    const findInboxElement = () => {
+      // Sélecteurs par ordre de préférence (du plus sémantique au plus générique)
+      const selectors = [
+        '[data-folder-name="inbox"]',
+        '[data-folder-name="Boîte de réception"]',
+        '[data-folder-name="Inbox"]',
+        '[data-app-section="FolderPane"] [role="treeitem"][aria-label*="non lu" i]',
+        '[data-app-section="FolderPane"] [role="treeitem"][aria-label*="unread" i]',
+        '[class*="folderPane"] [role="treeitem"][title*="non lu" i]',
+        '[class*="folderPane"] [role="treeitem"][title*="unread" i]',
+        '[class*="folderPane"] [role="treeitem"]:first-child',
+        '[data-folder-pane] [role="treeitem"]:first-child',
+      ];
+      for (const sel of selectors) {
+        const el = document.querySelector(sel);
+        if (el && document.contains(el)) {
+          debug(`Inbox found with selector: ${sel}`);
+          return el;
+        }
+      }
+      // Dernier recours: chercher un treeitem avec un title contenant un nombre entre parenthèses
+      const allTreeItems = document.querySelectorAll('[role="treeitem"][title*="("]');
+      for (const item of allTreeItems) {
+        const title = item.getAttribute('title') || '';
+        if (/\(\d+\)/.test(title) && /inbox|réception|reception/i.test(title)) {
+          debug(`Inbox found by title pattern: ${title.substring(0, 80)}`);
+          return item;
+        }
+      }
+      debug('No inbox element found — tried ' + selectors.length + ' selectors');
+      return null;
+    };
+
+    let inboxElement = findInboxElement();
 
     if (!inboxElement) {
-      debug('No inbox element found for unread monitoring');
+      console.log('[UTOUTLOOK OBSERVER] No inbox element found for unread monitoring');
       return false;
     }
+    console.log('[UTOUTLOOK OBSERVER] Inbox element found — unread monitoring active');
+
+    // ============================================================
+    // Extract info from the latest (first) message in the list
+    // Used to include subject + sender in new-mail notifications
+    // ============================================================
+    const getLatestMailInfo = () => {
+      try {
+        // Sélecteurs pour le premier message (le plus récent) dans la liste
+        const firstMessageSelectors = [
+          '[role="list"] [role="listitem"]:first-child',
+          '[class*="messageList"] [role="row"]:first-child',
+          '[class*="listView"] [role="row"]:first-child',
+          '[class*="messageItem"]:first-child',
+          '[role="grid"] [role="row"]:first-child',
+        ];
+        let firstMsg = null;
+        for (const sel of firstMessageSelectors) {
+          firstMsg = document.querySelector(sel);
+          if (firstMsg) break;
+        }
+        if (!firstMsg) {
+          debug('No first message element found for subject extraction');
+          return null;
+        }
+
+        // Sélecteurs pour le sujet dans le message
+        const subjectSelectors = [
+          '[class*="subject"]',
+          '[data-automation-id*="subject"]',
+          '[class*="messageSubject"]',
+          '[class*="itemSubject"]',
+        ];
+        let subject = '';
+        for (const sel of subjectSelectors) {
+          const el = firstMsg.querySelector(sel);
+          if (el && el.textContent.trim()) {
+            subject = el.textContent.trim();
+            break;
+          }
+        }
+
+        // Sélecteurs pour l'expéditeur dans le message
+        const senderSelectors = [
+          '[class*="sender"]',
+          '[class*="from"]',
+          '[data-automation-id*="sender"]',
+          '[class*="displayName"]',
+        ];
+        let sender = '';
+        for (const sel of senderSelectors) {
+          const el = firstMsg.querySelector(sel);
+          if (el && el.textContent.trim()) {
+            sender = el.textContent.trim();
+            break;
+          }
+        }
+
+        // Fallback: utiliser le texte du premier message (tronqué)
+        if (!subject && firstMsg.textContent) {
+          subject = firstMsg.textContent.trim().substring(0, 80);
+        }
+        if (!sender && firstMsg.textContent) {
+          // Essayer d'extraire la première ligne (souvent l'expéditeur)
+          const lines = firstMsg.textContent.trim().split('\n').filter(l => l.trim());
+          if (lines.length > 0) sender = lines[0].trim().substring(0, 40);
+        }
+
+        debug(`Latest mail info: sender="${sender}" subject="${subject}"`);
+        return { subject, sender };
+      } catch (e) {
+        debug('Error extracting latest mail info:', e.message);
+        return null;
+      }
+    };
 
     const checkUnread = (checkOnlyZeroUnread) => {
       // Re-query on every check: Outlook SPA recreates DOM nodes during navigation.
       // A stale (disconnected) element keeps its old title attribute, causing
       // false reads (e.g. old unread=5 when real count is now 4 → false notification).
-      const currentInbox = document.querySelector('[data-folder-name="inbox"]');
+      const currentInbox = findInboxElement();
       if (!currentInbox || !document.contains(currentInbox)) {
         debug('Inbox element not found or disconnected — skipping check');
         return false;
@@ -201,10 +313,21 @@ const observeUnreadHandlers = {
             : Infinity;
 
           if (!state.lastUnreadNotificationTime || timeSinceLastNotification > CONFIG.unreadEmailThrottleMs) {
-            showNotification(
-              `${I18N.appName}: ${tr('newMessagesTitle')}`,
-              tr('newMessagesBody', { count: unread })
-            );
+            // Essayer d'extraire le sujet du dernier mail pour une notif plus riche
+            const mailInfo = getLatestMailInfo();
+            let title, body;
+            if (mailInfo && mailInfo.subject) {
+              title = tr('newMailTitle');
+              const sender = mailInfo.sender || '';
+              body = tr('newMailBody', { sender, subject: mailInfo.subject });
+            } else if (mailInfo && mailInfo.sender) {
+              title = tr('newMailTitle');
+              body = tr('newMailBodyNoSubject', { sender: mailInfo.sender });
+            } else {
+              title = `${I18N.appName}: ${tr('newMessagesTitle')}`;
+              body = tr('newMessagesBody', { count: unread });
+            }
+            showNotification(title, body);
             state.lastUnreadNotificationTime = now;
           } else {
             debug(`Unread notification suppressed by anti-spam (need to wait ${CONFIG.unreadEmailThrottleMs}ms)`);
