@@ -1440,6 +1440,9 @@ class MailWindowController {
         const i18nJson = JSON.stringify({
             newMessagesTitle: tr['notif.newMessages.title'],
             newMessagesBody: tr['notif.newMessages.body'],
+            newMailTitle: tr['notif.newMail.title'],
+            newMailBody: tr['notif.newMail.body'],
+            newMailBodyNoSubject: tr['notif.newMail.bodyNoSubject'],
             calendarTitle: tr['notif.calendar.title'],
             appName: tr['app.name'],
         });
