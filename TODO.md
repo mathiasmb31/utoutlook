@@ -144,6 +144,13 @@
 - [x] Fix: gestures.js — Réapplication périodique (3s) anti-régression SPA
 - [x] Version bump: 3.2.4 → 3.2.5
 
+## Fait (v3.2.6 — hotfix #18 supprime le reload() du pull-to-refresh)
+
+- [x] **Fix CRITIQUE**: gestures.js — suppression du `window.location.reload()` dans le pull-to-refresh → c'était LUI qui déclenchait le splash Outlook (enveloppe bleue plein écran qui tourne)
+- [x] Le pull-to-refresh est maintenant purement visuel (barre bleue) sans recharger la page
+- [x] Version bump: 3.2.5 → 3.2.6
+- [x] Installé et lancé sur FP4 (28/10 21:28) — prospect-mail PID 140841
+
 ## Idées en réserve (non prioritaires)
 
 - [ ] Raccourcis clavier personnalisables

@@ -246,9 +246,14 @@
         if (pullIndicator) {
             const currentScale = parseFloat(pullIndicator.style.transform.replace('scaleX(', '').replace(')', '')) || 0;
             if (currentScale > 0.7) {
-                console.log('[gestures] Pull-to-refresh triggered');
+                // NE PAS faire window.location.reload() — cela déclenche
+                // le splash screen d'Outlook web (enveloppe bleue plein
+                // écran qui tourne). La barre bleue est purement visuelle.
+                console.log('[gestures] Pull-to-refresh detected (visual only, no reload)');
                 pullIndicator.style.transform = 'scaleX(1)';
-                setTimeout(() => { window.location.reload(); }, 300);
+                setTimeout(() => {
+                    if (pullIndicator) pullIndicator.style.transform = 'scaleX(0)';
+                }, 500);
             } else {
                 pullIndicator.style.transform = 'scaleX(0)';
             }
