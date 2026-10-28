@@ -25,6 +25,153 @@
         ' { overscroll-behavior-y: contain !important; }';
     document.head.appendChild(scrollStyle);
 
+    // ============================================================
+    // MutationObserver — Cache dynamiquement les indicateurs de
+    // chargement (enveloppe bleue) qui apparaissent après le
+    // chargement initial (SPA Outlook). Le CSS statique ne suffit
+    // pas car Outlook recrée les nœuds DOM à chaque navigation.
+    // ============================================================
+    const HIDE_STYLE = 'display:none!important;visibility:hidden!important;opacity:0!important;height:0!important;min-height:0!important;max-height:0!important;overflow:hidden!important;pointer-events:none!important;';
+
+    // Sélecteurs pour détecter les indicateurs de chargement
+    const LOADING_SELECTORS = [
+        '[role="progressbar"]',
+        '[aria-busy="true"]',
+        '[aria-label*="loading" i]',
+        '[aria-label*="chargement" i]',
+        '[aria-label*="refresh" i]',
+        '[aria-label*="actualis" i]',
+        '[aria-label*="sync" i]',
+        '[data-automation-id*="spinner" i]',
+        '[data-automation-id*="loading" i]',
+        '[data-automation-id*="progress" i]',
+        '[data-automation-id*="refresh" i]',
+        '[data-automation-id*="pull" i]',
+        '[class*="pullToRefresh"]',
+        '[class*="refreshIndicator"]',
+        '[class*="refreshControl"]',
+        '[class*="overscrollIndicator"]',
+        '[class*="listLoading"]',
+        '[class*="loadingMore"]',
+        '[class*="loadMoreIndicator"]',
+        '[class*="messageListSpinner"]',
+        '[class*="loadingOverlay"]',
+        '[class*="loadingBackdrop"]',
+        '[class*="refreshOverlay"]',
+        '[class*="skeleton"]',
+        '[class*="Skeleton"]',
+        '[class*="shimmer"]',
+        '[class*="Shimmer"]',
+        '[class*="ProgressRing"]',
+        '[class*="progressRing"]',
+        '[class*="Spinner"]',
+        '[class*="spinner"]',
+        '[class*="spin"]',
+        '[class*="Spin"]',
+        '[class*="fui-Spinner"]',
+        '[class*="fui-ProgressIndicator"]',
+        '[class*="fui-ProgressRing"]',
+        '[class*="ms-Spinner"]',
+        '[class*="ms-ProgressIndicator"]',
+        '[class*="ProgressIndicator"]'
+    ];
+
+    // Containers de liste à surveiller
+    const LIST_SELECTORS = '[role="list"], [role="grid"], [class*="messageList"], [class*="listView"], [class*="virtualizedList"]';
+
+    function isInListContext(el) {
+        // Vérifier si l'élément est dans un conteneur de liste
+        return el.closest(LIST_SELECTORS) !== null;
+    }
+
+    function hideLoadingIndicators(root) {
+        if (!root || root.nodeType !== Node.ELEMENT_NODE) return;
+        for (const selector of LOADING_SELECTORS) {
+            try {
+                const elements = root.querySelectorAll(selector);
+                elements.forEach(el => {
+                    // Ne cacher que si dans un contexte de liste ou si c'est un overlay global
+                    if (isInListContext(el) || selector.includes('Overlay') || selector.includes('Backdrop') || selector.includes('pullToRefresh') || selector.includes('refreshIndicator') || selector.includes('overscroll')) {
+                        el.style.cssText += HIDE_STYLE;
+                        el.setAttribute('data-utoutlook-hidden', 'true');
+                    }
+                });
+                // Vérifier si le root lui-même correspond
+                if (root.matches && root.matches(selector)) {
+                    if (isInListContext(root) || selector.includes('Overlay') || selector.includes('Backdrop') || selector.includes('pullToRefresh')) {
+                        root.style.cssText += HIDE_STYLE;
+                        root.setAttribute('data-utoutlook-hidden', 'true');
+                    }
+                }
+            } catch (e) { /* sélecteur invalide, ignorer */ }
+        }
+    }
+
+    // Observer les mutations dans les conteneurs de liste
+    const listObserver = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            // Nouveaux nœuds ajoutés
+            for (const node of mutation.addedNodes) {
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                    hideLoadingIndicators(node);
+                }
+            }
+            // Attributs modifiés (aria-busy, class, etc.)
+            if (mutation.type === 'attributes' && mutation.target.nodeType === Node.ELEMENT_NODE) {
+                hideLoadingIndicators(mutation.target.parentElement || mutation.target);
+            }
+        }
+    });
+
+    function observeListContainer(container) {
+        if (!container || container.hasAttribute('data-utoutlook-observed')) return;
+        container.setAttribute('data-utoutlook-observed', 'true');
+        listObserver.observe(container, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'aria-busy', 'aria-label', 'style', 'data-automation-id'] });
+        hideLoadingIndicators(container);
+    }
+
+    // Observer le body pour détecter les nouveaux conteneurs de liste
+    const bodyObserver = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            for (const node of mutation.addedNodes) {
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                    // Nouveau conteneur de liste
+                    if (node.matches && node.matches(LIST_SELECTORS)) {
+                        observeListContainer(node);
+                    }
+                    // Chercher des conteneurs de liste dans le nouveau nœud
+                    if (node.querySelectorAll) {
+                        node.querySelectorAll(LIST_SELECTORS).forEach(observeListContainer);
+                    }
+                    // Cacher les indicateurs dans le nouveau nœud
+                    hideLoadingIndicators(node);
+                }
+            }
+        }
+    });
+
+    // Démarrer l'observation quand le DOM est prêt
+    function startObserving() {
+        bodyObserver.observe(document.body, { childList: true, subtree: true });
+        // Observer les conteneurs existants
+        document.querySelectorAll(LIST_SELECTORS).forEach(observeListContainer);
+        // Cacher les indicateurs existants
+        hideLoadingIndicators(document.body);
+        console.log('[gestures] Loading indicator observer started');
+    }
+
+    if (document.body) {
+        startObserving();
+    } else {
+        document.addEventListener('DOMContentLoaded', startObserving);
+    }
+
+    // Réappliquer périodiquement (sécurité anti-régression SPA)
+    setInterval(() => {
+        document.querySelectorAll(LIST_SELECTORS).forEach(observeListContainer);
+        hideLoadingIndicators(document.body);
+    }, 3000);
+
     // --- Swipe from left edge to go back (browser history) ---
     let touchStartX = 0;
     let touchStartY = 0;
