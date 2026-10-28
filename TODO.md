@@ -132,6 +132,18 @@
 - [x] Fix: clickable.yaml — glob arm64 tar.gz matchait 2 fichiers (3.2.3 + 3.2.4) → `ls -t | head -1`
 - [x] Click 3.2.4 buildé et installé sur téléphone (28/10 20:11) — app lancée et fonctionnelle (prospect-mail PID 87876)
 
+## Fait (v3.2.5 — hotfix #17 cache TOUS les cas d'enveloppe bleue Outlook)
+
+- [x] Fix: main.css — +225 lignes, 8 blocs de sélecteurs agressifs :
+  - Sélecteurs sémantiques ARIA (`role="progressbar"`, `aria-busy="true"`, `aria-label*="loading/chargement/refresh"`)
+  - `data-automation-id` (spinner, loading, progress, refresh, pull, sync)
+  - Classes Fluent UI (`fui-Spinner`, `fui-ProgressIndicator`, `fui-ProgressRing`, `ms-Spinner`)
+  - Enfants directs des conteneurs de liste (wrappers pull/refresh/indicator)
+  - Skeleton/shimmer/overlay/backdrop
+- [x] Fix: gestures.js — MutationObserver JS : surveille les conteneurs de liste, cache dynamiquement tout indicateur de chargement apparaissant après le chargement initial (SPA Outlook recrée les nœuds DOM)
+- [x] Fix: gestures.js — Réapplication périodique (3s) anti-régression SPA
+- [x] Version bump: 3.2.4 → 3.2.5
+
 ## Idées en réserve (non prioritaires)
 
 - [ ] Raccourcis clavier personnalisables

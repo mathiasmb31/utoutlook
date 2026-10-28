@@ -162,22 +162,36 @@ button, [role="button"], a[role="button"] {
   max-width: 100% !important;
 }
 
-/* --- Hide Outlook pull-to-refresh envelope indicator --- */
-/* Outlook web shows an envelope icon when pulling down from the top
-   of the message list to refresh. This is jarring on mobile — the
-   custom pull-to-refresh bar in gestures.js replaces it. */
+/* ============================================================
+   HIDE ALL OUTLOOK LOADING/REFRESH INDICATORS (hotfix #16 + #17)
+   L'enveloppe bleue d'Outlook apparaît dans plusieurs contextes :
+   - Pull-to-refresh (tirer vers le bas)
+   - Chargement bas de liste (scroll down)
+   - Navigation entre dossiers
+   - Skeleton loaders, spinners Fluent UI, overlays
+   ============================================================ */
 
-[class*="pullToRefresh"],
-[class*="PullToRefresh"],
-[class*="refreshIndicator"],
-[class*="RefreshIndicator"],
-[class*="refreshControl"],
-[class*="RefreshControl"],
-[class*="overscrollIndicator"],
-[class*="OverscrollIndicator"],
-[data-automation-id*="pullToRefresh"],
-[data-automation-id*="refreshIndicator"],
-[data-automation-id*="overscroll"] {
+/* --- 1. Sélecteurs sémantiques (ARIA, rôles) dans la liste --- */
+[role="list"] [role="progressbar"],
+[role="grid"] [role="progressbar"],
+[class*="messageList"] [role="progressbar"],
+[class*="listView"] [role="progressbar"],
+[class*="virtualizedList"] [role="progressbar"],
+[role="list"] [aria-busy="true"],
+[role="grid"] [aria-busy="true"],
+[class*="messageList"] [aria-busy="true"],
+[class*="listView"] [aria-busy="true"],
+[role="list"] [aria-label*="loading" i],
+[role="list"] [aria-label*="chargement" i],
+[role="list"] [aria-label*="refresh" i],
+[role="list"] [aria-label*="actualis" i],
+[role="list"] [aria-label*="sync" i],
+[role="grid"] [aria-label*="loading" i],
+[role="grid"] [aria-label*="chargement" i],
+[class*="messageList"] [aria-label*="loading" i],
+[class*="messageList"] [aria-label*="chargement" i],
+[class*="listView"] [aria-label*="loading" i],
+[class*="listView"] [aria-label*="chargement" i] {
   display: none !important;
   visibility: hidden !important;
   opacity: 0 !important;
@@ -188,10 +202,43 @@ button, [role="button"], a[role="button"] {
   pointer-events: none !important;
 }
 
-/* --- Hide Outlook list loading spinner (envelope at bottom of message list) --- */
-/* When scrolling down, Outlook shows a spinner/envelope at the bottom
-   of the list while loading more messages. Hide it on mobile. */
+/* --- 2. data-automation-id (attribut sémantique Outlook) --- */
+[role="list"] [data-automation-id*="spinner" i],
+[role="list"] [data-automation-id*="loading" i],
+[role="list"] [data-automation-id*="progress" i],
+[role="list"] [data-automation-id*="refresh" i],
+[role="list"] [data-automation-id*="pull" i],
+[role="list"] [data-automation-id*="sync" i],
+[role="grid"] [data-automation-id*="spinner" i],
+[role="grid"] [data-automation-id*="loading" i],
+[role="grid"] [data-automation-id*="progress" i],
+[role="grid"] [data-automation-id*="refresh" i],
+[class*="messageList"] [data-automation-id*="spinner" i],
+[class*="messageList"] [data-automation-id*="loading" i],
+[class*="messageList"] [data-automation-id*="progress" i],
+[class*="listView"] [data-automation-id*="spinner" i],
+[class*="listView"] [data-automation-id*="loading" i],
+[class*="listView"] [data-automation-id*="progress" i] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+}
 
+/* --- 3. Classes CSS génériques (Fluent UI + Outlook) --- */
+[class*="pullToRefresh"],
+[class*="PullToRefresh"],
+[class*="pull-to-refresh"],
+[class*="refreshIndicator"],
+[class*="RefreshIndicator"],
+[class*="refreshControl"],
+[class*="RefreshControl"],
+[class*="overscrollIndicator"],
+[class*="OverscrollIndicator"],
 [class*="listLoading"],
 [class*="ListLoading"],
 [class*="loadingMore"],
@@ -200,6 +247,19 @@ button, [role="button"], a[role="button"] {
 [class*="LoadMoreIndicator"],
 [class*="messageListSpinner"],
 [class*="MessageListSpinner"],
+[class*="loadingOverlay"],
+[class*="LoadingOverlay"],
+[class*="loadingBackdrop"],
+[class*="LoadingBackdrop"],
+[class*="refreshOverlay"],
+[class*="RefreshOverlay"],
+[class*="skeleton"],
+[class*="Skeleton"],
+[class*="shimmer"],
+[class*="Shimmer"],
+[data-automation-id*="pullToRefresh"],
+[data-automation-id*="refreshIndicator"],
+[data-automation-id*="overscroll"],
 [data-automation-id*="listLoading"],
 [data-automation-id*="loadingMore"],
 [data-automation-id*="loadMore"] {
@@ -210,26 +270,108 @@ button, [role="button"], a[role="button"] {
   min-height: 0 !important;
   max-height: 0 !important;
   overflow: hidden !important;
+  pointer-events: none !important;
 }
 
-/* Hide ProgressRing/spinner inside the message list container only */
+/* --- 4. Spinners/ProgressRing dans les conteneurs de liste --- */
 [class*="messageList"] [class*="ProgressRing"],
 [class*="messageList"] [class*="progressRing"],
 [class*="messageList"] [class*="Spinner"],
 [class*="messageList"] [class*="spinner"],
+[class*="messageList"] [class*="spin"],
+[class*="messageList"] [class*="Spin"],
+[class*="messageList"] [class*="rotate"],
+[class*="messageList"] [class*="Rotate"],
+[class*="messageList"] [class*="pulse"],
+[class*="messageList"] [class*="Pulse"],
 [class*="listView"] [class*="ProgressRing"],
 [class*="listView"] [class*="progressRing"],
 [class*="listView"] [class*="Spinner"],
 [class*="listView"] [class*="spinner"],
+[class*="listView"] [class*="spin"],
+[class*="listView"] [class*="Spin"],
+[class*="virtualizedList"] [class*="ProgressRing"],
+[class*="virtualizedList"] [class*="Spinner"],
 [role="list"] [class*="ProgressRing"],
-[role="list"] [class*="Spinner"] {
+[role="list"] [class*="Spinner"],
+[role="list"] [class*="spinner"],
+[role="list"] [class*="spin"],
+[role="list"] [class*="Spin"],
+[role="grid"] [class*="ProgressRing"],
+[role="grid"] [class*="Spinner"] {
   display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  overflow: hidden !important;
 }
 
-/* --- Prevent overscroll bounce / pull-to-refresh on scroll containers --- */
-/* Outlook's message list and reading pane should not bounce or trigger
-   the native pull-to-refresh when scrolled to the edges. */
+/* --- 5. Enfants directs des conteneurs de liste (pull-to-refresh wrappers) --- */
+[class*="messageList"] > [class*="refresh"],
+[class*="messageList"] > [class*="pull"],
+[class*="messageList"] > [class*="indicator"],
+[class*="messageList"] > [class*="spinner"],
+[class*="messageList"] > [class*="loading"],
+[class*="listView"] > [class*="refresh"],
+[class*="listView"] > [class*="pull"],
+[class*="listView"] > [class*="indicator"],
+[class*="listView"] > [class*="spinner"],
+[class*="listView"] > [class*="loading"],
+[role="list"] > [class*="refresh"],
+[role="list"] > [class*="pull"],
+[role="list"] > [class*="indicator"],
+[role="list"] > [class*="spinner"],
+[role="list"] > [class*="loading"],
+[role="grid"] > [class*="refresh"],
+[role="grid"] > [class*="pull"],
+[role="grid"] > [class*="indicator"],
+[role="grid"] > [class*="spinner"],
+[role="grid"] > [class*="loading"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  overflow: hidden !important;
+}
 
+/* --- 6. Éléments avec animation (spinners CSS) dans la liste --- */
+[role="list"] [style*="animation"]:not([style*="animation-name: none"]),
+[class*="messageList"] [style*="animation"]:not([style*="animation-name: none"]),
+[class*="listView"] [style*="animation"]:not([style*="animation-name: none"]) {
+  /* Ne pas cacher aveuglément — géré par JS MutationObserver */
+}
+
+/* --- 7. Fluent UI ProgressIndicator / Spinner (tous contextes liste) --- */
+[class*="fui-ProgressIndicator"],
+[class*="fui-Spinner"],
+[class*="ms-Spinner"],
+[class*="ms-ProgressIndicator"],
+[class*="ProgressIndicator"],
+[class*="fui-ProgressRing"],
+[class*="fui-Circle"],
+[role="list"] .fui-Spinner,
+[role="list"] .fui-ProgressIndicator,
+[role="list"] .ms-Spinner,
+[role="grid"] .fui-Spinner,
+[role="grid"] .fui-ProgressIndicator,
+[class*="messageList"] .fui-Spinner,
+[class*="messageList"] .fui-ProgressIndicator,
+[class*="listView"] .fui-Spinner,
+[class*="listView"] .fui-ProgressIndicator {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  overflow: hidden !important;
+}
+
+/* --- 8. Prevent overscroll bounce / pull-to-refresh on scroll containers --- */
 [class*="messageList"],
 [class*="MessageList"],
 [class*="listView"],
