@@ -161,3 +161,87 @@ button, [role="button"], a[role="button"] {
   flex-wrap: wrap !important;
   max-width: 100% !important;
 }
+
+/* --- Hide Outlook pull-to-refresh envelope indicator --- */
+/* Outlook web shows an envelope icon when pulling down from the top
+   of the message list to refresh. This is jarring on mobile — the
+   custom pull-to-refresh bar in gestures.js replaces it. */
+
+[class*="pullToRefresh"],
+[class*="PullToRefresh"],
+[class*="refreshIndicator"],
+[class*="RefreshIndicator"],
+[class*="refreshControl"],
+[class*="RefreshControl"],
+[class*="overscrollIndicator"],
+[class*="OverscrollIndicator"],
+[data-automation-id*="pullToRefresh"],
+[data-automation-id*="refreshIndicator"],
+[data-automation-id*="overscroll"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+}
+
+/* --- Hide Outlook list loading spinner (envelope at bottom of message list) --- */
+/* When scrolling down, Outlook shows a spinner/envelope at the bottom
+   of the list while loading more messages. Hide it on mobile. */
+
+[class*="listLoading"],
+[class*="ListLoading"],
+[class*="loadingMore"],
+[class*="LoadingMore"],
+[class*="loadMoreIndicator"],
+[class*="LoadMoreIndicator"],
+[class*="messageListSpinner"],
+[class*="MessageListSpinner"],
+[data-automation-id*="listLoading"],
+[data-automation-id*="loadingMore"],
+[data-automation-id*="loadMore"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  overflow: hidden !important;
+}
+
+/* Hide ProgressRing/spinner inside the message list container only */
+[class*="messageList"] [class*="ProgressRing"],
+[class*="messageList"] [class*="progressRing"],
+[class*="messageList"] [class*="Spinner"],
+[class*="messageList"] [class*="spinner"],
+[class*="listView"] [class*="ProgressRing"],
+[class*="listView"] [class*="progressRing"],
+[class*="listView"] [class*="Spinner"],
+[class*="listView"] [class*="spinner"],
+[role="list"] [class*="ProgressRing"],
+[role="list"] [class*="Spinner"] {
+  display: none !important;
+}
+
+/* --- Prevent overscroll bounce / pull-to-refresh on scroll containers --- */
+/* Outlook's message list and reading pane should not bounce or trigger
+   the native pull-to-refresh when scrolled to the edges. */
+
+[class*="messageList"],
+[class*="MessageList"],
+[class*="listView"],
+[class*="ListView"],
+[class*="scrollableContent"],
+[class*="virtualizedList"],
+[role="list"],
+[role="grid"] {
+  overscroll-behavior-y: contain !important;
+}
+
+/* Body-level: prevent the whole page from pull-to-refresh bounce */
+html, body {
+  overscroll-behavior-y: none !important;
+}
