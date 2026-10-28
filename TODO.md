@@ -122,6 +122,14 @@
 - [x] Tests: 9 nouveaux tests (75 total, 70 pass + 5 skip Electron)
 - [x] Click 3.2.3 rebuildé et installé — notif bienvenue + splash lifecycle vérifiés sur téléphone
 
+## Fait (v3.2.4 — hotfix #16 cache enveloppe pull-to-refresh)
+
+- [x] Fix: main.css — règles CSS pour cacher l'indicateur pull-to-refresh d'Outlook (enveloppe au pull-down) : sélecteurs `pullToRefresh`, `refreshIndicator`, `refreshControl`, `overscrollIndicator`
+- [x] Fix: main.css — cache l'indicateur de chargement en bas de liste (spinner/enveloppe au scroll-down) : `listLoading`, `loadingMore`, `ProgressRing` dans `messageList`/`listView`
+- [x] Fix: main.css — `overscroll-behavior-y: contain` sur les conteneurs de liste + `none` sur html/body (anti-bounce)
+- [x] Fix: gestures.js — `e.preventDefault()` systématique au pull-down (dès le 1er pixel, plus de seuil à 0.3) pour bloquer l'enveloppe Outlook
+- [x] Fix: gestures.js — injection style inline `overscroll-behavior-y: none` en fallback du CSS insertCSS
+
 ## Idées en réserve (non prioritaires)
 
 - [ ] Raccourcis clavier personnalisables

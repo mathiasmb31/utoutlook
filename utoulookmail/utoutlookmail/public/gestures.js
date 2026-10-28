@@ -10,6 +10,21 @@
     if (window.__utoutlookGesturesLoaded) return;
     window.__utoutlookGesturesLoaded = true;
 
+    // --- Disable native overscroll/pull-to-refresh on the page ---
+    // Outlook web shows an envelope icon when the user pulls down from the
+    // top of the message list. Block it at the CSS level (inline style as a
+    // fallback — main.css also sets this with !important via insertCSS).
+    document.documentElement.style.overscrollBehaviorY = 'none';
+    document.body.style.overscrollBehaviorY = 'none';
+
+    // Ensure scroll containers don't bounce
+    const scrollStyle = document.createElement('style');
+    scrollStyle.textContent =
+        'html, body { overscroll-behavior-y: none !important; }' +
+        '[class*="messageList"], [class*="listView"], [role="list"], [role="grid"]' +
+        ' { overscroll-behavior-y: contain !important; }';
+    document.head.appendChild(scrollStyle);
+
     // --- Swipe from left edge to go back (browser history) ---
     let touchStartX = 0;
     let touchStartY = 0;
@@ -70,8 +85,11 @@
         if (diff > 0) {
             const progress = Math.min(diff / 120, 1);
             createPullIndicator().style.transform = `scaleX(${progress})`;
-            // Prevent default pull-to-refresh of the browser
-            if (progress > 0.3) e.preventDefault();
+            // Always prevent default when pulling down from the top —
+            // blocks both the browser pull-to-refresh AND Outlook web's
+            // own envelope refresh indicator (which appears as soon as
+            // the user drags down, before any threshold).
+            e.preventDefault();
         }
     }, {passive: false});
 
