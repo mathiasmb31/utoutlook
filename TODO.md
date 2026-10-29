@@ -174,6 +174,18 @@
 - [x] main.css: section 10 — Taille texte liste messages agrandie (sujet 1.05em/gras, expéditeur 1.0em, aperçu 0.95em, date 0.9em), hauteur items 72px min, padding vertical 10px
 - [x] Version bump: 3.2.9 → 3.3.0
 
+## Fait (v3.3.1 — réduction taille du click : 123 Mo → 108 Mo)
+
+- [x] build/afterPack.mjs (nouveau) — nettoyage post-build Electron :
+  supprime LICENSES.chromium.html (20 Mo), libvk_swiftshader.so (17 Mo),
+  libvulkan.so.1 (2.5 Mo), chrome_crashpad_handler (1.8 Mo), chrome-sandbox,
+  et nettoie locales/ (garde seulement fr.pak + en-US.pak, -8.5 Mo)
+- [x] package.json — compression: "maximum" + files[] (exclut tests, .md, .ts des node_modules)
+- [x] clickable.yaml — nettoyage utils/ avant copie : supprime shutil (8.2 Mo PostScript),
+  zlib/ sources (6.5 Mo), xdg-open/ sources, .c, todo, cut.sh.sample
+- [x] Résultat : unpacked 290→241 Mo, tar.gz arm64 116→104 Mo, click 123→108 Mo
+- [x] Version bump: 3.3.0 → 3.3.1
+
 ## Idées en réserve (non prioritaires)
 
 - [ ] Raccourcis clavier personnalisables
