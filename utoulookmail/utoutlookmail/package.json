@@ -1,7 +1,7 @@
 {
   "name": "prospect-mail",
   "productName": "Prospect Mail",
-  "version": "3.3.0",
+  "version": "3.3.1",
   "type:": "module",
   "main": "src/main.mjs",
   "description": "Unofficial desktop mail client for Microsoft Outlook",
@@ -55,6 +55,19 @@
   },
   "build": {
     "appId": "io.github.julian-alarcon.prospect-mail",
+    "compression": "maximum",
+    "afterPack": "./build/afterPack.mjs",
+    "files": [
+      "src/**/*",
+      "public/**/*",
+      "assets/**/*",
+      "node_modules/**/*",
+      "!node_modules/**/test/**/*",
+      "!node_modules/**/*.md",
+      "!node_modules/**/*.ts",
+      "!node_modules/**/example/**/*",
+      "!node_modules/**/docs/**/*"
+    ],
     "linux": {
       "category": "Email;Network;Office",
       "packageCategory": "net",
