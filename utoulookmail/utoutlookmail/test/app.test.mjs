@@ -336,20 +336,29 @@ test('command.sh: uses utoutlook_notify instead of direct notify calls', async (
         'command.sh should not call notify binary directly');
 });
 
-test('command.sh: waits for notifications before launching app (welcome removed v3.2.8)', async () => {
+test('command.sh: waits for notifications before welcome', async () => {
     const fs = await import('node:fs');
     const cmdPath = path.resolve(__dirname, '../../command.sh');
     const content = fs.readFileSync(cmdPath, 'utf-8');
     assert.ok(content.includes('utoutlook_wait_notifications'),
-        'command.sh should still wait for notification service before launching');
-    // Welcome message was removed in v3.2.8 (user request 28/10)
-    assert.ok(!content.includes('utoutlook_notify "$(utoutlook_t \'shell.welcome\')"'),
-        'Welcome notification should be removed');
-    // wait should still come before the app launch
+        'command.sh should wait for notification service before welcome');
+    // wait should come before the welcome notification
     const waitPos = content.indexOf('utoutlook_wait_notifications');
-    const launchPos = content.indexOf('prospect-mail');
-    assert.ok(waitPos !== -1 && launchPos !== -1, 'Both wait and app launch should exist');
-    assert.ok(waitPos < launchPos, 'Wait should come before app launch');
+    const welcomePos = content.indexOf("shell.welcome");
+    assert.ok(waitPos !== -1 && welcomePos !== -1, 'Both wait and welcome should exist');
+    assert.ok(waitPos < welcomePos, 'Wait should come before welcome notification');
+});
+
+test('common.sh: utoutlook_wait_notifications uses silent badge probe (no visible test notification)', async () => {
+    const fs = await import('node:fs');
+    const commonPath = path.resolve(__dirname, '../../utils/common.sh');
+    const content = fs.readFileSync(commonPath, 'utf-8');
+    // Should NOT send a visible "utoutlook-test" notification (user complaint 28/10)
+    assert.ok(!content.includes('"utoutlook-test"'),
+        'wait_notifications should not send visible "utoutlook-test" notification');
+    // Should use silent --badge 0 probe instead
+    assert.ok(content.includes('--badge 0'),
+        'wait_notifications should use silent --badge 0 probe');
 });
 
 test('notify main.cpp: returns non-zero exit code on failure', async () => {

@@ -242,8 +242,10 @@ utoutlook_notify() {
 
 # ============================================================
 # Wait for the notification service (Lomiri Postal) to be ready.
-# Sends a silent test notification and retries until it succeeds
-# or the max wait time is reached.
+# Uses "notify --badge 0" as a silent probe — it exercises the
+# D-Bus connection without showing any visible notification
+# (badge 0 is invisible). Retries until it succeeds or the max
+# wait time is reached.
 # Usage: utoutlook_wait_notifications [max_wait_seconds]
 # ============================================================
 utoutlook_wait_notifications() {
@@ -251,8 +253,8 @@ utoutlook_wait_notifications() {
 	local waited=0
 
 	while [ $waited -lt $max_wait ]; do
-		# Try a test notification — if it succeeds, the service is ready
-		if "${UTOUTLOOK_BIN}/notify" "utoutlook-test" "" 2>/dev/null; then
+		# Silent probe: set badge to 0 — no popup, no drawer entry
+		if "${UTOUTLOOK_BIN}/notify" --badge 0 2>/dev/null; then
 			return 0
 		fi
 		"${UTOUTLOOK_BIN}/sleep" 1

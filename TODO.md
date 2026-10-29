@@ -161,6 +161,19 @@
 - [x] Fix: notification enrichie — "Nouveau mail — {sender}: {subject}" au lieu de "X messages non lus"
 - [x] Version bump: 3.2.6 → 3.2.8
 
+## Fait (v3.2.9 — suppression notification test "utoutlook-test" au démarrage)
+
+- [x] Fix: common.sh — `utoutlook_wait_notifications` n'envoie plus de notification visible "utoutlook-test", remplacé par sonde silencieuse `notify --badge 0`
+- [x] Fix: command.sh — message de bienvenue `shell.welcome` restauré (ce n'était pas lui le problème)
+- [x] Tests: test #34 restauré (welcome présent), nouveau test pour sonde badge silencieuse
+- [x] Version bump: 3.2.8 → 3.2.9
+
+## Fait (v3.3.0 — look & feel Ubuntu Touch + texte liste agrandi)
+
+- [x] main.css: section 9 — Police Ubuntu, couleur accent orange #E95420, bords arrondis 8-12px (cartes, boutons, inputs), sidebar fond gris foncé #2C2C2C, items sidebar blancs avec sélection orange, ombres subtiles, header bar arrondi
+- [x] main.css: section 10 — Taille texte liste messages agrandie (sujet 1.05em/gras, expéditeur 1.0em, aperçu 0.95em, date 0.9em), hauteur items 72px min, padding vertical 10px
+- [x] Version bump: 3.2.9 → 3.3.0
+
 ## Idées en réserve (non prioritaires)
 
 - [ ] Raccourcis clavier personnalisables

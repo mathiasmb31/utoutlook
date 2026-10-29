@@ -387,3 +387,172 @@ button, [role="button"], a[role="button"] {
 html, body {
   overscroll-behavior-y: none !important;
 }
+
+/* ============================================================
+   9. Ubuntu Touch look & feel
+   ============================================================ */
+
+/* --- Police Ubuntu --- */
+body,
+.fui-FluentProvider,
+[class*="fontFamilyBase"],
+[class*="font-family"] {
+  font-family: 'Ubuntu', 'Ubuntu Touch', sans-serif !important;
+}
+
+/* --- Couleur d'accent : orange Ubuntu (#E95420) --- */
+/* Boutons primaires, éléments sélectionnés, focus */
+button[class*="primary" i],
+[class*="primaryButton" i],
+[class*="accent" i][class*="button" i],
+[aria-pressed="true"],
+[aria-selected="true"],
+[class*="isSelected" i] {
+  --colorBrandBackground: #E95420 !important;
+  --colorBrandBackgroundHover: #D14A1C !important;
+  --colorBrandBackgroundPressed: #B8401A !important;
+  --colorBrandForeground1: #FFFFFF !important;
+}
+
+/* Liens actifs en orange Ubuntu */
+a[class*="link" i],
+[role="link"]:hover {
+  color: #E95420 !important;
+}
+
+/* Barre de progression / indicateurs en orange */
+[class*="ProgressIndicator"] [class*="progress" i],
+[role="progressbar"] {
+  --colorBrandBackground: #E95420 !important;
+}
+
+/* --- Bords arrondis style carte UT (8px) --- */
+/* Cartes de mail dans la liste */
+[role="list"] [role="listitem"],
+[class*="messageList"] [role="row"],
+[class*="listView"] [role="row"] {
+  border-radius: 8px !important;
+}
+
+/* Boutons arrondis */
+button,
+[role="button"],
+[class*="button" i] {
+  border-radius: 8px !important;
+}
+
+/* Champs de recherche / input arrondis */
+input[type="search"],
+input[type="text"],
+[role="searchbox"],
+[role="textbox"],
+[class*="searchBox" i],
+[class*="input" i] {
+  border-radius: 8px !important;
+}
+
+/* Paneaux latéraux arrondis */
+[data-app-section="FolderPane"],
+[data-app-section="NavigationPane"],
+[class*="folderPane" i],
+[class*="navigationPane" i] {
+  border-radius: 0 12px 12px 0 !important;
+}
+
+/* --- Sidebar style UT : fond gris foncé --- */
+[data-app-section="FolderPane"],
+[data-app-section="NavigationPane"],
+[class*="folderPane" i],
+[class*="navigationPane" i],
+[class*="leftPane" i] {
+  background-color: #2C2C2C !important;
+}
+
+/* Items du sidebar : texte clair, arrondis, padding tactile */
+[data-app-section="FolderPane"] [role="treeitem"],
+[data-app-section="NavigationPane"] [role="treeitem"],
+[class*="folderPane"] [role="treeitem"],
+[class*="folderPane"] [role="button"] {
+  color: #FFFFFF !important;
+  border-radius: 8px !important;
+  margin: 2px 4px !important;
+  padding: 8px 12px !important;
+  min-height: 44px !important;
+}
+
+/* Item sélectionné dans le sidebar : orange Ubuntu */
+[data-app-section="FolderPane"] [role="treeitem"][aria-selected="true"],
+[data-app-section="FolderPane"] [role="treeitem"][aria-current="true"],
+[class*="folderPane"] [aria-selected="true"] {
+  background-color: #E95420 !important;
+  color: #FFFFFF !important;
+}
+
+/* --- Ombres subtiles style carte UT --- */
+[role="list"] [role="listitem"],
+[class*="messageList"] [role="row"],
+[class*="card" i] {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12) !important;
+}
+
+/* --- Header bar épuré style UT --- */
+[data-app-section="HeaderBar"],
+[class*="headerBar" i],
+[class*="appHeader" i],
+[class*="topBar" i] {
+  border-radius: 0 0 12px 12px !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* ============================================================
+   10. Taille du texte agrandie dans la liste des messages
+   ============================================================ */
+
+/* Sujet du mail — légèrement plus grand */
+[role="list"] [role="listitem"] [class*="subject" i],
+[class*="messageList"] [role="row"] [class*="subject" i],
+[class*="listView"] [role="row"] [class*="subject" i],
+[data-automation-id*="subject" i],
+[class*="itemSubject" i],
+[class*="messageSubject" i] {
+  font-size: 1.05em !important;
+  font-weight: 600 !important;
+}
+
+/* Expéditeur — légèrement plus grand */
+[role="list"] [role="listitem"] [class*="sender" i],
+[role="list"] [role="listitem"] [class*="from" i],
+[class*="messageList"] [role="row"] [class*="sender" i],
+[class*="messageList"] [role="row"] [class*="from" i],
+[class*="listView"] [role="row"] [class*="sender" i],
+[data-automation-id*="sender" i],
+[class*="displayName" i] {
+  font-size: 1.0em !important;
+}
+
+/* Aperçu / snippet — légèrement plus grand */
+[role="list"] [role="listitem"] [class*="preview" i],
+[role="list"] [role="listitem"] [class*="snippet" i],
+[role="list"] [role="listitem"] [class*="body" i],
+[class*="messageList"] [role="row"] [class*="preview" i],
+[class*="listView"] [role="row"] [class*="preview" i] {
+  font-size: 0.95em !important;
+}
+
+/* Date/heure — lisible */
+[role="list"] [role="listitem"] [class*="time" i],
+[role="list"] [role="listitem"] [class*="date" i],
+[role="list"] [role="listitem"] [class*="received" i],
+[class*="messageList"] [role="row"] [class*="time" i],
+[class*="listView"] [role="row"] [class*="time" i] {
+  font-size: 0.9em !important;
+}
+
+/* Espacement vertical des items de liste pour le tactile */
+[role="list"] [role="listitem"],
+[class*="messageList"] [role="row"],
+[class*="listView"] [role="row"] {
+  min-height: 72px !important;
+  padding-top: 10px !important;
+  padding-bottom: 10px !important;
+}
