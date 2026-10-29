@@ -1,0 +1,11 @@
+# Source - https://stackoverflow.com/a/19482947
+# Posted by beroe, modified by community. See post 'Timeline' for change history
+# Retrieved 2026-04-13, License - CC BY-SA 4.0
+
+MYVAR="toto_txt"
+
+NAME=${MYVAR%:*}  # retain the part before the colon
+echo $NAME
+NAME=${NAME##*/}  # retain the part after the last slash
+echo $NAME
+

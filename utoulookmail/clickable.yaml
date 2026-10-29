@@ -21,14 +21,16 @@ build:
 - rm -rf ${ROOT}/squashfs-root/
 - echo '-----Compile debs and patches'
 - ${ROOT}/compiledeps.sh
-# Nettoyage: supprime les fichiers inutiles en runtime avant copie dans le click
-# shutil (8.2 Mo PostScript), zlib sources (6.5 Mo), xdg-open sources, .c, todo
-- rm -f ${ROOT}/utils/shutil
-- rm -rf ${ROOT}/utils/zlib
-- rm -rf ${ROOT}/utils/xdg-open
-- rm -f ${ROOT}/utils/mkdir.c ${ROOT}/utils/firstinstall.c
-- rm -f ${ROOT}/utils/todo
-- rm -f ${ROOT}/utils/cut.sh.sample
+# Copie sélective de utils/ dans le click (exclut shutil 8.2 Mo, zlib/ 6.5 Mo,
+# xdg-open/ sources, .c, todo, cut.sh.sample — inutiles en runtime)
+- mkdir -p $INSTALL_DIR/utils
+- cp ${ROOT}/utils/*.sh $INSTALL_DIR/utils/
+- cp ${ROOT}/utils/settings.json $INSTALL_DIR/utils/
+- cp ${ROOT}/utils/mkdir $INSTALL_DIR/utils/ 2>/dev/null || true
+- cp ${ROOT}/utils/firstinstall $INSTALL_DIR/utils/ 2>/dev/null || true
+- cp ${ROOT}/utils/settings $INSTALL_DIR/utils/ 2>/dev/null || true
+- cp ${ROOT}/utils/copy $INSTALL_DIR/utils/ 2>/dev/null || true
+- cp ${ROOT}/utils/sendMsg_helloworld $INSTALL_DIR/utils/ 2>/dev/null || true
 
 
 
@@ -64,7 +66,7 @@ install_root_data:
 - utoutlook.apparmor
 - utoutlook.desktop
 - assets
-- utils
+# utils copié sélectivement dans le build (voir étape cp ${ROOT}/utils/*.sh)
 - qml
 - push-apparmor.json
 - push.json

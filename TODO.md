@@ -186,6 +186,16 @@
 - [x] Résultat : unpacked 290→241 Mo, tar.gz arm64 116→104 Mo, click 123→108 Mo
 - [x] Version bump: 3.3.0 → 3.3.1
 
+## Fait (v3.3.2 — re-packaging xz du click : 108 Mo → 77 Mo)
+
+- [x] repack-click-xz.sh (nouveau) — re-compresse le data.tar du .click en xz (-28%)
+- [x] build-and-install.sh (nouveau) — workflow complet : clickable build + repack xz + install
+- [x] compiledeps.sh — suppression copie xdotool, xev, xprop (inutiles sur UT, -400 Ko)
+- [x] clickable.yaml — copie sélective de utils/ (exclut shutil 8.2 Mo, zlib/ 6.5 Mo,
+      xdg-open/ sources, .c, todo) au lieu de rm sur les sources
+- [x] Cumul total : 123 Mo (v3.3.0) → 77 Mo (v3.3.2), soit -37%
+- [x] Version bump: 3.3.1 → 3.3.2
+
 ## Idées en réserve (non prioritaires)
 
 - [ ] Raccourcis clavier personnalisables
