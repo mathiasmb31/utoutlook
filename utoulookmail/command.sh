@@ -30,7 +30,7 @@ function launch_prospect() {
 	# Wait for notification service to be ready before sending welcome
 	# (D-Bus Postal may not be up yet on first launch / boot)
 	utoutlook_wait_notifications 15
-	# Message de bienvenue supprimé (demande utilisateur 28/10)
+	utoutlook_notify "$(utoutlook_t 'shell.welcome')"
 
 	"${WD}"/bin/App/prospect-mail "$dpioptions" "$sandboxoptions" "$gpuoptions" &
 	i+=1
