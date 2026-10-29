@@ -104,10 +104,8 @@ done
 echo "done"
 
 mkdir -p "$INSTALL_DIR/bin"
-cp *_extract_chsdjksd/usr/bin/xdotool "$INSTALL_DIR/bin/"
+# xdotool, xprop, xev supprimés — inutiles sur Ubuntu Touch (pas de X11 natif)
 cp *_extract_chsdjksd/usr/bin/getprop "$INSTALL_DIR/bin/"
-cp *_extract_chsdjksd/usr/bin/xprop "$INSTALL_DIR/bin/"
-cp *_extract_chsdjksd/usr/bin/xev "$INSTALL_DIR/bin/"
 
 echo "Copying maliit-input-context..."
 cp ${ROOT}/patches/maliit-inputcontext-gtk/immodules.cache $INSTALL_DIR/lib/aarch64-linux-gnu/gtk-3.0/3.0.0/immodules/
