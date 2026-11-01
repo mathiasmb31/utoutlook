@@ -1264,8 +1264,8 @@ test('v3.3.11 cloud.microsoft: urlsExternal/urlsInternal + login_hint + select_a
 
     assert.ok(ctrl.includes("url.includes('outlook.cloud.microsoft/mail')") && ctrl.includes('login_hint='),
         'will-navigate login_hint intercept must cover cloud.microsoft (v3.3.11)');
-    assert.ok(ctrl.includes("prompt=select_account") && ctrl.includes("prompt=none") && ctrl.includes('selectAccountRewrites'),
-        'select_account must be rewritten to prompt=none (bounded) (v3.3.11)');
+    assert.ok(!ctrl.includes('prompt=none') && !ctrl.includes('selectAccountRewrites'),
+        'must NOT rewrite prompt=select_account to prompt=none — user wants to click the account himself (v3.3.11)');
     assert.ok(ctrl.includes("url.includes('outlook.cloud.microsoft/mail')"),
         'loop detector must count cloud.microsoft mail pages (v3.3.11)');
 });
