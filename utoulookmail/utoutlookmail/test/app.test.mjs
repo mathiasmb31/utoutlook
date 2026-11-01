@@ -1269,3 +1269,20 @@ test('v3.3.11 cloud.microsoft: urlsExternal/urlsInternal + login_hint + select_a
     assert.ok(ctrl.includes("url.includes('outlook.cloud.microsoft/mail')"),
         'loop detector must count cloud.microsoft mail pages (v3.3.11)');
 });
+
+test('main.css: skeleton/shimmer cachés UNIQUEMENT dans les conteneurs de liste (v3.3.12)', async () => {
+    const fs = await import('node:fs');
+    const cssPath = path.resolve(__dirname, '../public/main.css');
+    const css = fs.readFileSync(cssPath, 'utf-8');
+
+    // Sur la page de login Microsoft (select_account), la tuile « compte que
+    // vous pouvez utiliser ici » utilise des classes skeleton/shimmer : cachées
+    // globalement, l'utilisateur ne voyait plus son compte.
+    const section3 = css.slice(css.indexOf('--- 3.'), css.indexOf('--- 3b.'));
+    assert.ok(!/\[class\*="[Ss]keleton"\]/.test(section3) && !/\[class\*="[Ss]himmer"\]/.test(section3),
+        'section 3 (globale) must NOT hide skeleton/shimmer anymore (v3.3.12)');
+    assert.ok(css.includes('[class*="messageList"] [class*="skeleton"]'),
+        'skeleton must still be hidden inside list containers (v3.3.12)');
+    assert.ok(css.includes('[role="list"] [class*="shimmer"]'),
+        'shimmer must still be hidden inside list containers (v3.3.12)');
+});
