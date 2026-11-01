@@ -1246,7 +1246,7 @@ test('v3.3.11 cloud.microsoft: cookie sync copie aussi vers .cloud.microsoft', a
     const content = fs.readFileSync(cPath, 'utf-8');
 
     const fn = content.slice(content.indexOf('async syncCookiesToLiveCom()'));
-    assert.ok(fn.includes("targets.push('.cloud.microsoft', 'outlook.cloud.microsoft')"),
+    assert.ok(fn.includes("'.cloud.microsoft'") && fn.includes("'outlook.cloud.microsoft'"),
         'syncCookiesToLiveCom must also target .cloud.microsoft / outlook.cloud.microsoft (v3.3.11)');
 });
 
@@ -1319,4 +1319,34 @@ test('v3.3.14: cookie sync proactively at startup + eval debug channel', async (
     const sPath = path.resolve(__dirname, '../src/ipc-socket.mjs');
     const sock = fs.readFileSync(sPath, 'utf-8');
     assert.ok(sock.includes("case 'eval'"), 'ipc-socket must support cmd=eval (v3.3.14)');
+});
+
+test('cookie sync: share auth cookies with login.microsoftonline.com too (v3.3.15)', async () => {
+    const fs = await import('node:fs');
+    const cPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(cPath, 'utf-8');
+    const fn = content.slice(content.indexOf('async syncCookiesToLiveCom()'), content.indexOf('startObserverHealthCheck'));
+
+    // The SPA goes straight to login.microsoftonline.com (never via login.live.com),
+    // so the persistent auth cookie (__Host-MSAAUTHP on login.live.com) must be
+    // copied to login.microsoftonline.com or the pick-account page shows nothing.
+    assert.ok(fn.includes("targets.push('outlook.live.com', 'login.microsoftonline.com', '.microsoftonline.com')"),
+        'login.live.com cookies must be copied to login.microsoftonline.com (v3.3.15)');
+    assert.ok(fn.includes("'login.microsoftonline.com', '.microsoftonline.com')"),
+        'all MS cookies must also target login.microsoftonline.com (v3.3.15)');
+});
+
+test('v3.3.16: start on outlook.live.com (account tile visible) with office.com fallback', async () => {
+    const fs = await import('node:fs');
+    const sPath = path.resolve(__dirname, '../src/settings.mjs');
+    const settings = fs.readFileSync(sPath, 'utf-8');
+    assert.ok(settings.includes('urlMainWindow: "https://outlook.live.com/mail/"'),
+        'default urlMainWindow must be outlook.live.com (v3.3.16)');
+    assert.ok(settings.includes("Migrating urlMainWindow office.com → live.com"),
+        'old office.com default must be migrated to live.com (v3.3.16)');
+
+    const cPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const ctrl = fs.readFileSync(cPath, 'utf-8');
+    assert.ok(ctrl.includes('triedOfficeFallback') && ctrl.includes("loadURL('https://outlook.office.com/mail')"),
+        'login page on live.com must fall back to office.com once (v3.3.16)');
 });
