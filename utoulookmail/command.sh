@@ -18,6 +18,11 @@ function cleanup() {
 	utoutlook_kill_stale_wrappers
 	utoutlook_cleanup_locks
 	"${WD}"/bin/rm -f "${UTOUTLOOK_EXITCOMMAND}" 2>/dev/null || true
+	# v3.3.7: record this wrapper's PID AFTER killing the previous one, so the
+	# next launch can kill this wrapper if it becomes an orphan (pgrep is not
+	# reliable under AppArmor confinement).
+	mkdir -p "${UTOUTLOOK_DATA_DIR}" 2>/dev/null || true
+	echo $$ > "${UTOUTLOOK_DATA_DIR}/wrapper.pid" 2>/dev/null || true
 }
 
 function launch_prospect() {
@@ -134,12 +139,6 @@ echo "$WD"
 
 # Source shared functions and path constants
 source "${WD}/utils/common.sh"
-
-# v3.3.7: record this wrapper's PID so the next launch can kill this one if it
-# became an orphan (previously only detectable via pgrep, which AppArmor may
-# restrict under confinement).
-mkdir -p "${UTOUTLOOK_DATA_DIR}" 2>/dev/null || true
-echo $$ > "${UTOUTLOOK_DATA_DIR}/wrapper.pid" 2>/dev/null || true
 
 # D-Bus session bus — required by the notify binary (QDBusConnection::sessionBus).
 # Lomiri normally sets these, but be defensive: if they are missing, the notify
