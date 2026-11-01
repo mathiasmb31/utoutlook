@@ -1224,3 +1224,48 @@ test('command.sh/common.sh: cross-version upgrade safety — fresh close flag + 
     assert.ok(verifyFn.includes('owns the app — exiting'),
         'verify_prospect_life must exit when wrapper.pid belongs to a newer wrapper (v3.3.10)');
 });
+
+test('v3.3.11 cloud.microsoft: CSP autorise *.cloud.microsoft partout', async () => {
+    const fs = await import('node:fs');
+    const cPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(cPath, 'utf-8');
+
+    // Sans *.cloud.microsoft dans le CSP, la page outlook.cloud.microsoft/mail
+    // ne peut ni charger son JS ni faire ses XHR de session → Microsoft redirige
+    // vers prompt=select_account ("compte que vous pouvez utiliser ici").
+    const occurrences = (content.match(/https:\/\/\*\.cloud\.microsoft/g) || []).length;
+    assert.ok(occurrences >= 6,
+        `CSP must allow https://*.cloud.microsoft in all directives (found ${occurrences}, need >= 6) (v3.3.11)`);
+    assert.ok(content.includes('wss://*.cloud.microsoft'),
+        'CSP connect-src must allow wss://*.cloud.microsoft (v3.3.11)');
+});
+
+test('v3.3.11 cloud.microsoft: cookie sync copie aussi vers .cloud.microsoft', async () => {
+    const fs = await import('node:fs');
+    const cPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(cPath, 'utf-8');
+
+    const fn = content.slice(content.indexOf('async syncCookiesToLiveCom()'));
+    assert.ok(fn.includes("targets.push('.cloud.microsoft', 'outlook.cloud.microsoft')"),
+        'syncCookiesToLiveCom must also target .cloud.microsoft / outlook.cloud.microsoft (v3.3.11)');
+});
+
+test('v3.3.11 cloud.microsoft: urlsExternal/urlsInternal + login_hint + select_account + loop detector', async () => {
+    const fs = await import('node:fs');
+    const sPath = path.resolve(__dirname, '../src/settings.mjs');
+    const settings = fs.readFileSync(sPath, 'utf-8');
+    assert.ok(settings.includes('"outlook.cloud.microsoft"'),
+        'urlsExternal must include outlook.cloud.microsoft (v3.3.11)');
+    assert.ok(settings.includes('"outlook.cloud.microsoft/mail/deeplink"'),
+        'urlsInternal must include outlook.cloud.microsoft/mail/deeplink (v3.3.11)');
+
+    const cPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const ctrl = fs.readFileSync(cPath, 'utf-8');
+
+    assert.ok(ctrl.includes("url.includes('outlook.cloud.microsoft/mail')") && ctrl.includes('login_hint='),
+        'will-navigate login_hint intercept must cover cloud.microsoft (v3.3.11)');
+    assert.ok(ctrl.includes("prompt=select_account") && ctrl.includes("prompt=none") && ctrl.includes('selectAccountRewrites'),
+        'select_account must be rewritten to prompt=none (bounded) (v3.3.11)');
+    assert.ok(ctrl.includes("url.includes('outlook.cloud.microsoft/mail')"),
+        'loop detector must count cloud.microsoft mail pages (v3.3.11)');
+});

@@ -37,7 +37,9 @@ const defaults = {
         "outlook.live.com/mail/deeplink",
         "outlook.office365.com/mail/deeplink",
         "outlook.office.com/mail/deeplink",
+        "outlook.cloud.microsoft/mail/deeplink",
         "outlook.office.com/calendar/deeplink",
+        "outlook.cloud.microsoft/calendar/deeplink",
         "to-do.office.com/tasks",
     ],
     urlsExternal: [
@@ -45,6 +47,7 @@ const defaults = {
         "outlook.live.com",
         "outlook.office365.com",
         "outlook.office.com",
+        "outlook.cloud.microsoft",
     ],
     safelinksUrls: [
         "outlook.office.com/mail/safelink.html",

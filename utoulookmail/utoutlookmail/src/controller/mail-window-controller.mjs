@@ -328,6 +328,16 @@ class MailWindowController {
                     // login.live.com cookies → outlook.live.com (same parent, but be explicit)
                     targets.push('outlook.live.com');
                 }
+                // v3.3.11: Outlook now serves mail from outlook.cloud.microsoft.
+                // Session/auth cookies must also exist on .cloud.microsoft, or
+                // Microsoft does not recognize the session there and falls back
+                // to the "we found an account you can use" page (select_account).
+                if (domain.includes('microsoft') || domain.includes('office') ||
+                    domain.includes('live.com') || domain.includes('msauth') ||
+                    domain.includes('msocdn') || domain.includes('msecnd') ||
+                    domain.includes('msftauth')) {
+                    targets.push('.cloud.microsoft', 'outlook.cloud.microsoft');
+                }
                 for (const newDomain of targets) {
                     const host = newDomain.replace(/^\./, '');
                     const url = `https://${host}${cookie.path || '/'}`;
@@ -462,7 +472,7 @@ class MailWindowController {
                         "default-src 'self' https://outlook.com https://*.outlook.com " +
                         "https://outlook.office.com https://*.office.com " +
                         "https://*.office365.com https://*.live.com https://*.live.net " +
-                        "https://*.microsoft.com https://*.microsoftonline.com " +
+                        "https://*.microsoft.com https://*.microsoftonline.com https://*.cloud.microsoft " +
                         "https://*.msauth.net https://*.msocdn.com " +
                         "https://*.sharepoint.com https://*.msecnd.net https://*.msftauth.net " +
                         "https://*.cdn.office.net https://*.onecdn.static.microsoft " +
@@ -474,7 +484,7 @@ class MailWindowController {
                         "https://outlook.com https://*.outlook.com " +
                         "https://outlook.office.com https://*.office.com https://*.office365.com " +
                         "https://*.live.com https://*.live.net " +
-                        "https://*.microsoft.com https://*.microsoftonline.com " +
+                        "https://*.microsoft.com https://*.microsoftonline.com https://*.cloud.microsoft " +
                         "https://*.msocdn.com https://*.msauth.net https://*.msecnd.net " +
                         "https://*.msftauth.net https://*.cdn.office.net https://*.sharepoint.com " +
                         "https://*.onecdn.static.microsoft " +
@@ -482,7 +492,7 @@ class MailWindowController {
                         "style-src 'self' 'unsafe-inline' https://outlook.com https://*.outlook.com " +
                         "https://outlook.office.com https://*.office.com " +
                         "https://*.office365.com https://*.live.com https://*.live.net " +
-                        "https://*.microsoft.com https://*.microsoftonline.com " +
+                        "https://*.microsoft.com https://*.microsoftonline.com https://*.cloud.microsoft " +
                         "https://*.msocdn.com https://*.msauth.net " +
                         "https://*.msftauth.net https://*.cdn.office.net https://*.onecdn.static.microsoft " +
                         "https://*.github.com https://*.githubassets.com https://*.bing.com; " +
@@ -491,15 +501,15 @@ class MailWindowController {
                         "https://outlook.office.com wss://*.office.com " +
                         "https://*.live.com https://*.live.net " +
                         "https://*.office365.com https://*.sharepoint.com " +
-                        "https://*.microsoft.com https://*.microsoftonline.com https://*.msocdn.com " +
+                        "https://*.microsoft.com https://*.microsoftonline.com https://*.cloud.microsoft https://*.msocdn.com " +
                         "https://*.msauth.net https://*.msecnd.net https://*.msftauth.net " +
                         "https://*.cdn.office.net https://*.onecdn.static.microsoft " +
                         "https://*.github.com https://*.githubassets.com https://*.bing.com " +
-                        "wss://*.live.com wss://*.live.net wss://*.office365.com; " +
+                        "wss://*.live.com wss://*.live.net wss://*.office365.com wss://*.cloud.microsoft; " +
                         "font-src 'self' https://outlook.com https://*.outlook.com " +
                         "https://outlook.office.com https://*.office.com " +
                         "https://*.office365.com https://*.live.com https://*.live.net " +
-                        "https://*.microsoft.com https://*.microsoftonline.com " +
+                        "https://*.microsoft.com https://*.microsoftonline.com https://*.cloud.microsoft " +
                         "https://*.msocdn.com https://*.msauth.net " +
                         "https://*.msftauth.net https://*.cdn.office.net https://*.onecdn.static.microsoft " +
                         "https://*.github.com https://*.githubassets.com https://*.bing.com data:; " +
@@ -507,7 +517,7 @@ class MailWindowController {
                         "frame-src 'self' https://outlook.com https://*.outlook.com " +
                         "https://outlook.office.com https://*.office.com " +
                         "https://*.office365.com https://*.live.com https://*.live.net " +
-                        "https://*.microsoft.com https://*.microsoftonline.com https://*.sharepoint.com; " +
+                        "https://*.microsoft.com https://*.microsoftonline.com https://*.cloud.microsoft https://*.sharepoint.com; " +
                         "worker-src 'self' blob:;"
                     ]
                 }
@@ -921,15 +931,18 @@ class MailWindowController {
             // Keep only loads from the last 60 seconds
             this.pageLoadTimes = this.pageLoadTimes.filter(p => now - p.time < 60000);
 
+            // v3.3.11: outlook.cloud.microsoft/mail is a mail page too.
             const isMailPage = url.includes('outlook.com/mail') ||
                                url.includes('outlook.live.com/mail') ||
                                url.includes('outlook.office.com/mail') ||
-                               url.includes('outlook.office365.com/mail');
+                               url.includes('outlook.office365.com/mail') ||
+                               url.includes('outlook.cloud.microsoft/mail');
             const mailLoads = this.pageLoadTimes.filter(p =>
                 p.url.includes('outlook.com/mail') ||
                 p.url.includes('outlook.live.com/mail') ||
                 p.url.includes('outlook.office.com/mail') ||
-                p.url.includes('outlook.office365.com/mail')
+                p.url.includes('outlook.office365.com/mail') ||
+                p.url.includes('outlook.cloud.microsoft/mail')
             );
 
             if (isMailPage && mailLoads.length >= 5 && !this.redirectLoopDetected) {
@@ -1193,7 +1206,10 @@ class MailWindowController {
         // before loading. Keep the login_hint — the page needs it to identify
         // the account, and the synced cookies provide the session.
         this.win.webContents.on('will-navigate', (event, url) => {
-            if (url.includes('outlook.live.com/mail') && url.includes('login_hint=')) {
+            // v3.3.11: outlook.cloud.microsoft is the new mail host — same
+            // login_hint treatment as live.com.
+            if ((url.includes('outlook.live.com/mail') || url.includes('outlook.cloud.microsoft/mail'))
+                && url.includes('login_hint=')) {
                 event.preventDefault();
                 this.loginHintIntercepts++;
                 logger.info(`Intercepted login_hint redirect #${this.loginHintIntercepts}: ${url}`);
@@ -1201,6 +1217,24 @@ class MailWindowController {
                     logger.info(`Loading with synced cookies (login_hint preserved)`);
                     this.win.loadURL(url); // keep login_hint
                 });
+                return;
+            }
+            // v3.3.11: "we found an account you can use here" = authorize with
+            // prompt=select_account, shown when the session cookies are not
+            // recognized on cloud.microsoft. If we DO have session cookies,
+            // force a silent re-auth (prompt=none) instead — Microsoft then
+            // reuses the existing account without showing the picker.
+            // Bounded (max 2 rewrites per window) to avoid a rewrite loop.
+            if (url.includes('login.microsoftonline.com') && url.includes('prompt=select_account')) {
+                this.selectAccountRewrites = (this.selectAccountRewrites || 0) + 1;
+                if (this.selectAccountRewrites <= 2) {
+                    event.preventDefault();
+                    const silentUrl = url.replace('prompt=select_account', 'prompt=none');
+                    logger.info(`Rewriting select_account → none (#${this.selectAccountRewrites}): ${silentUrl.substring(0, 120)}...`);
+                    this.syncCookiesToLiveCom().then(() => {
+                        this.win.loadURL(silentUrl);
+                    });
+                }
             }
         });
 
