@@ -1442,3 +1442,10 @@ test('v3.3.21: notif du nb de non lus même quand la boîte est ouverte + alerte
     assert.ok(obs.includes('domFailCount') && obs.includes('domAlerted') && obs.includes('DOM CHANGED'),
         'observer must alert when the DOM selectors stop matching (v3.3.21)');
 });
+
+test('v3.3.21: sélecteur inbox générique (treeitem title "non lus") pour le nouveau DOM', async () => {
+    const fs = await import('node:fs');
+    const obs = fs.readFileSync(path.resolve(__dirname, '../public/unread-number-observer.js'), 'utf-8');
+    assert.ok(obs.includes("'[role=\"treeitem\"][title*=\"non lus\" i]'"),
+        'inbox selector must include generic treeitem title "non lus" (new DOM, no FolderPane parent) (v3.3.21)');
+});
