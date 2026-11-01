@@ -50,9 +50,15 @@ const defaults = {
         "outlook.office.com/mail/safelink.html",
         "safelinks.protection.outlook.com",
     ],
-    showWindowFrame: true,
-    hideOnClose: true,
-    hideOnMinimize: true,
+    // v3.3.4: on Ubuntu Touch the window must behave like a native app:
+    // full-screen (no X11 frame with a close cross) and closing the window
+    // quits the app. With showWindowFrame+hideOnClose=true, closing via the
+    // X11 cross only HID the window while the process kept running — the
+    // next tap on the launcher icon raised a hidden window, i.e. nothing
+    // appeared ("app does not start", ~1 launch in 2-3).
+    showWindowFrame: false,
+    hideOnClose: false,
+    hideOnMinimize: false,
     startMinimized: false,
     customBrowserPath: undefined,
     focusMode: false,

@@ -47,6 +47,12 @@ let heartbeatExiting = false;
 // being delivered. hideOnClose/hideOnMinimize hide the window on background,
 // which makes isVisible() false — that must NOT kill the app anymore.
 let windowEverVisible = false;
+// v3.3.4: track the MAIN window separately from the splash. If the main window
+// has never been shown ~60s after start (missed did-finish-load / splash edge
+// case), force show() — otherwise the app runs with an invisible window and
+// looks like it "does not start" while the process and heartbeat are alive.
+let mainWindowEverVisible = false;
+let appInstance = null;
 const heartbeatInterval = setInterval(() => {
     if (heartbeatExiting) return;
     heartbeatSeconds++;
@@ -58,6 +64,17 @@ const heartbeatInterval = setInterval(() => {
 
     if (visibleCount > 0) {
         windowEverVisible = true;
+    }
+
+    const mainWin = appInstance?.mailController?.win;
+    if (mainWin && !mainWin.isDestroyed() && mainWin.isVisible()) {
+        if (!mainWindowEverVisible) {
+            mainWindowEverVisible = true;
+            logger.info(`Main window became visible after ${heartbeatSeconds} heartbeats`);
+        }
+    } else if (!mainWindowEverVisible && heartbeatSeconds === 30 && appInstance?.mailController) {
+        logger.warn('Main window never shown after 60s — forcing show()');
+        try { appInstance.mailController.show(); } catch (e) { logger.error('Force show failed:', e); }
     }
 
     // After 60 heartbeats (~2 min) during which the window NEVER appeared,
@@ -124,7 +141,18 @@ class ProspectMail {
 
     // init method, the entry point of the app
     init() {
-        app.on("second-instance", () => {
+        // v3.3.4: actually request the single-instance lock (the second-instance
+        // handler below was dead code without it). If another process is already
+        // running, tell it to show its window and quit this duplicate — two
+        // concurrent Electron instances fight over the Singleton* locks and the
+        // config dir, which made launches fail intermittently.
+        if (!app.requestSingleInstanceLock()) {
+            logger.warn('Single-instance lock held by another process — asking it to show and exiting');
+            app.exit(0);
+            return;
+        }
+        app.on("second-instance", (_event, _argv, _cwd) => {
+            logger.info('second-instance received — showing main window');
             const primary = this.mailController;
             if (primary) primary.show();
         });
@@ -284,4 +312,5 @@ class ProspectMail {
     }
 }
 
-new ProspectMail().init();
+appInstance = new ProspectMail();
+appInstance.init();
