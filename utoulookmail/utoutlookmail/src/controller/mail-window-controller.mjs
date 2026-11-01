@@ -768,6 +768,15 @@ class MailWindowController {
         this.setupIpcHandlers();
         this.setupWebContentsEvents();
         this.setupWindowOpenHandler();
+        // v3.3.20: the compose window opens as a SEPARATE BrowserWindow — inject
+        // the UT look & gestures there too, or it stays unstyled.
+        app.on('browser-window-created', (_e, win) => {
+            if (win === this.win) return;
+            win.webContents.on('dom-ready', () => {
+                this.injectStyles(win).catch(() => {});
+                this.injectGestures(win);
+            });
+        });
         this.setupWindowEvents();
         this.setupScreenEvents();
         this.setupOfflineDetection();
@@ -1519,30 +1528,35 @@ class MailWindowController {
         }, 3000);
     }
 
-    async injectStyles() {
-        if (!this.cssKeys) this.cssKeys = { main: null, noFrame: null, dark: null, focus: null, accent: null };
+    async injectStyles(targetWin = null) {
+        const win = targetWin || this.win;
+        if (!win || win.isDestroyed()) return;
+        // v3.3.20: per-window CSS keys (compose opens in a separate window and
+        // must get the UT look too)
+        if (!win.__utoutlookCssKeys) win.__utoutlookCssKeys = { main: null, noFrame: null, dark: null, focus: null, accent: null };
+        const keys = win.__utoutlookCssKeys;
 
         // Remove previously inserted CSS
         for (const key of ['main', 'noFrame', 'dark', 'focus', 'accent']) {
-            if (this.cssKeys[key]) {
-                try { await this.win.webContents.removeInsertedCSS(this.cssKeys[key]); } catch (e) { /* ignore */ }
-                this.cssKeys[key] = null;
+            if (keys[key]) {
+                try { await win.webContents.removeInsertedCSS(keys[key]); } catch (e) { /* ignore */ }
+                keys[key] = null;
             }
         }
 
         // Insert fresh CSS
-        this.cssKeys.main = await this.win.webContents.insertCSS(getClientFile("main.css"));
+        keys.main = await win.webContents.insertCSS(getClientFile("main.css"));
         if (!this.showWindowFrame) {
-            this.cssKeys.noFrame = await this.win.webContents.insertCSS(getClientFile("no-frame.css"));
+            keys.noFrame = await win.webContents.insertCSS(getClientFile("no-frame.css"));
         }
         if (this.shouldUseDarkMode()) {
-            this.cssKeys.dark = await this.win.webContents.insertCSS(this.getDarkModeCSS());
+            keys.dark = await win.webContents.insertCSS(this.getDarkModeCSS());
         }
         if (this.focusMode) {
-            this.cssKeys.focus = await this.win.webContents.insertCSS(this.getFocusModeCSS());
+            keys.focus = await win.webContents.insertCSS(this.getFocusModeCSS());
         }
         if (this.accentColor && this.accentColor !== '#0078d4') {
-            this.cssKeys.accent = await this.win.webContents.insertCSS(this.getAccentColorCSS(this.accentColor));
+            keys.accent = await win.webContents.insertCSS(this.getAccentColorCSS(this.accentColor));
         }
     }
 
@@ -1572,9 +1586,10 @@ class MailWindowController {
         }
     }
 
-    injectGestures() {
-        if (!this.win || this.win.isDestroyed()) return;
-        this.win.webContents.executeJavaScript(
+    injectGestures(targetWin = null) {
+        const win = targetWin || this.win;
+        if (!win || win.isDestroyed()) return;
+        win.webContents.executeJavaScript(
             getClientFile("gestures.js")
         ).catch(() => {
             // gestures.js may not exist yet or page not ready, ignore
