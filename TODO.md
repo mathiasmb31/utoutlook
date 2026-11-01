@@ -280,6 +280,20 @@
       fenêtre visible à chaque fois
 - [x] Version bump: 3.3.7 → 3.3.8
 
+## Fait (v3.3.9 + v3.3.10 — relance après nettoyage + upgrade cross-version propre)
+
+- [x] v3.3.9: verify_prospect_life ne quitte plus après « ****** / Nettoyage » :
+      il relance via launch_prospect (limite launchtry>3), launchtry retombe à 1
+      quand le client est vivant. Testé: crash forcé → « cleaning and relaunching
+      (try 1) » → « client is alive » 7s plus tard.
+- [x] v3.3.10: à l'upgrade, l'ancien service systemd restait actif (deux wrappers
+      qui se battent) car AppArmor bloque les signaux cross-label. Fix:
+      utoutlook_kill_app pose un flag close FRAIS (l'ancien process le voit dans
+      son heartbeat et sort gracieusement) ; et chaque wrapper sort si
+      wrapper.pid appartient à un wrapper plus récent (ownership).
+- [x] Tests: 86 tests, 82 pass + 5 skip, 0 fail
+- [x] Version bump: 3.3.8 → 3.3.10
+
 ## Idées en réserve (non prioritaires)
 
 - [ ] Raccourcis clavier personnalisables
