@@ -233,6 +233,26 @@
 - [x] Tests: +2 tests (80 tests, 75 pass + 5 skip, 0 fail)
 - [x] Version bump: 3.3.3 → 3.3.4
 
+## Fait (v3.3.5 — vraie cause du crash de lancement intermittent, attrapée en flagrant délit)
+
+- [x] Diagnostic (logs 14:52 pendant l'upgrade 3.3.3→3.3.4) : l'ancien wrapper
+      command.sh (PID 10171) est resté vivant après le `kill: prospect-mail` de
+      clickable (orphan) et a écrit « tried too more » dans le flag `close` ;
+      le NOUVEAU process Electron lit ce flag dans son heartbeat → app.exit(0)
+      2s après le lancement. Race → « ne démarre pas » 1 fois sur 2-3.
+      (vu aussi: bin/sleep/touch manquants pendant la transition → boucle folle)
+- [x] Fix: main.mjs — PROCESS_START au boot + unlink du flag close au boot ;
+      le heartbeat n'honore le flag close que si mtime > PROCESS_START
+- [x] Fix: common.sh — utoutlook_kill_stale_wrappers() tue les wrappers
+      command.sh orphelins d'anciennes versions (jamais $$/$PPID), appelé
+      depuis cleanup de command.sh
+- [x] Fix: command.sh — verify_prospect_life exige 2 stagnations consécutives
+      (stagnantCount) avant d'écrire « tried too more »
+- [x] Fix: command.sh — sleep_int retombe sur /bin/sleep si le binaire embarqué
+      est absent (transition de version)
+- [x] Tests: +2 (82 tests, 77 pass + 5 skip, 0 fail)
+- [x] Version bump: 3.3.4 → 3.3.5
+
 ## Idées en réserve (non prioritaires)
 
 - [ ] Raccourcis clavier personnalisables
