@@ -1099,6 +1099,8 @@ test('main.mjs: single-instance lock + force-show if main window never appears (
 
     assert.ok(content.includes('requestSingleInstanceLock'),
         'main.mjs must request the single-instance lock (v3.3.4) — the second-instance handler was dead code without it');
+    assert.ok(!/if \(!app\.requestSingleInstanceLock\(\)\) \{[^}]*app\.exit\(0\)/s.test(content),
+        'must NOT app.exit(0) when the lock is unavailable — AppArmor blocks the singleton socket dir on UT, quitting on lock failure broke every launch (v3.3.5)');
     assert.ok(content.includes('mainWindowEverVisible'),
         'heartbeat must track main-window visibility separately from the splash (v3.3.4)');
     assert.ok(content.includes('forcing show()'),

@@ -158,16 +158,14 @@ class ProspectMail {
 
     // init method, the entry point of the app
     init() {
-        // v3.3.4: actually request the single-instance lock (the second-instance
-        // handler below was dead code without it). If another process is already
-        // running, tell it to show its window and quit this duplicate — two
-        // concurrent Electron instances fight over the Singleton* locks and the
-        // config dir, which made launches fail intermittently.
-        if (!app.requestSingleInstanceLock()) {
-            logger.warn('Single-instance lock held by another process — asking it to show and exiting');
-            app.exit(0);
-            return;
-        }
+        // v3.3.5: do NOT hard-quit when requestSingleInstanceLock() returns false.
+        // Under Ubuntu Touch AppArmor the singleton socket directory cannot be
+        // created ("Failed to create socket directory"), so the lock always
+        // fails here — quitting on it made EVERY launch exit immediately.
+        // The lock is best-effort only: duplicate instances are already handled
+        // by the shell wrapper (cleanup kills the old process + orphan wrappers).
+        const gotLock = app.requestSingleInstanceLock();
+        logger.info(`Single-instance lock: ${gotLock ? 'acquired' : 'unavailable (continuing anyway)'}`);
         app.on("second-instance", (_event, _argv, _cwd) => {
             logger.info('second-instance received — showing main window');
             const primary = this.mailController;
