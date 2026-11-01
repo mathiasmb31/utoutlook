@@ -320,13 +320,19 @@ class MailWindowController {
                     targets.push('outlook.live.com', '.live.com');
                 } else if (domain === '.microsoft.com' || domain === '.microsoftonline.com' ||
                            domain === 'login.microsoftonline.com' || domain === 'outlook.microsoft.com') {
-                    targets.push('.live.com', 'outlook.live.com');
+                    // v3.3.15: also share to login.live.com — the SPA goes straight
+                    // to login.microsoftonline.com and never passes through
+                    // login.live.com, so the persistent auth cookie
+                    // (__Host-MSAAUTHP on login.live.com) was never presented there
+                    // → the pick-account page showed no account.
+                    targets.push('.live.com', 'outlook.live.com', 'login.live.com');
                 } else if (domain === '.msauth.net' || domain === '.msocdn.com' ||
                            domain === '.msftauth.net' || domain === '.msecnd.net') {
-                    targets.push('.live.com', 'outlook.live.com');
+                    targets.push('.live.com', 'outlook.live.com', 'login.live.com');
                 } else if (domain === 'login.live.com') {
-                    // login.live.com cookies → outlook.live.com (same parent, but be explicit)
-                    targets.push('outlook.live.com');
+                    // login.live.com cookies → outlook.live.com + login.microsoftonline.com
+                    // (the authorize endpoint only receives its own-domain cookies)
+                    targets.push('outlook.live.com', 'login.microsoftonline.com', '.microsoftonline.com');
                 }
                 // v3.3.11: Outlook now serves mail from outlook.cloud.microsoft.
                 // Session/auth cookies must also exist on .cloud.microsoft, or
@@ -336,7 +342,11 @@ class MailWindowController {
                     domain.includes('live.com') || domain.includes('msauth') ||
                     domain.includes('msocdn') || domain.includes('msecnd') ||
                     domain.includes('msftauth')) {
-                    targets.push('.cloud.microsoft', 'outlook.cloud.microsoft');
+                    // v3.3.15: the authorize page lives on login.microsoftonline.com
+                    // and only receives its own-domain cookies — share there too,
+                    // otherwise the pick-account page shows no known account.
+                    targets.push('.cloud.microsoft', 'outlook.cloud.microsoft',
+                                 'login.microsoftonline.com', '.microsoftonline.com');
                 }
                 for (const newDomain of targets) {
                     const host = newDomain.replace(/^\./, '');
