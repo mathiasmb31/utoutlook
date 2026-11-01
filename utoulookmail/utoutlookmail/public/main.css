@@ -253,16 +253,47 @@ button, [role="button"], a[role="button"] {
 [class*="LoadingBackdrop"],
 [class*="refreshOverlay"],
 [class*="RefreshOverlay"],
-[class*="skeleton"],
-[class*="Skeleton"],
-[class*="shimmer"],
-[class*="Shimmer"],
 [data-automation-id*="pullToRefresh"],
 [data-automation-id*="refreshIndicator"],
 [data-automation-id*="overscroll"],
 [data-automation-id*="listLoading"],
 [data-automation-id*="loadingMore"],
 [data-automation-id*="loadMore"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+}
+
+/* --- 3b. Skeletons/shimmer UNIQUEMENT dans les conteneurs de liste ---
+   v3.3.12: sur la page de login Microsoft (select_account), la tuile
+   « compte que vous pouvez utiliser ici » utilise des classes Fluent UI
+   skeleton/shimmer — cachées globalement, l'utilisateur ne voyait plus
+   son compte. Restreint aux conteneurs de liste comme les spinners. */
+[class*="messageList"] [class*="skeleton"],
+[class*="messageList"] [class*="Skeleton"],
+[class*="messageList"] [class*="shimmer"],
+[class*="messageList"] [class*="Shimmer"],
+[class*="listView"] [class*="skeleton"],
+[class*="listView"] [class*="Skeleton"],
+[class*="listView"] [class*="shimmer"],
+[class*="listView"] [class*="Shimmer"],
+[class*="virtualizedList"] [class*="skeleton"],
+[class*="virtualizedList"] [class*="Skeleton"],
+[class*="virtualizedList"] [class*="shimmer"],
+[class*="virtualizedList"] [class*="Shimmer"],
+[role="list"] [class*="skeleton"],
+[role="list"] [class*="Skeleton"],
+[role="list"] [class*="shimmer"],
+[role="list"] [class*="Shimmer"],
+[role="grid"] [class*="skeleton"],
+[role="grid"] [class*="Skeleton"],
+[role="grid"] [class*="shimmer"],
+[role="grid"] [class*="Shimmer"] {
   display: none !important;
   visibility: hidden !important;
   opacity: 0 !important;
