@@ -294,6 +294,21 @@
 - [x] Tests: 86 tests, 82 pass + 5 skip, 0 fail
 - [x] Version bump: 3.3.8 → 3.3.10
 
+## Bug connu (à traiter après merge PR fix/pulldown-scroll-startup-crash)
+
+- [ ] « Nous avons trouvé un compte que vous pouvez utiliser ici » au démarrage,
+      1 fois sur 2 : Outlook redirige vers `login.microsoftonline.com/...&prompt=select_account`
+      au lieu d'ouvrir la boîte mail (vu dans les logs: Page loaded #1 =
+      outlook.cloud.microsoft/mail → #2 = login.microsoftonline .../authorize?prompt=select_account).
+      Pistes:
+      - aucun `cloud.microsoft` dans le code : le sync de cookies couvre
+        office.com → live.com mais PAS le nouveau domaine outlook.cloud.microsoft
+      - ajouter `*.cloud.microsoft` au CSP (setupCSP) et à urlsExternal/urlsInternal
+      - intercepter l'URL login.microsoftonline avec prompt=select_account et la
+        réécrire en prompt=none (reconnexion silencieuse sur le compte existant)
+      - vérifier que la partition persist:utoutlook-default a bien les cookies
+        du domaine cloud.microsoft (flushStore au quit)
+
 ## Idées en réserve (non prioritaires)
 
 - [ ] Raccourcis clavier personnalisables
