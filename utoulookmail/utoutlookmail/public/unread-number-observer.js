@@ -148,9 +148,28 @@ const observeUnreadHandlers = {
 
     if (!inboxElement) {
       console.log('[UTOUTLOOK OBSERVER] No inbox element found for unread monitoring');
+      // v3.3.21: alert when the Outlook DOM changes and our selectors no longer
+      // match (we had found the inbox before, now nothing matches) — urgent
+      // notification so it is shown even when the app is in the foreground.
+      state.domFailCount = (state.domFailCount || 0) + 1;
+      if (state.hadInbox && state.domFailCount >= 2 && !state.domAlerted) {
+        state.domAlerted = true;
+        console.error('[UTOUTLOOK OBSERVER] DOM CHANGED — inbox selectors no longer match');
+        try {
+          window.electronAPI.showNotification(
+            I18N.appName || 'UToutlook Mail',
+            'DOM Outlook modifié — les sélecteurs de l\'observer ne correspondent plus (non lus indisponibles)',
+            null,
+            true // urgent
+          );
+        } catch (e) { /* ignore */ }
+      }
       return false;
     }
     console.log('[UTOUTLOOK OBSERVER] Inbox element found — unread monitoring active');
+    state.domFailCount = 0;
+    state.hadInbox = true;
+    state.domAlerted = false;
 
     // ============================================================
     // Extract info from the latest (first) message in the list
