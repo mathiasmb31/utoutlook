@@ -1033,3 +1033,45 @@ test('notify pushclient.cpp: buildNotification does NOT include actions field (h
     assert.ok(!body.includes('QJsonArray actions'),
         'buildNotification must NOT declare actions array (hotfix #15)');
 });
+
+test('gestures.js: pull-down only blocks when the real scroll container is at top (v3.3.3)', async () => {
+    const fs = await import('node:fs');
+    const gPath = path.resolve(__dirname, '../public/gestures.js');
+    const content = fs.readFileSync(gPath, 'utf-8');
+
+    // The SPA scrolls inside an inner div, window.scrollY is always 0 —
+    // the old check window.scrollY === 0 made every downward slide get
+    // preventDefault()'d (blue bar shown, list frozen).
+    assert.ok(content.includes('findScrollContainer'),
+        'gestures.js must locate the real scrollable ancestor (findScrollContainer)');
+    assert.ok(/pullContainer\.scrollTop <= 0/.test(content),
+        'pull-to-refresh must check the scroll container scrollTop, not window.scrollY');
+    assert.ok(/if \(pullContainer\.scrollTop > 0 \|\| window\.scrollY > 0\)/.test(content),
+        'touchmove must NOT preventDefault when the list can still scroll (v3.3.3)');
+});
+
+test('command.sh: startup is resilient to slow network and slow Electron (v3.3.3)', async () => {
+    const fs = await import('node:fs');
+    const cmdPath = path.resolve(__dirname, '../../command.sh');
+    const content = fs.readFileSync(cmdPath, 'utf-8');
+
+    // test_net must not quit the app when the network is not up yet —
+    // it used to run qmlscene nonetwork.qml + close_command (1 launch in
+    // 2-3 failed at wake-up because DNS/4G was not ready within 1s).
+    const netStart = content.indexOf('function test_net()');
+    const netEnd = content.indexOf('\nfunction ', netStart + 10);
+    const netBody = content.slice(netStart, netEnd);
+    assert.ok(!netBody.includes('close_command'),
+        'test_net must NOT quit the app on missing connectivity (v3.3.3)');
+    assert.ok(!netBody.includes('nonetwork.qml'),
+        'test_net must NOT show nonetwork.qml at startup (v3.3.3)');
+    assert.ok(netBody.includes('nc -zw2'),
+        'test_net should retry with a 2s timeout per probe (v3.3.3)');
+
+    // The stale heartbeat file from the previous session used to cause a
+    // false "stagnation" detection while Electron was still cold-starting.
+    assert.ok(content.includes('rm -f ${filelifefollow}'),
+        'command.sh must delete the stale heartbeat file before launching (v3.3.3)');
+    assert.ok(content.includes('startupGrace'),
+        'verify_prospect_life must have a startup grace window when heartbeat is absent (v3.3.3)');
+});

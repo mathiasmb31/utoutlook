@@ -38,13 +38,34 @@ function launch_prospect() {
 
 function verify_prospect_life() {
 
-	follow=$(echo "$(<${filelifefollow})")
+	# Lecture sûre du heartbeat (le fichier peut ne pas exister encore)
+	local follow=""
+	if [ -f "${filelifefollow}" ]; then
+		follow=$("${WD}"/bin/cat "${filelifefollow}" 2>/dev/null | "${WD}"/bin/tr -d '[:space:]')
+	fi
 
 	echo "FOLLOW"
 	echo ${follow}
 	echo ${oldfollow}
+
+	# Heartbeat absent/vide : Electron n'a pas encore écrit son premier
+	# heartbeat (cold start lent). Fenêtre de grâce de 20 lectures x 3s = 60s
+	# avant de conclure à un échec de démarrage — sinon une valeur stale du
+	# lancement précédent provoquait une fausse "stagnation" et quittait
+	# l'app une fois sur 2-3 au démarrage.
+	if [ -z "${follow}" ]; then
+		startupGrace=$((startupGrace + 1))
+		if [ ${startupGrace} -lt 20 ]; then
+			echo "heartbeat not started yet (grace ${startupGrace}/20)"
+			return
+		fi
+		echo "heartbeat never started — giving up"
+		echo "tried too more " >${exitcommand}
+		echo "******" && utoutlook_notify "$(utoutlook_t 'shell.cleaning')" && exit 0
+	fi
+
 	clientalive=0
-	if [ ${follow} -eq ${oldfollow} ]; then
+	if [ -n "${oldfollow}" ] && [ "${follow}" = "${oldfollow}" ]; then
 		echo ${follow}
 		echo ${oldfollow}
 		echo "tried too more " >${exitcommand}
@@ -70,14 +91,20 @@ function verify_prospect_life() {
 }
 
 function test_net() {
-	if "${WD}"/bin/nc -zw1 google.com 443; then
-		echo "we have connectivity"
-	else
-
-		utoutlook_notify "$(utoutlook_t 'shell.noNetwork')"
-		qmlscene "${WD}"/qml/nonetwork.qml
-		close_command
-	fi
+	# Non bloquant : au réveil du téléphone, le réseau (DNS / 4G) peut mettre
+	# plusieurs secondes à monter. 3 sondes de 2s max ; si tout échoue, on
+	# lance quand même l'app — l'overlay "hors ligne" + le moniteur de
+	# connectivité d'Electron gèrent la reconnexion automatique.
+	local hosts=("google.com" "1.1.1.1" "outlook.office.com")
+	local h
+	for h in "${hosts[@]}"; do
+		if "${WD}"/bin/nc -zw2 "$h" 443; then
+			echo "we have connectivity ($h)"
+			return 0
+		fi
+	done
+	echo "no connectivity yet — launching anyway (offline overlay handles reconnect)"
+	return 0
 }
 function close_command() {
 	# Send quit command via Unix socket (primary method)
@@ -116,9 +143,14 @@ test_net
 export launchtry=1
 
 oldfollow="0"
+startupGrace=0
 "${WD}"/bin/rm -f ${exitclient}
 "${WD}"/bin/rm -f ${killedclient}
 "${WD}"/bin/rm -f /home/phablet/.config/utoutlook.mathias/close
+# Supprime le heartbeat de la session précédente : tant qu'Electron n'a pas
+# réécrit son premier compteur, verify_prospect_life verra un fichier absent
+# (fenêtre de grâce) au lieu d'une valeur stale (fausse stagnation).
+"${WD}"/bin/rm -f ${filelifefollow}
 cleanup
 "${WD}"/utils/mkdir
 "${WD}"/bin/rm -f "/home/phablet/.cache/utoutlook.mathias/quit"
