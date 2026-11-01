@@ -908,7 +908,31 @@ class MailWindowController {
         fs.writeFile(INIT_FLAG_FILE, 'initialise!', err => { if (err) logger.error(err); });
     }
 
+    /**
+     * v3.3.18: read the known Microsoft account email from the partition's
+     * Local Storage (leveldb) — used ONLY locally to add login_hint= to the
+     * authorize URL so the select_account page shows the account tile.
+     * NEVER log or publish this email (confidentiality rule).
+     * @returns {string|null}
+     */
+    readKnownAccountEmail() {
+        try {
+            const leveldbDir = path.join(app.getPath('userData'), 'Local Storage', 'leveldb');
+            const files = fs.readdirSync(leveldbDir).filter(f => f.endsWith('.log') || f.endsWith('.ldb'));
+            for (const f of files) {
+                const buf = fs.readFileSync(path.join(leveldbDir, f));
+                const m = buf.toString('latin1').match(/[a-zA-Z0-9._%+-]+@(outlook|hotmail|live|msn|passport)\.[a-z.]{2,}/i);
+                if (m) return m[0];
+            }
+        } catch (e) { /* ignore */ }
+        return null;
+    }
+
     async loadMainUrl() {
+        // v3.3.18: known account email (local only, never logged/published) — used
+        // to add login_hint= to the authorize URL so the account tile shows.
+        this.knownEmail = this.readKnownAccountEmail();
+
         // Dynamic user agent based on the Chromium version bundled with Electron
         const chromeVersion = process.versions.chrome || '143.0.0.0';
         const userAgentOS = "X11; Linux x86_64";
@@ -1251,6 +1275,19 @@ class MailWindowController {
                     logger.info(`Loading with synced cookies (login_hint preserved)`);
                     this.win.loadURL(url); // keep login_hint
                 });
+                return;
+            }
+            // v3.3.18: add login_hint=<known email> to the authorize URL so the
+            // select_account page shows the account tile. login_hint only
+            // PRE-FILLS the account — it does NOT sign in (no auto-login);
+            // the user still clicks the tile. Never log the email itself.
+            if (url.includes('login.microsoftonline.com') && url.includes('/authorize') &&
+                !url.includes('login_hint=') && this.knownEmail) {
+                event.preventDefault();
+                const sep = url.includes('?') ? '&' : '?';
+                const withHint = `${url}${sep}login_hint=${encodeURIComponent(this.knownEmail)}`;
+                logger.info('Adding login_hint to authorize URL (account tile shown, no auto-login)');
+                this.win.loadURL(withHint);
                 return;
             }
             // v3.3.11: ne PAS réécrire select_account en connexion silencieuse —
