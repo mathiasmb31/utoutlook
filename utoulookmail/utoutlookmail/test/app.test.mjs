@@ -1286,3 +1286,18 @@ test('main.css: skeleton/shimmer cachés UNIQUEMENT dans les conteneurs de liste
     assert.ok(css.includes('[role="list"] [class*="shimmer"]'),
         'shimmer must still be hidden inside list containers (v3.3.12)');
 });
+
+test('cookie sync: __Host-/__Secure- prefix stripped for cross-domain copies (v3.3.13)', async () => {
+    const fs = await import('node:fs');
+    const cPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(cPath, 'utf-8');
+
+    // Chromium rejects setting a __Host-/__Secure- cookie with a domain
+    // attribute → session cookies (__Host-MSAAUTH) were silently NOT copied
+    // → login page lost the account. The copy must strip the prefix.
+    const fn = content.slice(content.indexOf('async syncCookiesToLiveCom()'), content.indexOf('startObserverHealthCheck'));
+    assert.ok(fn.includes("cookie.name.replace(/^__(?:Host|Secure)-/i, '')"),
+        'cookie copy must strip __Host-/__Secure- prefix (v3.3.13)');
+    assert.ok(fn.includes('Cookie copy failed'),
+        'failed cookie copies must be logged, not silently swallowed (v3.3.13)');
+});
