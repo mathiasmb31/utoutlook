@@ -117,6 +117,13 @@ const observeUnreadHandlers = {
         '[data-folder-name="inbox"]',
         '[data-folder-name="Boîte de réception"]',
         '[data-folder-name="Inbox"]',
+        // v3.3.21: nouveau DOM — le treeitem de la boîte de réception a un title
+        // "Boîte de réception - éléments N (M non lus)" mais plus de parent
+        // FolderPane (volet de navigation replié/rendu ailleurs).
+        '[role="treeitem"][title*="non lus" i]',
+        '[role="treeitem"][title*="unread" i]',
+        '[role="treeitem"][aria-label*="non lus" i]',
+        '[role="treeitem"][aria-label*="unread" i]',
         '[data-app-section="FolderPane"] [role="treeitem"][aria-label*="non lu" i]',
         '[data-app-section="FolderPane"] [role="treeitem"][aria-label*="unread" i]',
         '[class*="folderPane"] [role="treeitem"][title*="non lu" i]',
@@ -148,9 +155,28 @@ const observeUnreadHandlers = {
 
     if (!inboxElement) {
       console.log('[UTOUTLOOK OBSERVER] No inbox element found for unread monitoring');
+      // v3.3.21: alert when the Outlook DOM changes and our selectors no longer
+      // match (we had found the inbox before, now nothing matches) — urgent
+      // notification so it is shown even when the app is in the foreground.
+      state.domFailCount = (state.domFailCount || 0) + 1;
+      if (state.hadInbox && state.domFailCount >= 2 && !state.domAlerted) {
+        state.domAlerted = true;
+        console.error('[UTOUTLOOK OBSERVER] DOM CHANGED — inbox selectors no longer match');
+        try {
+          window.electronAPI.showNotification(
+            I18N.appName || 'UToutlook Mail',
+            'DOM Outlook modifié — les sélecteurs de l\'observer ne correspondent plus (non lus indisponibles)',
+            null,
+            true // urgent
+          );
+        } catch (e) { /* ignore */ }
+      }
       return false;
     }
     console.log('[UTOUTLOOK OBSERVER] Inbox element found — unread monitoring active');
+    state.domFailCount = 0;
+    state.hadInbox = true;
+    state.domAlerted = false;
 
     // ============================================================
     // Extract info from the latest (first) message in the list
@@ -244,8 +270,10 @@ const observeUnreadHandlers = {
       let unread = 0;
       let titleValid = false;
       if (title) {
-        // Match the last parenthesized number in the title (e.g. "(217 unread)" or "(217 non lus)")
-        const matches = [...title.matchAll(/\((\d+)\)/g)];
+        // Match the last parenthesized number in the title, e.g. "(217 unread)",
+        // "(217 non lus)", "(217)" — v3.3.21: the count may be followed by text
+        // inside the parens, so accept anything up to the closing paren.
+        const matches = [...title.matchAll(/\((\d+)[^)]*\)/g)];
         if (matches.length > 0) {
           unread = parseInt(matches[matches.length - 1][1], 10);
           titleValid = true;
