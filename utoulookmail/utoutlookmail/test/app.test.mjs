@@ -1137,3 +1137,17 @@ test('command.sh + common.sh: orphan wrappers killed, double stagnation, sleep f
     assert.ok(cmd.includes('/bin/sleep "$1" 2>/dev/null'),
         'sleep_int must fall back to /bin/sleep if the bundled binary is missing (v3.3.5)');
 });
+
+test('settings: persisted hideOnClose=true from old versions is forced to false on UT (v3.3.6)', async () => {
+    const fs = await import('node:fs');
+    const sPath = path.resolve(__dirname, '../src/settings.mjs');
+    const content = fs.readFileSync(sPath, 'utf-8');
+
+    // Old installs have a settings.json with hideOnClose/showWindowFrame=true
+    // persisted — defaults alone don't override them, and hideOnClose=true
+    // leaves a hidden window + live process → relaunch shows nothing.
+    assert.ok(/\['showWindowFrame', 'hideOnClose', 'hideOnMinimize'\]/.test(content),
+        'settings.mjs must force showWindowFrame/hideOnClose/hideOnMinimize=false (v3.3.6)');
+    assert.ok(content.includes('settings.get(key) !== false') && content.includes('settings.set(key, false)'),
+        'settings.mjs must overwrite persisted true values with false (v3.3.6)');
+});
