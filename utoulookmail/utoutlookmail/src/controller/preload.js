@@ -3,8 +3,8 @@ const {contextBridge, ipcRenderer} = require("electron");
 contextBridge.exposeInMainWorld("electronAPI", {
     updateUnread: (unread) => ipcRenderer.send("updateUnread", unread),
     showWindow: () => ipcRenderer.send("show"),
-    showNotification: (title, body, icon = null) =>
-        ipcRenderer.send("show-notification", {title, body, icon}),
+    showNotification: (title, body, icon = null, urgent = false) =>
+        ipcRenderer.send("show-notification", {title, body, icon, urgent}),
     // Text insertion (for virtual keyboard / external input)
     insertText: (text) => ipcRenderer.send("insert-text", text),
     // Zoom controls
