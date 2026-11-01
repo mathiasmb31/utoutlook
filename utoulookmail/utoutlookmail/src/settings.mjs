@@ -50,9 +50,15 @@ const defaults = {
         "outlook.office.com/mail/safelink.html",
         "safelinks.protection.outlook.com",
     ],
-    showWindowFrame: true,
-    hideOnClose: true,
-    hideOnMinimize: true,
+    // v3.3.4: on Ubuntu Touch the window must behave like a native app:
+    // full-screen (no X11 frame with a close cross) and closing the window
+    // quits the app. With showWindowFrame+hideOnClose=true, closing via the
+    // X11 cross only HID the window while the process kept running — the
+    // next tap on the launcher icon raised a hidden window, i.e. nothing
+    // appeared ("app does not start", ~1 launch in 2-3).
+    showWindowFrame: false,
+    hideOnClose: false,
+    hideOnMinimize: false,
     startMinimized: false,
     customBrowserPath: undefined,
     focusMode: false,
@@ -101,6 +107,17 @@ for (const key of ['showWindowFrame', 'hideOnClose', 'hideOnMinimize', 'startMin
     if (typeof value !== 'boolean') {
         logger.warn(`Invalid ${key} (not boolean), reverting to default`);
         settings.set(key, defaults[key]);
+    }
+}
+
+// v3.3.6: force native UT window behavior even if an old settings.json persisted
+// hideOnClose/hideOnMinimize/showWindowFrame=true. With those, closing via the X11
+// cross only HID the window while the process kept running; the next launcher tap
+// raised a hidden window → nothing appeared ("app does not start", intermittent).
+for (const key of ['showWindowFrame', 'hideOnClose', 'hideOnMinimize']) {
+    if (settings.get(key) !== false) {
+        logger.warn(`Forcing ${key}=false (native UT window behavior; was ${settings.get(key)})`);
+        settings.set(key, false);
     }
 }
 

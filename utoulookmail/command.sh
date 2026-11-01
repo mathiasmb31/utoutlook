@@ -3,15 +3,26 @@
 trap close_command EXIT
 
 function sleep_int() {
-	"${WD}"/bin/sleep $1
-
+	# Fallback si le binaire embarqué est absent (ex: pendant une mise à jour,
+	# un ancien wrapper pointe encore vers l'ancien dossier de version).
+	if [ -x "${WD}"/bin/sleep ]; then
+		"${WD}"/bin/sleep "$1"
+	else
+		/bin/sleep "$1" 2>/dev/null || true
+	fi
 }
 
 function cleanup() {
 
 	utoutlook_kill_app
+	utoutlook_kill_stale_wrappers
 	utoutlook_cleanup_locks
 	"${WD}"/bin/rm -f "${UTOUTLOOK_EXITCOMMAND}" 2>/dev/null || true
+	# v3.3.7: record this wrapper's PID AFTER killing the previous one, so the
+	# next launch can kill this wrapper if it becomes an orphan (pgrep is not
+	# reliable under AppArmor confinement).
+	mkdir -p "${UTOUTLOOK_DATA_DIR}" 2>/dev/null || true
+	echo $$ > "${UTOUTLOOK_DATA_DIR}/wrapper.pid" 2>/dev/null || true
 }
 
 function launch_prospect() {
@@ -38,18 +49,73 @@ function launch_prospect() {
 
 function verify_prospect_life() {
 
-	follow=$(echo "$(<${filelifefollow})")
+	# v3.3.10: si un wrapper plus récent a pris la main (pidfile != $$), on sort
+	# proprement — sinon deux wrappers de versions différentes se relancent
+	# l'app l'un contre l'autre en boucle (vu à l'upgrade 3.3.9→3.3.10).
+	local curpid
+	curpid=$("${WD}"/bin/cat "${UTOUTLOOK_DATA_DIR}/wrapper.pid" 2>/dev/null | "${WD}"/bin/tr -d '[:space:]')
+	if [ -n "${curpid}" ] && [ "${curpid}" != "$$" ]; then
+		echo "another wrapper (pid ${curpid}) owns the app — exiting"
+		exit 0
+	fi
+
+	# Lecture sûre du heartbeat (le fichier peut ne pas exister encore)
+	local follow=""
+	if [ -f "${filelifefollow}" ]; then
+		follow=$("${WD}"/bin/cat "${filelifefollow}" 2>/dev/null | "${WD}"/bin/tr -d '[:space:]')
+	fi
 
 	echo "FOLLOW"
 	echo ${follow}
 	echo ${oldfollow}
+
+	# Heartbeat absent/vide : Electron n'a pas encore écrit son premier
+	# heartbeat (cold start lent). Fenêtre de grâce de 20 lectures x 3s = 60s
+	# avant de conclure à un échec de démarrage — sinon une valeur stale du
+	# lancement précédent provoquait une fausse "stagnation" et quittait
+	# l'app une fois sur 2-3 au démarrage.
+	if [ -z "${follow}" ]; then
+		startupGrace=$((startupGrace + 1))
+		if [ ${startupGrace} -lt 20 ]; then
+			echo "heartbeat not started yet (grace ${startupGrace}/20)"
+			return
+		fi
+		# v3.3.9: au lieu de quitter, on nettoie et on RELANCE (launch_prospect
+		# a sa propre limite launchtry>3 → exit). Ne PAS écrire exitcommand ici :
+		# le close flag resterait et le process relancé le lirait (même si le
+		# mtime guard le protège, autant ne pas le poser).
+		echo "heartbeat never started — cleaning and relaunching (try ${launchtry})"
+		echo "******" && utoutlook_notify "$(utoutlook_t 'shell.cleaning')"
+		stagnantCount=0
+		startupGrace=0
+		oldfollow=""
+		launch_prospect
+		return
+	fi
+
 	clientalive=0
-	if [ ${follow} -eq ${oldfollow} ]; then
-		echo ${follow}
-		echo ${oldfollow}
-		echo "tried too more " >${exitcommand}
-		echo "******" && utoutlook_notify "$(utoutlook_t 'shell.cleaning')" && exit 0
+	if [ -n "${oldfollow}" ] && [ "${follow}" = "${oldfollow}" ]; then
+		# v3.3.5: exige 2 stagnations consécutives avant de conclure — une
+		# seule lecture identique peut être un artefact (lecture pendant
+		# l'écriture du heartbeat, wrapper orphelin, etc.).
+		stagnantCount=$((stagnantCount + 1))
+		echo "heartbeat stagnant (${stagnantCount}/2)"
+		if [ ${stagnantCount} -ge 2 ]; then
+			echo ${follow}
+			echo ${oldfollow}
+			# v3.3.9: nettoyer puis RELANCER au lieu de quitter (limite launchtry>3).
+			echo "heartbeat dead — cleaning and relaunching (try ${launchtry})"
+			echo "******" && utoutlook_notify "$(utoutlook_t 'shell.cleaning')"
+			stagnantCount=0
+			oldfollow=""
+			launch_prospect
+			return
+		fi
 	else
+		stagnantCount=0
+		# v3.3.9: client vivant → on remet le compteur de tentatives à zéro,
+		# pour que une mort ultérieure ait droit à ses 3 essais.
+		launchtry=1
 		clientalive=1
 		touch ${lock}
 	fi
@@ -70,14 +136,20 @@ function verify_prospect_life() {
 }
 
 function test_net() {
-	if "${WD}"/bin/nc -zw1 google.com 443; then
-		echo "we have connectivity"
-	else
-
-		utoutlook_notify "$(utoutlook_t 'shell.noNetwork')"
-		qmlscene "${WD}"/qml/nonetwork.qml
-		close_command
-	fi
+	# Non bloquant : au réveil du téléphone, le réseau (DNS / 4G) peut mettre
+	# plusieurs secondes à monter. 3 sondes de 2s max ; si tout échoue, on
+	# lance quand même l'app — l'overlay "hors ligne" + le moniteur de
+	# connectivité d'Electron gèrent la reconnexion automatique.
+	local hosts=("google.com" "1.1.1.1" "outlook.office.com")
+	local h
+	for h in "${hosts[@]}"; do
+		if "${WD}"/bin/nc -zw2 "$h" 443; then
+			echo "we have connectivity ($h)"
+			return 0
+		fi
+	done
+	echo "no connectivity yet — launching anyway (offline overlay handles reconnect)"
+	return 0
 }
 function close_command() {
 	# Send quit command via Unix socket (primary method)
@@ -116,9 +188,15 @@ test_net
 export launchtry=1
 
 oldfollow="0"
+startupGrace=0
+stagnantCount=0
 "${WD}"/bin/rm -f ${exitclient}
 "${WD}"/bin/rm -f ${killedclient}
 "${WD}"/bin/rm -f /home/phablet/.config/utoutlook.mathias/close
+# Supprime le heartbeat de la session précédente : tant qu'Electron n'a pas
+# réécrit son premier compteur, verify_prospect_life verra un fichier absent
+# (fenêtre de grâce) au lieu d'une valeur stale (fausse stagnation).
+"${WD}"/bin/rm -f ${filelifefollow}
 cleanup
 "${WD}"/utils/mkdir
 "${WD}"/bin/rm -f "/home/phablet/.cache/utoutlook.mathias/quit"
@@ -145,7 +223,10 @@ export QT_FILE_SELECTORS=ubuntu-touch
 
 ## cleanup
 cleanup
-numberold=$(echo "$(<${filelifefollow})")
+numberold="0"
+if [ -f "${filelifefollow}" ]; then
+	numberold=$("${WD}"/bin/cat "${filelifefollow}" 2>/dev/null | "${WD}"/bin/tr -d '[:space:]')
+fi
 
 echo "------------------------------------------------------------------"
 echo $$ >>/home/phablet/.config/utoutlook.mathias/data/__prospect.pid
@@ -182,7 +263,15 @@ scaling="$((appScaling / 115)).$(printf '%02d' "$((appScaling % 115))")"
 
 dpioptions="--high-dpi-support=1 --force-device-scale-factor=$scaling  --text-font-size=$textFontSize --span-font-size=$spanFontSize"
 sandboxoptions="--no-sandbox"
-gpuoptions="--disable-gpu --disable-gpu-compositing --disable-software-rasterizer --disable-features=VaapiVideoDecoder,AcceleratedVideoDecoder"
+# v3.3.8: --in-process-gpu instead of --disable-gpu --disable-software-rasterizer.
+# On the phone there is no reliable hardware GPU and libvk_swiftshader.so was
+# removed from the package: with --disable-software-rasterizer there was NO
+# fallback, and when Chromium still tried to spawn its separate GPU process and
+# failed 3x (error_code=1002, intermittent — memory/timing), it hit
+# FATAL "GPU process isn't usable. Goodbye." and killed the whole app
+# (the intermittent startup crash). In-process GPU never spawns a separate
+# process, so that FATAL can no longer happen; software raster stays enabled.
+gpuoptions="--in-process-gpu --disable-features=VaapiVideoDecoder,AcceleratedVideoDecoder"
 
 echo "launch utoutlookmail"
 

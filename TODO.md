@@ -196,6 +196,119 @@
 - [x] Cumul total : 123 Mo (v3.3.0) → 77 Mo (v3.3.2), soit -37%
 - [x] Version bump: 3.3.1 → 3.3.2
 
+## Fait (v3.3.3 — fix scroll pull-down bloqué + démarrage intermittent)
+
+- [x] Fix: gestures.js — pull-to-refresh teste désormais le vrai conteneur scrollable
+      (findScrollContainer) au lieu de window.scrollY (toujours 0 dans la SPA Outlook) ;
+      preventDefault() uniquement si le conteneur est à scrollTop <= 0. Le slide vers le
+      bas fait enfin défiler la liste ; la barre bleue n'apparaît qu'en haut de liste.
+- [x] Fix: command.sh — test_net non bloquant : 3 sondes nc de 2s (google.com, 1.1.1.1,
+      outlook.office.com), et si tout échoue on lance quand même l'app (l'overlay hors
+      ligne + moniteur de connectivité Electron gèrent la reconnexion). Avant : quittait
+      l'app au démarrage si le réseau n'était pas prêt (1 fois sur 2-3).
+- [x] Fix: command.sh — verify_prospect_life : rm du fichier heartbeat `follow` au
+      démarrage + fenêtre de grâce de 60s si le heartbeat n'est pas encore écrit
+      (cold start Electron lent) ; sinon la valeur stale de la session précédente
+      provoquait une fausse stagnation → sortie sans relance.
+- [x] Version bump: 3.3.2 → 3.3.3 (package.json + manifest.json)
+- [x] Tests: 76 tests, 71 pass + 5 skip (Electron), 0 fail
+
+## Fait (v3.3.4 — fix "l'app ne démarre pas" quand la fenêtre est cachée)
+
+- [x] Diagnostic: aucun settings.json persisted → les defaults s'appliquaient :
+      showWindowFrame=true (croix X11) + hideOnClose=true. Fermer par la croix
+      cachait la fenêtre (hide) sans tuer le process ; au tap suivant sur
+      l'icône, Lomiri « raise » une fenêtre cachée = rien ne s'affiche.
+      Process + heartbeat vivants, écran inchangé → « ne démarre pas » 1 fois sur 2-3.
+- [x] Fix: settings defaults → showWindowFrame/hideOnClose/hideOnMinimize = false
+      (comportement app UT natif : plein écran, fermer = quitter proprement,
+      le prochain tap relance un process neuf)
+- [x] Fix: main.mjs — app.requestSingleInstanceLock() (le handler second-instance
+      était du code mort sans le lock) ; second-instance → show() la fenêtre
+- [x] Fix: main.mjs — heartbeat track la fenêtre PRINCIPALE (pas le splash) :
+      si jamais visible après 30 heartbeats (~60s), force show() au lieu
+      d'attendre 120s puis auto-exit → plus d'« app vivante mais invisible »
+- [x] Logs: événements fenêtre show/hide/focus/blur/close/minimize, création
+      splash (erreur si splash.html absent de l'asar), closeSplashWindow
+- [x] Tests: +2 tests (80 tests, 75 pass + 5 skip, 0 fail)
+- [x] Version bump: 3.3.3 → 3.3.4
+
+## Fait (v3.3.5 — vraie cause du crash de lancement intermittent, attrapée en flagrant délit)
+
+- [x] Diagnostic (logs 14:52 pendant l'upgrade 3.3.3→3.3.4) : l'ancien wrapper
+      command.sh (PID 10171) est resté vivant après le `kill: prospect-mail` de
+      clickable (orphan) et a écrit « tried too more » dans le flag `close` ;
+      le NOUVEAU process Electron lit ce flag dans son heartbeat → app.exit(0)
+      2s après le lancement. Race → « ne démarre pas » 1 fois sur 2-3.
+      (vu aussi: bin/sleep/touch manquants pendant la transition → boucle folle)
+- [x] Fix: main.mjs — PROCESS_START au boot + unlink du flag close au boot ;
+      le heartbeat n'honore le flag close que si mtime > PROCESS_START
+- [x] Fix: common.sh — utoutlook_kill_stale_wrappers() tue les wrappers
+      command.sh orphelins d'anciennes versions (jamais $$/$PPID), appelé
+      depuis cleanup de command.sh
+- [x] Fix: command.sh — verify_prospect_life exige 2 stagnations consécutives
+      (stagnantCount) avant d'écrire « tried too more »
+- [x] Fix: command.sh — sleep_int retombe sur /bin/sleep si le binaire embarqué
+      est absent (transition de version)
+- [x] Tests: +2 (82 tests, 77 pass + 5 skip, 0 fail)
+- [x] Version bump: 3.3.4 → 3.3.5
+- [x] Fix: requestSingleInstanceLock best-effort seulement — sur UT, AppArmor bloque
+      le dossier socket du singleton (« Failed to create socket directory »), le lock
+      retournait false et app.exit(0) tuait CHAQUE lancement. Ne jamais quitter là-dessus.
+- [x] Fix: pattern pgrep des wrappers orphelins match aussi la cmdline relative
+      « /bin/bash ./bin/command.sh » (l'orphelin survivait sinon et tuait le nouveau
+      process en boucle via pkill prospect-mail)
+- [x] Fix: command.sh — lecture propre de numberold (follow absent = OK)
+- [x] Testé sur téléphone: 3 cycles lancement/arrêt OK (procs actifs, heartbeat vivant,
+      « Main window became visible after 2 heartbeats », lock « unavailable (continuing anyway) »)
+
+## Fait (v3.3.8 — VRAIE cause racine du crash intermittent de lancement : FATAL GPU)
+
+- [x] Diagnostic (log 16:08:44) : « GPU process launch failed: error_code=1002 » ×3
+      puis « FATAL: GPU process isn't usable. Goodbye. » → tout le process Electron
+      mourait. Intermittent (spawn du process GPU échoue selon mémoire/timing).
+- [x] Cause : gpuoptions = --disable-gpu --disable-gpu-compositing
+      --disable-software-rasterizer, et libvk_swiftshader.so stripé du package
+      (v3.3.1) → aucun fallback GPU ; Chromium lançait quand même son process GPU
+      séparé et FATALisait après 3 échecs de spawn.
+- [x] Fix: gpuoptions = --in-process-gpu --disable-features=VaapiVideoDecoder,AcceleratedVideoDecoder
+      (plus de process GPU séparé à spawner → le FATAL ne peut plus arriver)
+- [x] Confirmé: pgrep -f embarqué ne voit RIEN sous confinement AppArmor
+      (« pgrep fallback found: none ») → pidfile wrapper.pid est le mécanisme fiable
+- [x] Tests: +1 (84 tests, 80 pass + 5 skip, 0 fail)
+- [x] Testé sur téléphone: 3 cycles lancement/arrêt/relance, 0 erreur GPU/FATAL,
+      fenêtre visible à chaque fois
+- [x] Version bump: 3.3.7 → 3.3.8
+
+## Fait (v3.3.9 + v3.3.10 — relance après nettoyage + upgrade cross-version propre)
+
+- [x] v3.3.9: verify_prospect_life ne quitte plus après « ****** / Nettoyage » :
+      il relance via launch_prospect (limite launchtry>3), launchtry retombe à 1
+      quand le client est vivant. Testé: crash forcé → « cleaning and relaunching
+      (try 1) » → « client is alive » 7s plus tard.
+- [x] v3.3.10: à l'upgrade, l'ancien service systemd restait actif (deux wrappers
+      qui se battent) car AppArmor bloque les signaux cross-label. Fix:
+      utoutlook_kill_app pose un flag close FRAIS (l'ancien process le voit dans
+      son heartbeat et sort gracieusement) ; et chaque wrapper sort si
+      wrapper.pid appartient à un wrapper plus récent (ownership).
+- [x] Tests: 86 tests, 82 pass + 5 skip, 0 fail
+- [x] Version bump: 3.3.8 → 3.3.10
+
+## Bug connu (à traiter après merge PR fix/pulldown-scroll-startup-crash)
+
+- [ ] « Nous avons trouvé un compte que vous pouvez utiliser ici » au démarrage,
+      1 fois sur 2 : Outlook redirige vers `login.microsoftonline.com/...&prompt=select_account`
+      au lieu d'ouvrir la boîte mail (vu dans les logs: Page loaded #1 =
+      outlook.cloud.microsoft/mail → #2 = login.microsoftonline .../authorize?prompt=select_account).
+      Pistes:
+      - aucun `cloud.microsoft` dans le code : le sync de cookies couvre
+        office.com → live.com mais PAS le nouveau domaine outlook.cloud.microsoft
+      - ajouter `*.cloud.microsoft` au CSP (setupCSP) et à urlsExternal/urlsInternal
+      - intercepter l'URL login.microsoftonline avec prompt=select_account et la
+        réécrire en prompt=none (reconnexion silencieuse sur le compte existant)
+      - vérifier que la partition persist:utoutlook-default a bien les cookies
+        du domaine cloud.microsoft (flushStore au quit)
+
 ## Idées en réserve (non prioritaires)
 
 - [ ] Raccourcis clavier personnalisables

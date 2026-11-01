@@ -1033,3 +1033,194 @@ test('notify pushclient.cpp: buildNotification does NOT include actions field (h
     assert.ok(!body.includes('QJsonArray actions'),
         'buildNotification must NOT declare actions array (hotfix #15)');
 });
+
+test('gestures.js: pull-down only blocks when the real scroll container is at top (v3.3.3)', async () => {
+    const fs = await import('node:fs');
+    const gPath = path.resolve(__dirname, '../public/gestures.js');
+    const content = fs.readFileSync(gPath, 'utf-8');
+
+    // The SPA scrolls inside an inner div, window.scrollY is always 0 —
+    // the old check window.scrollY === 0 made every downward slide get
+    // preventDefault()'d (blue bar shown, list frozen).
+    assert.ok(content.includes('findScrollContainer'),
+        'gestures.js must locate the real scrollable ancestor (findScrollContainer)');
+    assert.ok(/pullContainer\.scrollTop <= 0/.test(content),
+        'pull-to-refresh must check the scroll container scrollTop, not window.scrollY');
+    assert.ok(/if \(pullContainer\.scrollTop > 0 \|\| window\.scrollY > 0\)/.test(content),
+        'touchmove must NOT preventDefault when the list can still scroll (v3.3.3)');
+});
+
+test('command.sh: startup is resilient to slow network and slow Electron (v3.3.3)', async () => {
+    const fs = await import('node:fs');
+    const cmdPath = path.resolve(__dirname, '../../command.sh');
+    const content = fs.readFileSync(cmdPath, 'utf-8');
+
+    // test_net must not quit the app when the network is not up yet —
+    // it used to run qmlscene nonetwork.qml + close_command (1 launch in
+    // 2-3 failed at wake-up because DNS/4G was not ready within 1s).
+    const netStart = content.indexOf('function test_net()');
+    const netEnd = content.indexOf('\nfunction ', netStart + 10);
+    const netBody = content.slice(netStart, netEnd);
+    assert.ok(!netBody.includes('close_command'),
+        'test_net must NOT quit the app on missing connectivity (v3.3.3)');
+    assert.ok(!netBody.includes('nonetwork.qml'),
+        'test_net must NOT show nonetwork.qml at startup (v3.3.3)');
+    assert.ok(netBody.includes('nc -zw2'),
+        'test_net should retry with a 2s timeout per probe (v3.3.3)');
+
+    // The stale heartbeat file from the previous session used to cause a
+    // false "stagnation" detection while Electron was still cold-starting.
+    assert.ok(content.includes('rm -f ${filelifefollow}'),
+        'command.sh must delete the stale heartbeat file before launching (v3.3.3)');
+    assert.ok(content.includes('startupGrace'),
+        'verify_prospect_life must have a startup grace window when heartbeat is absent (v3.3.3)');
+});
+
+test('settings: window behaves like a native UT app — no X11 frame, close quits (v3.3.4)', async () => {
+    const fs = await import('node:fs');
+    const sPath = path.resolve(__dirname, '../src/settings.mjs');
+    const content = fs.readFileSync(sPath, 'utf-8');
+
+    // With showWindowFrame+hideOnClose=true, closing via the X11 cross only hid
+    // the window while the process kept running; the next launcher tap raised a
+    // hidden window = nothing appeared ("app does not start", 1 in 2-3 launches).
+    assert.ok(/showWindowFrame:\s*false/.test(content),
+        'showWindowFrame default must be false on UT (v3.3.4)');
+    assert.ok(/hideOnClose:\s*false/.test(content),
+        'hideOnClose default must be false so closing quits the app (v3.3.4)');
+    assert.ok(/hideOnMinimize:\s*false/.test(content),
+        'hideOnMinimize default must be false on UT (v3.3.4)');
+});
+
+test('main.mjs: single-instance lock + force-show if main window never appears (v3.3.4)', async () => {
+    const fs = await import('node:fs');
+    const mPath = path.resolve(__dirname, '../src/main.mjs');
+    const content = fs.readFileSync(mPath, 'utf-8');
+
+    assert.ok(content.includes('requestSingleInstanceLock'),
+        'main.mjs must request the single-instance lock (v3.3.4) — the second-instance handler was dead code without it');
+    assert.ok(!/if \(!app\.requestSingleInstanceLock\(\)\) \{[^}]*app\.exit\(0\)/s.test(content),
+        'must NOT app.exit(0) when the lock is unavailable — AppArmor blocks the singleton socket dir on UT, quitting on lock failure broke every launch (v3.3.5)');
+    assert.ok(content.includes('mainWindowEverVisible'),
+        'heartbeat must track main-window visibility separately from the splash (v3.3.4)');
+    assert.ok(content.includes('forcing show()'),
+        'heartbeat must force show() if the main window never appeared after 60s (v3.3.4)');
+});
+
+test('main.mjs: stale close flag from a previous instance cannot kill the new process (v3.3.5)', async () => {
+    const fs = await import('node:fs');
+    const mPath = path.resolve(__dirname, '../src/main.mjs');
+    const content = fs.readFileSync(mPath, 'utf-8');
+
+    // An orphaned old wrapper wrote "tried too more" into the close flag while
+    // the new process was starting → heartbeat read it → app.exit(0) 2s after
+    // launch (intermittent startup crash, race-dependent).
+    assert.ok(content.includes('PROCESS_START'),
+        'main.mjs must record the process start time (v3.3.5)');
+    assert.ok(content.includes('mtimeMs') && content.includes('mtime > PROCESS_START'),
+        'close flag must only be honored if written after process start (v3.3.5)');
+});
+
+test('command.sh + common.sh: orphan wrappers killed, double stagnation, sleep fallback (v3.3.5)', async () => {
+    const fs = await import('node:fs');
+    const cmdPath = path.resolve(__dirname, '../../command.sh');
+    const commonPath = path.resolve(__dirname, '../../utils/common.sh');
+    const cmd = fs.readFileSync(cmdPath, 'utf-8');
+    const common = fs.readFileSync(commonPath, 'utf-8');
+
+    assert.ok(common.includes('utoutlook_kill_stale_wrappers'),
+        'common.sh must define utoutlook_kill_stale_wrappers (v3.3.5)');
+    assert.ok(cmd.includes('utoutlook_kill_stale_wrappers'),
+        'command.sh cleanup must kill orphaned wrappers (v3.3.5)');
+    assert.ok(/stagnantCount.*-ge 2/s.test(cmd) || cmd.includes('-ge 2'),
+        'verify_prospect_life must require 2 consecutive stagnations before giving up (v3.3.5)');
+    assert.ok(cmd.includes('/bin/sleep "$1" 2>/dev/null'),
+        'sleep_int must fall back to /bin/sleep if the bundled binary is missing (v3.3.5)');
+});
+
+test('settings: persisted hideOnClose=true from old versions is forced to false on UT (v3.3.6)', async () => {
+    const fs = await import('node:fs');
+    const sPath = path.resolve(__dirname, '../src/settings.mjs');
+    const content = fs.readFileSync(sPath, 'utf-8');
+
+    // Old installs have a settings.json with hideOnClose/showWindowFrame=true
+    // persisted — defaults alone don't override them, and hideOnClose=true
+    // leaves a hidden window + live process → relaunch shows nothing.
+    assert.ok(/\['showWindowFrame', 'hideOnClose', 'hideOnMinimize'\]/.test(content),
+        'settings.mjs must force showWindowFrame/hideOnClose/hideOnMinimize=false (v3.3.6)');
+    assert.ok(content.includes('settings.get(key) !== false') && content.includes('settings.set(key, false)'),
+        'settings.mjs must overwrite persisted true values with false (v3.3.6)');
+});
+
+test('command.sh/common.sh: wrapper pidfile kills orphaned wrappers without pgrep (v3.3.7)', async () => {
+    const fs = await import('node:fs');
+    const cmdPath = path.resolve(__dirname, '../../command.sh');
+    const commonPath = path.resolve(__dirname, '../../utils/common.sh');
+    const cmd = fs.readFileSync(cmdPath, 'utf-8');
+    const common = fs.readFileSync(commonPath, 'utf-8');
+
+    // pgrep -f may be blocked by AppArmor under confinement (reading
+    // /proc/*/cmdline of other processes) — the pidfile is the reliable path.
+    assert.ok(cmd.includes('wrapper.pid') && cmd.includes('echo $$ >'),
+        'command.sh must write its PID to wrapper.pid at startup (v3.3.7)');
+    assert.ok(common.includes('wrapper.pid') && common.includes('kill -0 "$p"'),
+        'utoutlook_kill_stale_wrappers must kill the pidfile PID if alive (v3.3.7)');
+    assert.ok(common.includes('pgrep fallback found'),
+        'pgrep fallback must stay, with a debug log (v3.3.7)');
+});
+
+test('command.sh: GPU options must not allow the "GPU process isn\'t usable. Goodbye." FATAL (v3.3.8)', async () => {
+    const fs = await import('node:fs');
+    const cmdPath = path.resolve(__dirname, '../../command.sh');
+    const content = fs.readFileSync(cmdPath, 'utf-8');
+
+    // --disable-gpu + --disable-software-rasterizer left no fallback (swiftshader
+    // lib was stripped from the package): when the separate GPU process failed to
+    // spawn 3x (error_code=1002, intermittent), Chromium FATAL'd and killed the app.
+    const m = content.match(/gpuoptions="([^"]*)"/);
+    assert.ok(m, 'gpuoptions must be defined');
+    assert.ok(!m[1].includes('--disable-software-rasterizer'),
+        'must NOT disable software rasterizer — no GPU fallback on the phone (v3.3.8)');
+    assert.ok(!m[1].includes('--disable-gpu '),
+        'must NOT use --disable-gpu (separate GPU process still spawns and can FATAL) (v3.3.8)');
+    assert.ok(m[1].includes('--in-process-gpu'),
+        'must use --in-process-gpu so no separate GPU process is ever spawned (v3.3.8)');
+});
+
+test('command.sh: on "cleaning" the wrapper RELAUNCHES instead of exiting (v3.3.9)', async () => {
+    const fs = await import('node:fs');
+    const cmdPath = path.resolve(__dirname, '../../command.sh');
+    const content = fs.readFileSync(cmdPath, 'utf-8');
+
+    // Extract verify_prospect_life body
+    const start = content.indexOf('function verify_prospect_life()');
+    const end = content.indexOf('\nfunction ', start + 10);
+    const body = content.slice(start, end);
+
+    assert.ok(body.includes('cleaning and relaunching'),
+        'verify_prospect_life must relaunch after cleaning (v3.3.9)');
+    assert.ok(!/tried too more[^\n]*\n[^\n]*exit 0/.test(body),
+        'verify_prospect_life must NOT exit 0 right after "tried too more" (v3.3.9)');
+    assert.ok(body.includes('launchtry=1'),
+        'launchtry must reset to 1 when the client is alive, so a later death gets its 3 tries (v3.3.9)');
+});
+
+test('command.sh/common.sh: cross-version upgrade safety — fresh close flag + pidfile ownership (v3.3.10)', async () => {
+    const fs = await import('node:fs');
+    const cmdPath = path.resolve(__dirname, '../../command.sh');
+    const commonPath = path.resolve(__dirname, '../../utils/common.sh');
+    const cmd = fs.readFileSync(cmdPath, 'utf-8');
+    const common = fs.readFileSync(commonPath, 'utf-8');
+
+    // AppArmor blocks signals between different click version labels, so the
+    // old process/service can only be stopped via a FRESH close flag (its
+    // heartbeat honors flags written after its own boot).
+    const killFn = common.slice(common.indexOf('utoutlook_kill_app()'));
+    assert.ok(killFn.includes('echo "closed" > "${UTOUTLOOK_EXITCOMMAND}"'),
+        'utoutlook_kill_app must write a fresh close flag so the old (cross-label) process quits gracefully (v3.3.10)');
+
+    // The old wrapper must exit when a newer wrapper owns wrapper.pid
+    const verifyFn = cmd.slice(cmd.indexOf('function verify_prospect_life()'));
+    assert.ok(verifyFn.includes('owns the app — exiting'),
+        'verify_prospect_life must exit when wrapper.pid belongs to a newer wrapper (v3.3.10)');
+});
