@@ -237,7 +237,15 @@ scaling="$((appScaling / 115)).$(printf '%02d' "$((appScaling % 115))")"
 
 dpioptions="--high-dpi-support=1 --force-device-scale-factor=$scaling  --text-font-size=$textFontSize --span-font-size=$spanFontSize"
 sandboxoptions="--no-sandbox"
-gpuoptions="--disable-gpu --disable-gpu-compositing --disable-software-rasterizer --disable-features=VaapiVideoDecoder,AcceleratedVideoDecoder"
+# v3.3.8: --in-process-gpu instead of --disable-gpu --disable-software-rasterizer.
+# On the phone there is no reliable hardware GPU and libvk_swiftshader.so was
+# removed from the package: with --disable-software-rasterizer there was NO
+# fallback, and when Chromium still tried to spawn its separate GPU process and
+# failed 3x (error_code=1002, intermittent — memory/timing), it hit
+# FATAL "GPU process isn't usable. Goodbye." and killed the whole app
+# (the intermittent startup crash). In-process GPU never spawns a separate
+# process, so that FATAL can no longer happen; software raster stays enabled.
+gpuoptions="--in-process-gpu --disable-features=VaapiVideoDecoder,AcceleratedVideoDecoder"
 
 echo "launch utoutlookmail"
 

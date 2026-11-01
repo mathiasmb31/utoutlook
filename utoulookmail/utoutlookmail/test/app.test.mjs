@@ -1168,3 +1168,21 @@ test('command.sh/common.sh: wrapper pidfile kills orphaned wrappers without pgre
     assert.ok(common.includes('pgrep fallback found'),
         'pgrep fallback must stay, with a debug log (v3.3.7)');
 });
+
+test('command.sh: GPU options must not allow the "GPU process isn\'t usable. Goodbye." FATAL (v3.3.8)', async () => {
+    const fs = await import('node:fs');
+    const cmdPath = path.resolve(__dirname, '../../command.sh');
+    const content = fs.readFileSync(cmdPath, 'utf-8');
+
+    // --disable-gpu + --disable-software-rasterizer left no fallback (swiftshader
+    // lib was stripped from the package): when the separate GPU process failed to
+    // spawn 3x (error_code=1002, intermittent), Chromium FATAL'd and killed the app.
+    const m = content.match(/gpuoptions="([^"]*)"/);
+    assert.ok(m, 'gpuoptions must be defined');
+    assert.ok(!m[1].includes('--disable-software-rasterizer'),
+        'must NOT disable software rasterizer — no GPU fallback on the phone (v3.3.8)');
+    assert.ok(!m[1].includes('--disable-gpu '),
+        'must NOT use --disable-gpu (separate GPU process still spawns and can FATAL) (v3.3.8)');
+    assert.ok(m[1].includes('--in-process-gpu'),
+        'must use --in-process-gpu so no separate GPU process is ever spawned (v3.3.8)');
+});
