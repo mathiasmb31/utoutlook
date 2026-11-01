@@ -1204,3 +1204,23 @@ test('command.sh: on "cleaning" the wrapper RELAUNCHES instead of exiting (v3.3.
     assert.ok(body.includes('launchtry=1'),
         'launchtry must reset to 1 when the client is alive, so a later death gets its 3 tries (v3.3.9)');
 });
+
+test('command.sh/common.sh: cross-version upgrade safety — fresh close flag + pidfile ownership (v3.3.10)', async () => {
+    const fs = await import('node:fs');
+    const cmdPath = path.resolve(__dirname, '../../command.sh');
+    const commonPath = path.resolve(__dirname, '../../utils/common.sh');
+    const cmd = fs.readFileSync(cmdPath, 'utf-8');
+    const common = fs.readFileSync(commonPath, 'utf-8');
+
+    // AppArmor blocks signals between different click version labels, so the
+    // old process/service can only be stopped via a FRESH close flag (its
+    // heartbeat honors flags written after its own boot).
+    const killFn = common.slice(common.indexOf('utoutlook_kill_app()'));
+    assert.ok(killFn.includes('echo "closed" > "${UTOUTLOOK_EXITCOMMAND}"'),
+        'utoutlook_kill_app must write a fresh close flag so the old (cross-label) process quits gracefully (v3.3.10)');
+
+    // The old wrapper must exit when a newer wrapper owns wrapper.pid
+    const verifyFn = cmd.slice(cmd.indexOf('function verify_prospect_life()'));
+    assert.ok(verifyFn.includes('owns the app — exiting'),
+        'verify_prospect_life must exit when wrapper.pid belongs to a newer wrapper (v3.3.10)');
+});
