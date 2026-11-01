@@ -43,7 +43,6 @@ class MailWindowController {
         this.mailServicesUrls = [];
         this.showWindowFrame = true;
         this.loginPage = 0;
-        this.triedOfficeFallback = false; // v3.3.16: fallback office.com if live.com shows a login page
         this.pageLoadTimes = []; // timestamps of recent page loads for loop detection
         this.redirectLoopDetected = false;
         this.loginHintIntercepts = 0; // count of login_hint redirects intercepted
@@ -909,7 +908,7 @@ class MailWindowController {
         fs.writeFile(INIT_FLAG_FILE, 'initialise!', err => { if (err) logger.error(err); });
     }
 
-    loadMainUrl() {
+    async loadMainUrl() {
         // Dynamic user agent based on the Chromium version bundled with Electron
         const chromeVersion = process.versions.chrome || '143.0.0.0';
         const userAgentOS = "X11; Linux x86_64";
@@ -917,15 +916,13 @@ class MailWindowController {
             `Mozilla/5.0 ${userAgentOS} AppleWebKit/537.36 (KHTML, like Gecko) ` +
             `Chrome/${chromeVersion} Safari/537.36 Edg/${chromeVersion}`;
 
-        this.win.loadURL(this.mainMailServiceUrl, {userAgent: customUserAgent});
+        // v3.3.17: sync cookies BEFORE the first navigation (not in parallel) so
+        // the select_account page on login.microsoftonline.com already receives
+        // the shared auth cookies (login.live.com → login.microsoftonline.com) and
+        // reliably shows the account tile. No auto-login: the user clicks the tile.
+        await this.syncCookiesToLiveCom().catch(e => logger.warn('Initial cookie sync failed:', e.message));
 
-        // v3.3.14: propagate session cookies to live.com/cloud.microsoft RIGHT
-        // AWAY (not only on login_hint/#code redirects). Outlook now bounces
-        // outlook.office.com → outlook.cloud.microsoft → login.microsoftonline
-        // (select_account) without ever hitting the login_hint path, so the
-        // pick-account page could render before the cookies were shared → the
-        // previously used account was sometimes not shown.
-        this.syncCookiesToLiveCom().catch(e => logger.warn('Initial cookie sync failed:', e.message));
+        this.win.loadURL(this.mainMailServiceUrl, {userAgent: customUserAgent});
 
         this.win.webContents.on('did-finish-load', () => {
             this.loginPage++;
@@ -947,16 +944,7 @@ class MailWindowController {
                 this.closeSplashWindow();
             }
 
-            // v3.3.16: we start on outlook.live.com so the persistent auth cookie
-            // (login.live.com) is seen and the account tile shows. If we land on a
-            // login page there anyway (work/school account), fall back to
-            // outlook.office.com once.
-            if (!this.triedOfficeFallback && this.isLoginPageUrl(url) && url.includes('live.com')) {
-                this.triedOfficeFallback = true;
-                logger.info('Login page on live.com — falling back to outlook.office.com (v3.3.16)');
-                this.win.loadURL('https://outlook.office.com/mail');
-                return;
-            }
+
 
             // --- Cookie sync for personal accounts (hotfix #7c) ---
             // When outlook.office.com/mail/ loads with an auth code (#code=...),
