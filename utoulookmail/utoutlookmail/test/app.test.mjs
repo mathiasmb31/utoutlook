@@ -1392,3 +1392,17 @@ test('v3.3.19: splash logo aussi grand que velo-touch + look UT lecture de mails
         assert.ok(css.includes(sel), `section 11 must cover ${sel} (v3.3.19)`);
     }
 });
+
+test('v3.3.20: section 11b avec ancres réelles du DOM Outlook (aria-label/data-app-section/role)', async () => {
+    const fs = await import('node:fs');
+    const css = fs.readFileSync(path.resolve(__dirname, '../public/main.css'), 'utf-8');
+    // ancres constatées sur device (classes Fluent = hash, non sémantiques)
+    assert.ok(css.includes('[aria-label="Liste des messages"] > div'),
+        'items de liste = enfants directs de aria-label="Liste des messages" (v3.3.20)');
+    assert.ok(css.includes('[data-app-section="MessageList"]'),
+        'ancre data-app-section=MessageList (v3.3.20)');
+    assert.ok(css.includes('[role="toolbar"] button') && css.includes('[role="dialog"]'),
+        'toolbar actions + dialog compose doivent être stylés (v3.3.20)');
+    assert.ok(css.includes("font-family: 'Ubuntu'") && css.includes('not([class*="FontIcon" i])'),
+        'police Ubuntu globale sans casser les icônes (v3.3.20)');
+});
