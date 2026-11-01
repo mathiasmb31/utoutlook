@@ -1375,3 +1375,20 @@ test('v3.3.18: login_hint injection shows the account tile WITHOUT auto-login; e
     assert.ok(!/logger\.(info|warn|error)\([^)]*knownEmail/.test(ctrl),
         'knownEmail must never be logged (confidentiality, v3.3.18)');
 });
+
+test('v3.3.19: splash logo aussi grand que velo-touch + look UT lecture de mails', async () => {
+    const fs = await import('node:fs');
+    const splash = fs.readFileSync(path.resolve(__dirname, '../public/splash.html'), 'utf-8');
+    // même règle que velo-touch Main.qml: logoSize = min(width*0.65, 768)
+    assert.ok(splash.includes('min(65vw, 768px)'),
+        'splash logo must be min(65vw, 768px) like velo-touch (v3.3.19)');
+    assert.ok(splash.includes('#0f0f1a'),
+        'splash background must be the UT dark #0f0f1a (v3.3.19)');
+
+    const css = fs.readFileSync(path.resolve(__dirname, '../public/main.css'), 'utf-8');
+    assert.ok(css.includes('11. Look & feel UBUNTU TOUCH — lecture de mails'),
+        'main.css must have section 11 for mail reading look (v3.3.19)');
+    for (const sel of ['readingPane', 'messageBody', 'commandBar', 'compose']) {
+        assert.ok(css.includes(sel), `section 11 must cover ${sel} (v3.3.19)`);
+    }
+});
