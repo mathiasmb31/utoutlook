@@ -146,6 +146,17 @@ except Exception:
 # SIGKILL alone loses the most recent cookies → user sees login page.
 # ============================================================
 utoutlook_kill_app() {
+	# v3.3.10: poser un flag close FRAIS avant tout kill. L'ancien process
+	# (booté avant nous) le verra dans son heartbeat (toutes les 2s) et fera un
+	# arrêt gracieux avec flush des cookies. Indispensable à l'upgrade:
+	# AppArmor bloque les signaux cross-label (3.3.8→3.3.9), donc pkill depuis
+	# le nouveau wrapper ne peut pas tuer l'ancien process/service — le flag
+	# fichier, lui, passe. Le nouveau process Electron supprime ce flag au boot
+	# et ignore ceux écrits avant son démarrage (mtime guard, v3.3.5).
+	echo "closed" > "${UTOUTLOOK_EXITCOMMAND}" 2>/dev/null || true
+	# ~3s pour laisser l'ancien process sortir proprement
+	"${UTOUTLOOK_BIN}/sleep" 3 2>/dev/null || /bin/sleep 3 2>/dev/null || true
+
 	# Check if any prospect-mail process is running
 	if ! "${UTOUTLOOK_BIN}/pkill" -0 prospect-mail 2>/dev/null; then
 		# No process running, nothing to kill
@@ -181,6 +192,45 @@ utoutlook_cleanup_locks() {
 }
 
 # ============================================================
+# Kill orphaned command.sh wrappers from older versions (v3.3.5).
+# During a click upgrade, `kill: prospect-mail` stops the Electron process
+# but NOT the old shell wrapper, which keeps looping and can write
+# "tried too more" into the close flag while the NEW process is starting —
+# the new process then exits 2s after launch (intermittent startup crash).
+# The current wrapper ($$) and its parent are never killed.
+# ============================================================
+utoutlook_kill_stale_wrappers() {
+	local self=$$ parent=$PPID p pidfile="${UTOUTLOOK_DATA_DIR}/wrapper.pid"
+	# Primary mechanism: pidfile (works under AppArmor — no /proc cmdline scan).
+	# Each wrapper writes its own PID at startup; the new one kills the previous.
+	if [ -f "$pidfile" ]; then
+		p=$("${UTOUTLOOK_BIN}/cat" "$pidfile" 2>/dev/null | "${UTOUTLOOK_BIN}/tr" -d '[:space:]')
+		if [ -n "$p" ] && [ "$p" != "$self" ] && [ "$p" != "$parent" ] && kill -0 "$p" 2>/dev/null; then
+			echo "killing stale wrapper pid=$p (from pidfile)"
+			kill -TERM "$p" 2>/dev/null || true
+			"${UTOUTLOOK_BIN}/sleep" 1 2>/dev/null || /bin/sleep 1 2>/dev/null || true
+			kill -9 "$p" 2>/dev/null || true
+		fi
+	fi
+	# Fallback: pgrep scan (may be restricted by AppArmor — logged for diagnosis).
+	# Match both absolute and relative ("./bin/command.sh") cmdlines of orphans.
+	local found
+	found=$("${UTOUTLOOK_BIN}/pgrep" -f '^/bin/bash .*bin/command\.sh' 2>/dev/null)
+	echo "pgrep fallback found: ${found:-none} (self=$self)"
+	for p in $found; do
+		[ "$p" = "$self" ] && continue
+		[ "$p" = "$parent" ] && continue
+		kill -TERM "$p" 2>/dev/null || true
+	done
+	"${UTOUTLOOK_BIN}/sleep" 1 2>/dev/null || /bin/sleep 1 2>/dev/null || true
+	for p in $found; do
+		[ "$p" = "$self" ] && continue
+		[ "$p" = "$parent" ] && continue
+		kill -9 "$p" 2>/dev/null || true
+	done
+}
+
+# ============================================================
 # Remove IPC flag files (exitclient, killedmail, close)
 # ============================================================
 utoutlook_cleanup_flags() {
@@ -194,6 +244,7 @@ utoutlook_cleanup_flags() {
 # ============================================================
 utoutlook_full_cleanup() {
 	utoutlook_kill_app
+	utoutlook_kill_stale_wrappers
 	utoutlook_cleanup_locks
 	utoutlook_cleanup_flags
 }

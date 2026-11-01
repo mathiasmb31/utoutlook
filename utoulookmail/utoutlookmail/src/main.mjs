@@ -36,6 +36,14 @@ process.on('unhandledRejection', (reason, promise) => {
 // Ensure config directory exists
 fs.mkdirSync(CONFIG_DIR, {recursive: true});
 
+// v3.3.5: process start time — used to ignore stale lifecycle flag files left
+// by a PREVIOUS instance's shell wrapper. An orphaned command.sh from an old
+// version used to write "tried too more" into the close flag while the new
+// process was starting; the heartbeat then read it and called app.exit(0)
+// 2s after launch ("app does not start", ~1 launch in 2-3, race-dependent).
+const PROCESS_START = Date.now();
+try { fs.unlinkSync(CLOSE_FLAG_FILE); } catch (e) { /* ignore */ }
+
 // Heartbeat: write a counter to a file so the shell wrapper (command.sh) can
 // detect whether the Electron process is still alive.
 let heartbeatSeconds = 0;
@@ -47,6 +55,12 @@ let heartbeatExiting = false;
 // being delivered. hideOnClose/hideOnMinimize hide the window on background,
 // which makes isVisible() false — that must NOT kill the app anymore.
 let windowEverVisible = false;
+// v3.3.4: track the MAIN window separately from the splash. If the main window
+// has never been shown ~60s after start (missed did-finish-load / splash edge
+// case), force show() — otherwise the app runs with an invisible window and
+// looks like it "does not start" while the process and heartbeat are alive.
+let mainWindowEverVisible = false;
+let appInstance = null;
 const heartbeatInterval = setInterval(() => {
     if (heartbeatExiting) return;
     heartbeatSeconds++;
@@ -58,6 +72,17 @@ const heartbeatInterval = setInterval(() => {
 
     if (visibleCount > 0) {
         windowEverVisible = true;
+    }
+
+    const mainWin = appInstance?.mailController?.win;
+    if (mainWin && !mainWin.isDestroyed() && mainWin.isVisible()) {
+        if (!mainWindowEverVisible) {
+            mainWindowEverVisible = true;
+            logger.info(`Main window became visible after ${heartbeatSeconds} heartbeats`);
+        }
+    } else if (!mainWindowEverVisible && heartbeatSeconds === 30 && appInstance?.mailController) {
+        logger.warn('Main window never shown after 60s — forcing show()');
+        try { appInstance.mailController.show(); } catch (e) { logger.error('Force show failed:', e); }
     }
 
     // After 60 heartbeats (~2 min) during which the window NEVER appeared,
@@ -87,11 +112,20 @@ const heartbeatInterval = setInterval(() => {
     });
 
     // Check for external close flag from the shell wrapper (fallback for socket).
-    // Delete the file after reading so a stale flag from a previous SIGKILL
-    // doesn't prevent the next launch (app would exit within 2s).
+    // v3.3.5: only honor flags written AFTER this process started — a stale
+    // flag left by a previous instance's orphaned wrapper must not kill the
+    // new process (that was the intermittent startup crash).
     if (fs.existsSync(CLOSE_FLAG_FILE)) {
-        try { fs.unlinkSync(CLOSE_FLAG_FILE); } catch (e) { /* ignore */ }
-        app.exit(0);
+        try {
+            const mtime = fs.statSync(CLOSE_FLAG_FILE).mtimeMs;
+            fs.unlinkSync(CLOSE_FLAG_FILE);
+            if (mtime > PROCESS_START) {
+                logger.info('Close flag received (fresh) — exiting');
+                app.exit(0);
+            } else {
+                logger.info('Stale close flag ignored (written before process start)');
+            }
+        } catch (e) { /* ignore */ }
     }
 }, 2000);
 
@@ -124,7 +158,16 @@ class ProspectMail {
 
     // init method, the entry point of the app
     init() {
-        app.on("second-instance", () => {
+        // v3.3.5: do NOT hard-quit when requestSingleInstanceLock() returns false.
+        // Under Ubuntu Touch AppArmor the singleton socket directory cannot be
+        // created ("Failed to create socket directory"), so the lock always
+        // fails here — quitting on it made EVERY launch exit immediately.
+        // The lock is best-effort only: duplicate instances are already handled
+        // by the shell wrapper (cleanup kills the old process + orphan wrappers).
+        const gotLock = app.requestSingleInstanceLock();
+        logger.info(`Single-instance lock: ${gotLock ? 'acquired' : 'unavailable (continuing anyway)'}`);
+        app.on("second-instance", (_event, _argv, _cwd) => {
+            logger.info('second-instance received — showing main window');
             const primary = this.mailController;
             if (primary) primary.show();
         });
@@ -284,4 +327,5 @@ class ProspectMail {
     }
 }
 
-new ProspectMail().init();
+appInstance = new ProspectMail();
+appInstance.init();
