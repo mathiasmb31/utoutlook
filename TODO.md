@@ -294,20 +294,22 @@
 - [x] Tests: 86 tests, 82 pass + 5 skip, 0 fail
 - [x] Version bump: 3.3.8 → 3.3.10
 
-## Bug connu (à traiter après merge PR fix/pulldown-scroll-startup-crash)
+## Fait (v3.3.11 — « compte que vous pouvez utiliser ici » : domaine cloud.microsoft)
 
-- [ ] « Nous avons trouvé un compte que vous pouvez utiliser ici » au démarrage,
-      1 fois sur 2 : Outlook redirige vers `login.microsoftonline.com/...&prompt=select_account`
-      au lieu d'ouvrir la boîte mail (vu dans les logs: Page loaded #1 =
-      outlook.cloud.microsoft/mail → #2 = login.microsoftonline .../authorize?prompt=select_account).
-      Pistes:
-      - aucun `cloud.microsoft` dans le code : le sync de cookies couvre
-        office.com → live.com mais PAS le nouveau domaine outlook.cloud.microsoft
-      - ajouter `*.cloud.microsoft` au CSP (setupCSP) et à urlsExternal/urlsInternal
-      - intercepter l'URL login.microsoftonline avec prompt=select_account et la
-        réécrire en prompt=none (reconnexion silencieuse sur le compte existant)
-      - vérifier que la partition persist:utoutlook-default a bien les cookies
-        du domaine cloud.microsoft (flushStore au quit)
+- [x] Diagnostic: au démarrage, outlook.office.com redirige vers
+      outlook.cloud.microsoft/mail puis vers login.microsoftonline.com
+      ?prompt=select_account si la session n'y est pas reconnue — et
+      cloud.microsoft n'était présent NULLE PART dans le code.
+- [x] Fix: CSP — `https://*.cloud.microsoft` dans les 6 directives + `wss://*.cloud.microsoft`
+- [x] Fix: syncCookiesToLiveCom — copie aussi vers `.cloud.microsoft` / `outlook.cloud.microsoft`
+- [x] Fix: settings — urlsExternal += outlook.cloud.microsoft,
+      urlsInternal += outlook.cloud.microsoft/mail|calendar/deeplink
+- [x] Fix: will-navigate — login_hint intercept aussi sur cloud.microsoft
+- [x] Fix: will-navigate — `prompt=select_account` → `prompt=none` (reconnexion
+      silencieuse, borné à 2 réécritures) quand on a des cookies de session
+- [x] Fix: loop detector compte aussi les pages outlook.cloud.microsoft/mail
+- [x] Tests: +3 (89 tests, 85 pass + 5 skip, 0 fail)
+- [x] Version bump: 3.3.10 → 3.3.11
 
 ## Idées en réserve (non prioritaires)
 
