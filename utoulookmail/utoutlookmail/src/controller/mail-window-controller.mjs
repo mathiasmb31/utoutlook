@@ -50,7 +50,8 @@ class MailWindowController {
         this.currentZoomIndex = 2; // start at 1.0
         this.initialMinimization = { domReady: false };
 
-        this.cssKeys = { main: null, noFrame: null, dark: null, focus: null, accent: null };
+        // v3.3.21: CSS keys are per-window now (win.__utoutlookCssKeys), base CSS only.
+        this.lastNotifiedUnread = 0;
         this.cacheWatcher = null;
         this.triggerTimers = new Map(); // debounce timers for file triggers
         this.splashWindow = null;
@@ -1128,18 +1129,25 @@ class MailWindowController {
                 if (this.onUnreadChange) {
                     this.onUnreadChange(this.accountId, this.unreadCount);
                 }
+                // v3.3.21: notify the unread count EVEN when the mailbox is open
+                // (user request) — but only when the count actually changed and
+                // is > 0, to avoid spamming on SPA re-render fluctuations.
+                if (this.unreadCount > 0 && this.unreadCount !== this.lastNotifiedUnread) {
+                    this.lastNotifiedUnread = this.unreadCount;
+                    this.handleNotification(
+                        t('notif.newMessages.title'),
+                        t('notif.newMessages.body', {count: this.unreadCount})
+                    );
+                }
+                if (this.unreadCount === 0) this.lastNotifiedUnread = 0;
             }
         });
 
-        ipcMain.on("show-notification", (event, {title, body, icon}) => {
+        ipcMain.on("show-notification", (event, {title, body, icon, urgent}) => {
             if (this.win && event.sender === this.win.webContents) {
-                // hotfix #13: skip notification when the app is in the foreground.
-                // The observer fires on every unread-count change (including SPA
-                // re-renders that cause temporary fluctuations). Showing a Lomiri
-                // notification while the user is already looking at the app is
-                // jarring — the blue banner slides down, shows the envelope icon,
-                // then dismisses. The badge (updateUnread) still updates normally.
-                if (this.win.isVisible() && this.win.isFocused()) {
+                // hotfix #13: skip notification when the app is in the foreground —
+                // UNLESS urgent (e.g. DOM changed alert, v3.3.21).
+                if (!urgent && this.win.isVisible() && this.win.isFocused()) {
                     logger.info(`[NOTIFICATION SUPPRESSED] foreground — title="${title}" body="${body}"`);
                     return;
                 }
@@ -1243,23 +1251,15 @@ class MailWindowController {
             this.injectStyles().catch(() => {});
             this.addUnreadNumberObserver().catch(() => {});
             this.injectGestures();
-
-            // Apply dark mode if setting says so (auto follows system, on/off override)
-            if (this.shouldUseDarkMode()) {
-                this.win.webContents.executeJavaScript(
-                    `document.documentElement.classList.add('dark-mode');`
-                ).catch(() => {});
-            } else {
-                this.win.webContents.executeJavaScript(
-                    `document.documentElement.classList.remove('dark-mode');`
-                ).catch(() => {});
-            }
+            // v3.3.21: no theme variants — make sure no stale dark-mode class remains
+            this.win.webContents.executeJavaScript(
+                `document.documentElement.classList.remove('dark-mode');`
+            ).catch(() => {});
         });
 
         // Re-inject on SPA navigation (Outlook is a single-page app)
         this.win.webContents.on('did-navigate-in-page', (_event, url) => {
             logger.info(`SPA navigation: ${url}`);
-            this.applyDarkModeClass().catch(() => {});
             this.injectStyles().catch(() => {});
             this.addUnreadNumberObserver().catch(() => {});
             this.injectGestures();
@@ -1545,18 +1545,11 @@ class MailWindowController {
         }
 
         // Insert fresh CSS
+        // v3.3.21: base CSS only — no theme variants (dark/focus/accent removed,
+        // user wants the plain UT look without themes).
         keys.main = await win.webContents.insertCSS(getClientFile("main.css"));
         if (!this.showWindowFrame) {
             keys.noFrame = await win.webContents.insertCSS(getClientFile("no-frame.css"));
-        }
-        if (this.shouldUseDarkMode()) {
-            keys.dark = await win.webContents.insertCSS(this.getDarkModeCSS());
-        }
-        if (this.focusMode) {
-            keys.focus = await win.webContents.insertCSS(this.getFocusModeCSS());
-        }
-        if (this.accentColor && this.accentColor !== '#0078d4') {
-            keys.accent = await win.webContents.insertCSS(this.getAccentColorCSS(this.accentColor));
         }
     }
 
