@@ -110,6 +110,17 @@ for (const key of ['showWindowFrame', 'hideOnClose', 'hideOnMinimize', 'startMin
     }
 }
 
+// v3.3.6: force native UT window behavior even if an old settings.json persisted
+// hideOnClose/hideOnMinimize/showWindowFrame=true. With those, closing via the X11
+// cross only HID the window while the process kept running; the next launcher tap
+// raised a hidden window → nothing appeared ("app does not start", intermittent).
+for (const key of ['showWindowFrame', 'hideOnClose', 'hideOnMinimize']) {
+    if (settings.get(key) !== false) {
+        logger.warn(`Forcing ${key}=false (native UT window behavior; was ${settings.get(key)})`);
+        settings.set(key, false);
+    }
+}
+
 // Validate accentColor (hex color)
 {
     const color = settings.get('accentColor');
