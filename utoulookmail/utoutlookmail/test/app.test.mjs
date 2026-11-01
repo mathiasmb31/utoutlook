@@ -1335,3 +1335,18 @@ test('cookie sync: share auth cookies with login.microsoftonline.com too (v3.3.1
     assert.ok(fn.includes("'login.microsoftonline.com', '.microsoftonline.com')"),
         'all MS cookies must also target login.microsoftonline.com (v3.3.15)');
 });
+
+test('v3.3.16: start on outlook.live.com (account tile visible) with office.com fallback', async () => {
+    const fs = await import('node:fs');
+    const sPath = path.resolve(__dirname, '../src/settings.mjs');
+    const settings = fs.readFileSync(sPath, 'utf-8');
+    assert.ok(settings.includes('urlMainWindow: "https://outlook.live.com/mail/"'),
+        'default urlMainWindow must be outlook.live.com (v3.3.16)');
+    assert.ok(settings.includes("Migrating urlMainWindow office.com → live.com"),
+        'old office.com default must be migrated to live.com (v3.3.16)');
+
+    const cPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const ctrl = fs.readFileSync(cPath, 'utf-8');
+    assert.ok(ctrl.includes('triedOfficeFallback') && ctrl.includes("loadURL('https://outlook.office.com/mail')"),
+        'login page on live.com must fall back to office.com once (v3.3.16)');
+});

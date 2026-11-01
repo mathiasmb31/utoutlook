@@ -43,6 +43,7 @@ class MailWindowController {
         this.mailServicesUrls = [];
         this.showWindowFrame = true;
         this.loginPage = 0;
+        this.triedOfficeFallback = false; // v3.3.16: fallback office.com if live.com shows a login page
         this.pageLoadTimes = []; // timestamps of recent page loads for loop detection
         this.redirectLoopDetected = false;
         this.loginHintIntercepts = 0; // count of login_hint redirects intercepted
@@ -944,6 +945,17 @@ class MailWindowController {
             if (!this.splashClosed && (this.isMailInterfaceUrl(url) || this.isLoginPageUrl(url))) {
                 logger.info(`Splash closing — URL is ${this.isMailInterfaceUrl(url) ? 'mail interface' : 'login page'}`);
                 this.closeSplashWindow();
+            }
+
+            // v3.3.16: we start on outlook.live.com so the persistent auth cookie
+            // (login.live.com) is seen and the account tile shows. If we land on a
+            // login page there anyway (work/school account), fall back to
+            // outlook.office.com once.
+            if (!this.triedOfficeFallback && this.isLoginPageUrl(url) && url.includes('live.com')) {
+                this.triedOfficeFallback = true;
+                logger.info('Login page on live.com — falling back to outlook.office.com (v3.3.16)');
+                this.win.loadURL('https://outlook.office.com/mail');
+                return;
             }
 
             // --- Cookie sync for personal accounts (hotfix #7c) ---
