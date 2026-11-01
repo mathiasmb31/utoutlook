@@ -190,8 +190,8 @@ utoutlook_cleanup_locks() {
 # ============================================================
 utoutlook_kill_stale_wrappers() {
 	local self=$$ parent=$PPID p
-	# Match both absolute ("/bin/bash /opt/click.ubuntu.com/utoutlook.mathias/3.3.5/bin/command.sh")
-	# and relative ("/bin/bash ./bin/command.sh") cmdlines of orphaned wrappers.
+	# Match both absolute and relative ("./bin/command.sh") cmdlines of
+	# orphaned wrappers, without hardcoding the click install path.
 	for p in $("${UTOUTLOOK_BIN}/pgrep" -f '^/bin/bash .*bin/command\.sh' 2>/dev/null); do
 		[ "$p" = "$self" ] && continue
 		[ "$p" = "$parent" ] && continue
