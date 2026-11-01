@@ -199,9 +199,28 @@
     }, {passive: true});
 
     // --- Pull-to-refresh (pull down from top) ---
+    // Outlook web is a SPA: the message list scrolls inside an inner div,
+    // NOT on window — window.scrollY is always 0. Testing window.scrollY
+    // therefore made EVERY downward slide get preventDefault()'d (blue bar
+    // shown, list frozen). Fix: track the real scrollable ancestor of the
+    // touch target and only block when that container is at scrollTop <= 0.
     let pullStartY = 0;
     let isPulling = false;
+    let pullContainer = null;
     let pullIndicator = null;
+
+    function findScrollContainer(el) {
+        let node = el;
+        while (node && node !== document.documentElement && node !== document.body) {
+            const style = window.getComputedStyle(node);
+            if (/(auto|scroll|overlay)/.test(style.overflowY) &&
+                node.scrollHeight > node.clientHeight + 1) {
+                return node;
+            }
+            node = node.parentElement;
+        }
+        return document.scrollingElement || document.documentElement;
+    }
 
     function createPullIndicator() {
         if (pullIndicator) return pullIndicator;
@@ -215,7 +234,10 @@
     }
 
     document.addEventListener('touchstart', function (e) {
-        if (e.touches.length === 1 && window.scrollY === 0) {
+        if (e.touches.length !== 1) return;
+        pullContainer = findScrollContainer(e.target);
+        const atTop = pullContainer.scrollTop <= 0 && window.scrollY === 0;
+        if (atTop) {
             pullStartY = e.touches[0].clientY;
             isPulling = true;
         }
@@ -223,7 +245,9 @@
 
     document.addEventListener('touchmove', function (e) {
         if (!isPulling || e.touches.length !== 1) return;
-        if (window.scrollY > 0) {
+        // If the scroll container is no longer at the very top, the user is
+        // scrolling the list — never block that gesture.
+        if (pullContainer.scrollTop > 0 || window.scrollY > 0) {
             isPulling = false;
             if (pullIndicator) pullIndicator.style.transform = 'scaleX(0)';
             return;
@@ -232,10 +256,9 @@
         if (diff > 0) {
             const progress = Math.min(diff / 120, 1);
             createPullIndicator().style.transform = `scaleX(${progress})`;
-            // Always prevent default when pulling down from the top —
+            // Only prevent default when truly pulling down from the top —
             // blocks both the browser pull-to-refresh AND Outlook web's
-            // own envelope refresh indicator (which appears as soon as
-            // the user drags down, before any threshold).
+            // own envelope refresh indicator.
             e.preventDefault();
         }
     }, {passive: false});

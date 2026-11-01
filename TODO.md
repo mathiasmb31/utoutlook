@@ -196,6 +196,23 @@
 - [x] Cumul total : 123 Mo (v3.3.0) → 77 Mo (v3.3.2), soit -37%
 - [x] Version bump: 3.3.1 → 3.3.2
 
+## Fait (v3.3.3 — fix scroll pull-down bloqué + démarrage intermittent)
+
+- [x] Fix: gestures.js — pull-to-refresh teste désormais le vrai conteneur scrollable
+      (findScrollContainer) au lieu de window.scrollY (toujours 0 dans la SPA Outlook) ;
+      preventDefault() uniquement si le conteneur est à scrollTop <= 0. Le slide vers le
+      bas fait enfin défiler la liste ; la barre bleue n'apparaît qu'en haut de liste.
+- [x] Fix: command.sh — test_net non bloquant : 3 sondes nc de 2s (google.com, 1.1.1.1,
+      outlook.office.com), et si tout échoue on lance quand même l'app (l'overlay hors
+      ligne + moniteur de connectivité Electron gèrent la reconnexion). Avant : quittait
+      l'app au démarrage si le réseau n'était pas prêt (1 fois sur 2-3).
+- [x] Fix: command.sh — verify_prospect_life : rm du fichier heartbeat `follow` au
+      démarrage + fenêtre de grâce de 60s si le heartbeat n'est pas encore écrit
+      (cold start Electron lent) ; sinon la valeur stale de la session précédente
+      provoquait une fausse stagnation → sortie sans relance.
+- [x] Version bump: 3.3.2 → 3.3.3 (package.json + manifest.json)
+- [x] Tests: 76 tests, 71 pass + 5 skip (Electron), 0 fail
+
 ## Idées en réserve (non prioritaires)
 
 - [ ] Raccourcis clavier personnalisables
