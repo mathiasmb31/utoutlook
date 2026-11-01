@@ -1219,23 +1219,9 @@ class MailWindowController {
                 });
                 return;
             }
-            // v3.3.11: "we found an account you can use here" = authorize with
-            // prompt=select_account, shown when the session cookies are not
-            // recognized on cloud.microsoft. If we DO have session cookies,
-            // force a silent re-auth (prompt=none) instead — Microsoft then
-            // reuses the existing account without showing the picker.
-            // Bounded (max 2 rewrites per window) to avoid a rewrite loop.
-            if (url.includes('login.microsoftonline.com') && url.includes('prompt=select_account')) {
-                this.selectAccountRewrites = (this.selectAccountRewrites || 0) + 1;
-                if (this.selectAccountRewrites <= 2) {
-                    event.preventDefault();
-                    const silentUrl = url.replace('prompt=select_account', 'prompt=none');
-                    logger.info(`Rewriting select_account → none (#${this.selectAccountRewrites}): ${silentUrl.substring(0, 120)}...`);
-                    this.syncCookiesToLiveCom().then(() => {
-                        this.win.loadURL(silentUrl);
-                    });
-                }
-            }
+            // v3.3.11: ne PAS réécrire select_account en connexion silencieuse —
+            // l'utilisateur veut voir la page « compte retrouvé » et cliquer
+            // lui-même sur son compte (pas de connexion automatique).
         });
 
         // Re-inject after page finishes loading (catches late-rendered SPA content)
