@@ -262,6 +262,24 @@
 - [x] Testé sur téléphone: 3 cycles lancement/arrêt OK (procs actifs, heartbeat vivant,
       « Main window became visible after 2 heartbeats », lock « unavailable (continuing anyway) »)
 
+## Fait (v3.3.8 — VRAIE cause racine du crash intermittent de lancement : FATAL GPU)
+
+- [x] Diagnostic (log 16:08:44) : « GPU process launch failed: error_code=1002 » ×3
+      puis « FATAL: GPU process isn't usable. Goodbye. » → tout le process Electron
+      mourait. Intermittent (spawn du process GPU échoue selon mémoire/timing).
+- [x] Cause : gpuoptions = --disable-gpu --disable-gpu-compositing
+      --disable-software-rasterizer, et libvk_swiftshader.so stripé du package
+      (v3.3.1) → aucun fallback GPU ; Chromium lançait quand même son process GPU
+      séparé et FATALisait après 3 échecs de spawn.
+- [x] Fix: gpuoptions = --in-process-gpu --disable-features=VaapiVideoDecoder,AcceleratedVideoDecoder
+      (plus de process GPU séparé à spawner → le FATAL ne peut plus arriver)
+- [x] Confirmé: pgrep -f embarqué ne voit RIEN sous confinement AppArmor
+      (« pgrep fallback found: none ») → pidfile wrapper.pid est le mécanisme fiable
+- [x] Tests: +1 (84 tests, 80 pass + 5 skip, 0 fail)
+- [x] Testé sur téléphone: 3 cycles lancement/arrêt/relance, 0 erreur GPU/FATAL,
+      fenêtre visible à chaque fois
+- [x] Version bump: 3.3.7 → 3.3.8
+
 ## Idées en réserve (non prioritaires)
 
 - [ ] Raccourcis clavier personnalisables
