@@ -862,7 +862,7 @@ test('mail-window-controller: connectivity monitor does NOT reload the page (hot
 
     // Find startConnectivityMonitor and extract its body.
     const monStart = content.indexOf('startConnectivityMonitor()');
-    const monEnd = content.indexOf('async injectStyles()', monStart);
+    const monEnd = content.indexOf('async injectStyles', monStart);
     const monBody = content.slice(monStart, monEnd);
 
     // The connectivity monitor must NOT call win.reload() — that causes
@@ -1391,4 +1391,29 @@ test('v3.3.19: splash logo aussi grand que velo-touch + look UT lecture de mails
     for (const sel of ['readingPane', 'messageBody', 'commandBar', 'compose']) {
         assert.ok(css.includes(sel), `section 11 must cover ${sel} (v3.3.19)`);
     }
+});
+
+test('v3.3.20: section 11b avec ancres réelles du DOM Outlook (aria-label/data-app-section/role)', async () => {
+    const fs = await import('node:fs');
+    const css = fs.readFileSync(path.resolve(__dirname, '../public/main.css'), 'utf-8');
+    // ancres constatées sur device (classes Fluent = hash, non sémantiques)
+    assert.ok(css.includes('[aria-label="Liste des messages"] > div'),
+        'items de liste = enfants directs de aria-label="Liste des messages" (v3.3.20)');
+    assert.ok(css.includes('[data-app-section="MessageList"]'),
+        'ancre data-app-section=MessageList (v3.3.20)');
+    assert.ok(css.includes('[role="toolbar"] button') && css.includes('[role="dialog"]'),
+        'toolbar actions + dialog compose doivent être stylés (v3.3.20)');
+    assert.ok(css.includes("font-family: 'Ubuntu'") && css.includes('not([class*="FontIcon" i])'),
+        'police Ubuntu globale sans casser les icônes (v3.3.20)');
+});
+
+test('v3.3.20: CSS/gestures injectés aussi dans les fenêtres secondaires (compose) (v3.3.20)', async () => {
+    const fs = await import('node:fs');
+    const ctrl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    assert.ok(ctrl.includes("app.on('browser-window-created'"),
+        'must listen to browser-window-created to style secondary windows (compose) (v3.3.20)');
+    assert.ok(ctrl.includes('async injectStyles(targetWin = null)'),
+        'injectStyles must accept a target window (v3.3.20)');
+    assert.ok(ctrl.includes('injectGestures(targetWin = null)'),
+        'injectGestures must accept a target window (v3.3.20)');
 });
