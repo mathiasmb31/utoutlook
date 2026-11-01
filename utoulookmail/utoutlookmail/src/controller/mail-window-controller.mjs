@@ -498,7 +498,7 @@ class MailWindowController {
                         "https://*.github.com https://*.githubassets.com https://*.bing.com; " +
                         "img-src 'self' data: https: blob:; " +
                         "connect-src 'self' https://outlook.com https://*.outlook.com " +
-                        "https://outlook.office.com wss://*.office.com " +
+                        "https://outlook.office.com https://*.office.com wss://*.office.com " +
                         "https://*.live.com https://*.live.net " +
                         "https://*.office365.com https://*.sharepoint.com " +
                         "https://*.microsoft.com https://*.microsoftonline.com https://*.cloud.microsoft https://*.msocdn.com " +
