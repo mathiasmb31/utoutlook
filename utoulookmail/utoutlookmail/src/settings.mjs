@@ -32,12 +32,11 @@ function isValidStringArray(arr) {
 // ============================================================
 
 const defaults = {
-    // v3.3.16: start on outlook.live.com — the flow goes through login.live.com
-    // which holds the persistent auth cookie (__Host-MSAAUTHP), so the account
-    // is recognized: either the mailbox opens directly, or the login page shows
-    // the account tile. outlook.office.com bounces to outlook.cloud.microsoft →
-    // login.microsoftonline select_account with NO account shown.
-    urlMainWindow: "https://outlook.live.com/mail/",
+    // v3.3.17: keep outlook.office.com as the start URL — starting on
+    // outlook.live.com opened the mailbox DIRECTLY when the session was valid
+    // (auto-login), but the user wants the login page with the account tile to
+    // click on, never an automatic sign-in.
+    urlMainWindow: "https://outlook.office.com/mail",
     urlsInternal: [
         "outlook.live.com/mail/deeplink",
         "outlook.office365.com/mail/deeplink",
@@ -78,7 +77,7 @@ const defaults = {
         {
             id: 'default',
             name: 'Primary account',
-            url: 'https://outlook.live.com/mail/',
+            url: 'https://outlook.office.com/mail',
             partition: 'persist:utoutlook-default',
             enabled: true,
         },
@@ -100,20 +99,20 @@ settings.onDidChange('urlMainWindow', (newValue) => {
     }
 });
 
-// v3.3.16: migrate the old default (outlook.office.com/mail) to outlook.live.com —
-// office.com now bounces to cloud.microsoft → select_account with no account tile.
+// v3.3.17: undo the v3.3.16 migration — live.com auto-logged-in when the session
+// was valid; the user wants the select_account page with the tile to click on.
 {
     const cur = settings.get('urlMainWindow');
-    if (cur === 'https://outlook.office.com/mail') {
-        logger.warn('Migrating urlMainWindow office.com → live.com (v3.3.16)');
+    if (cur === 'https://outlook.live.com/mail/') {
+        logger.warn('Migrating urlMainWindow live.com → office.com (no auto-login, v3.3.17)');
         settings.set('urlMainWindow', defaults.urlMainWindow);
     }
     const accounts = settings.get('accounts') || [];
     for (const acct of accounts) {
-        if (acct.url === 'https://outlook.office.com/mail') {
+        if (acct.url === 'https://outlook.live.com/mail/') {
             acct.url = defaults.accounts[0].url;
             settings.set('accounts', accounts);
-            logger.warn(`Migrating account ${acct.id} url office.com → live.com (v3.3.16)`);
+            logger.warn(`Migrating account ${acct.id} url live.com → office.com (v3.3.17)`);
         }
     }
 }

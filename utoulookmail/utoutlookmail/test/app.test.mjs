@@ -1336,17 +1336,25 @@ test('cookie sync: share auth cookies with login.microsoftonline.com too (v3.3.1
         'all MS cookies must also target login.microsoftonline.com (v3.3.15)');
 });
 
-test('v3.3.16: start on outlook.live.com (account tile visible) with office.com fallback', async () => {
+test('v3.3.17: start on office.com (select_account page, NO auto-login) + cookie sync BEFORE first load', async () => {
     const fs = await import('node:fs');
     const sPath = path.resolve(__dirname, '../src/settings.mjs');
     const settings = fs.readFileSync(sPath, 'utf-8');
-    assert.ok(settings.includes('urlMainWindow: "https://outlook.live.com/mail/"'),
-        'default urlMainWindow must be outlook.live.com (v3.3.16)');
-    assert.ok(settings.includes("Migrating urlMainWindow office.com → live.com"),
-        'old office.com default must be migrated to live.com (v3.3.16)');
+
+    // v3.3.16 started on outlook.live.com → mailbox opened DIRECTLY when the
+    // session was valid (auto-login). The user wants the select_account page
+    // with the account tile to click on — never an automatic sign-in.
+    assert.ok(settings.includes('urlMainWindow: "https://outlook.office.com/mail"'),
+        'default urlMainWindow must stay outlook.office.com (no auto-login, v3.3.17)');
+    assert.ok(!settings.includes("url: 'https://outlook.live.com/mail/'"),
+        'default account url must stay office.com (v3.3.17)');
 
     const cPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
     const ctrl = fs.readFileSync(cPath, 'utf-8');
-    assert.ok(ctrl.includes('triedOfficeFallback') && ctrl.includes("loadURL('https://outlook.office.com/mail')"),
-        'login page on live.com must fall back to office.com once (v3.3.16)');
+    assert.ok(!ctrl.includes('triedOfficeFallback'),
+        'no live.com→office.com fallback anymore (v3.3.17)');
+    // cookie sync must complete BEFORE the first loadURL so the account tile shows
+    const loadFn = ctrl.slice(ctrl.indexOf('async loadMainUrl()'), ctrl.indexOf("webContents.on('did-finish-load'"));
+    assert.ok(/await this\.syncCookiesToLiveCom\(\)[\s\S]*loadURL/.test(loadFn),
+        'loadMainUrl must await the cookie sync before loadURL (v3.3.17)');
 });
