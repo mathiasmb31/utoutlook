@@ -49,6 +49,16 @@ function launch_prospect() {
 
 function verify_prospect_life() {
 
+	# v3.3.10: si un wrapper plus récent a pris la main (pidfile != $$), on sort
+	# proprement — sinon deux wrappers de versions différentes se relancent
+	# l'app l'un contre l'autre en boucle (vu à l'upgrade 3.3.9→3.3.10).
+	local curpid
+	curpid=$("${WD}"/bin/cat "${UTOUTLOOK_DATA_DIR}/wrapper.pid" 2>/dev/null | "${WD}"/bin/tr -d '[:space:]')
+	if [ -n "${curpid}" ] && [ "${curpid}" != "$$" ]; then
+		echo "another wrapper (pid ${curpid}) owns the app — exiting"
+		exit 0
+	fi
+
 	# Lecture sûre du heartbeat (le fichier peut ne pas exister encore)
 	local follow=""
 	if [ -f "${filelifefollow}" ]; then

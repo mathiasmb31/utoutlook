@@ -146,6 +146,17 @@ except Exception:
 # SIGKILL alone loses the most recent cookies → user sees login page.
 # ============================================================
 utoutlook_kill_app() {
+	# v3.3.10: poser un flag close FRAIS avant tout kill. L'ancien process
+	# (booté avant nous) le verra dans son heartbeat (toutes les 2s) et fera un
+	# arrêt gracieux avec flush des cookies. Indispensable à l'upgrade:
+	# AppArmor bloque les signaux cross-label (3.3.8→3.3.9), donc pkill depuis
+	# le nouveau wrapper ne peut pas tuer l'ancien process/service — le flag
+	# fichier, lui, passe. Le nouveau process Electron supprime ce flag au boot
+	# et ignore ceux écrits avant son démarrage (mtime guard, v3.3.5).
+	echo "closed" > "${UTOUTLOOK_EXITCOMMAND}" 2>/dev/null || true
+	# ~3s pour laisser l'ancien process sortir proprement
+	"${UTOUTLOOK_BIN}/sleep" 3 2>/dev/null || /bin/sleep 3 2>/dev/null || true
+
 	# Check if any prospect-mail process is running
 	if ! "${UTOUTLOOK_BIN}/pkill" -0 prospect-mail 2>/dev/null; then
 		# No process running, nothing to kill
