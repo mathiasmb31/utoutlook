@@ -117,6 +117,13 @@ const observeUnreadHandlers = {
         '[data-folder-name="inbox"]',
         '[data-folder-name="Boîte de réception"]',
         '[data-folder-name="Inbox"]',
+        // v3.3.21: nouveau DOM — le treeitem de la boîte de réception a un title
+        // "Boîte de réception - éléments N (M non lus)" mais plus de parent
+        // FolderPane (volet de navigation replié/rendu ailleurs).
+        '[role="treeitem"][title*="non lus" i]',
+        '[role="treeitem"][title*="unread" i]',
+        '[role="treeitem"][aria-label*="non lus" i]',
+        '[role="treeitem"][aria-label*="unread" i]',
         '[data-app-section="FolderPane"] [role="treeitem"][aria-label*="non lu" i]',
         '[data-app-section="FolderPane"] [role="treeitem"][aria-label*="unread" i]',
         '[class*="folderPane"] [role="treeitem"][title*="non lu" i]',
