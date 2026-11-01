@@ -1449,3 +1449,10 @@ test('v3.3.21: sélecteur inbox générique (treeitem title "non lus") pour le n
     assert.ok(obs.includes("'[role=\"treeitem\"][title*=\"non lus\" i]'"),
         'inbox selector must include generic treeitem title "non lus" (new DOM, no FolderPane parent) (v3.3.21)');
 });
+
+test('v3.3.21: parsing du count dans un title "(251 non lus)" (texte après le nombre)', async () => {
+    const fs = await import('node:fs');
+    const obs = fs.readFileSync(path.resolve(__dirname, '../public/unread-number-observer.js'), 'utf-8');
+    assert.ok(obs.includes('/\\((\\d+)[^)]*\\)/g'),
+        'title regex must accept text after the number inside parens: (251 non lus) (v3.3.21)');
+});

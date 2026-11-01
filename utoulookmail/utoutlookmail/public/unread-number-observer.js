@@ -270,8 +270,10 @@ const observeUnreadHandlers = {
       let unread = 0;
       let titleValid = false;
       if (title) {
-        // Match the last parenthesized number in the title (e.g. "(217 unread)" or "(217 non lus)")
-        const matches = [...title.matchAll(/\((\d+)\)/g)];
+        // Match the last parenthesized number in the title, e.g. "(217 unread)",
+        // "(217 non lus)", "(217)" — v3.3.21: the count may be followed by text
+        // inside the parens, so accept anything up to the closing paren.
+        const matches = [...title.matchAll(/\((\d+)[^)]*\)/g)];
         if (matches.length > 0) {
           unread = parseInt(matches[matches.length - 1][1], 10);
           titleValid = true;
