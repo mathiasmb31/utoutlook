@@ -192,7 +192,10 @@ export QT_FILE_SELECTORS=ubuntu-touch
 
 ## cleanup
 cleanup
-numberold=$(echo "$(<${filelifefollow})")
+numberold="0"
+if [ -f "${filelifefollow}" ]; then
+	numberold=$("${WD}"/bin/cat "${filelifefollow}" 2>/dev/null | "${WD}"/bin/tr -d '[:space:]')
+fi
 
 echo "------------------------------------------------------------------"
 echo $$ >>/home/phablet/.config/utoutlook.mathias/data/__prospect.pid
