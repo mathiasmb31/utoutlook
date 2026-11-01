@@ -1151,3 +1151,20 @@ test('settings: persisted hideOnClose=true from old versions is forced to false 
     assert.ok(content.includes('settings.get(key) !== false') && content.includes('settings.set(key, false)'),
         'settings.mjs must overwrite persisted true values with false (v3.3.6)');
 });
+
+test('command.sh/common.sh: wrapper pidfile kills orphaned wrappers without pgrep (v3.3.7)', async () => {
+    const fs = await import('node:fs');
+    const cmdPath = path.resolve(__dirname, '../../command.sh');
+    const commonPath = path.resolve(__dirname, '../../utils/common.sh');
+    const cmd = fs.readFileSync(cmdPath, 'utf-8');
+    const common = fs.readFileSync(commonPath, 'utf-8');
+
+    // pgrep -f may be blocked by AppArmor under confinement (reading
+    // /proc/*/cmdline of other processes) — the pidfile is the reliable path.
+    assert.ok(cmd.includes('wrapper.pid') && cmd.includes('echo $$ >'),
+        'command.sh must write its PID to wrapper.pid at startup (v3.3.7)');
+    assert.ok(common.includes('wrapper.pid') && common.includes('kill -0 "$p"'),
+        'utoutlook_kill_stale_wrappers must kill the pidfile PID if alive (v3.3.7)');
+    assert.ok(common.includes('pgrep fallback found'),
+        'pgrep fallback must stay, with a debug log (v3.3.7)');
+});

@@ -189,16 +189,30 @@ utoutlook_cleanup_locks() {
 # The current wrapper ($$) and its parent are never killed.
 # ============================================================
 utoutlook_kill_stale_wrappers() {
-	local self=$$ parent=$PPID p
-	# Match both absolute and relative ("./bin/command.sh") cmdlines of
-	# orphaned wrappers, without hardcoding the click install path.
-	for p in $("${UTOUTLOOK_BIN}/pgrep" -f '^/bin/bash .*bin/command\.sh' 2>/dev/null); do
+	local self=$$ parent=$PPID p pidfile="${UTOUTLOOK_DATA_DIR}/wrapper.pid"
+	# Primary mechanism: pidfile (works under AppArmor — no /proc cmdline scan).
+	# Each wrapper writes its own PID at startup; the new one kills the previous.
+	if [ -f "$pidfile" ]; then
+		p=$("${UTOUTLOOK_BIN}/cat" "$pidfile" 2>/dev/null | "${UTOUTLOOK_BIN}/tr" -d '[:space:]')
+		if [ -n "$p" ] && [ "$p" != "$self" ] && [ "$p" != "$parent" ] && kill -0 "$p" 2>/dev/null; then
+			echo "killing stale wrapper pid=$p (from pidfile)"
+			kill -TERM "$p" 2>/dev/null || true
+			"${UTOUTLOOK_BIN}/sleep" 1 2>/dev/null || /bin/sleep 1 2>/dev/null || true
+			kill -9 "$p" 2>/dev/null || true
+		fi
+	fi
+	# Fallback: pgrep scan (may be restricted by AppArmor — logged for diagnosis).
+	# Match both absolute and relative ("./bin/command.sh") cmdlines of orphans.
+	local found
+	found=$("${UTOUTLOOK_BIN}/pgrep" -f '^/bin/bash .*bin/command\.sh' 2>/dev/null)
+	echo "pgrep fallback found: ${found:-none} (self=$self)"
+	for p in $found; do
 		[ "$p" = "$self" ] && continue
 		[ "$p" = "$parent" ] && continue
 		kill -TERM "$p" 2>/dev/null || true
 	done
 	"${UTOUTLOOK_BIN}/sleep" 1 2>/dev/null || /bin/sleep 1 2>/dev/null || true
-	for p in $("${UTOUTLOOK_BIN}/pgrep" -f '^/bin/bash .*bin/command\.sh' 2>/dev/null); do
+	for p in $found; do
 		[ "$p" = "$self" ] && continue
 		[ "$p" = "$parent" ] && continue
 		kill -9 "$p" 2>/dev/null || true
