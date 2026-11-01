@@ -1358,3 +1358,20 @@ test('v3.3.17: start on office.com (select_account page, NO auto-login) + cookie
     assert.ok(/await this\.syncCookiesToLiveCom\(\)[\s\S]*loadURL/.test(loadFn),
         'loadMainUrl must await the cookie sync before loadURL (v3.3.17)');
 });
+
+test('v3.3.18: login_hint injection shows the account tile WITHOUT auto-login; email never logged', async () => {
+    const fs = await import('node:fs');
+    const cPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const ctrl = fs.readFileSync(cPath, 'utf-8');
+
+    assert.ok(ctrl.includes('readKnownAccountEmail'),
+        'must read the known account email from local leveldb (v3.3.18)');
+    assert.ok(ctrl.includes('login_hint=${encodeURIComponent(this.knownEmail)}'),
+        'authorize URL must get login_hint=known email so the tile shows (v3.3.18)');
+    assert.ok(!ctrl.includes('prompt=none'),
+        'still no prompt=none — no auto-login, user clicks the tile (v3.3.18)');
+    // the email itself must never appear in logs
+    const evalSection = ctrl.slice(ctrl.indexOf('Adding login_hint'));
+    assert.ok(!/logger\.(info|warn|error)\([^)]*knownEmail/.test(ctrl),
+        'knownEmail must never be logged (confidentiality, v3.3.18)');
+});
