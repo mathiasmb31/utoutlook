@@ -181,6 +181,23 @@ utoutlook_cleanup_locks() {
 }
 
 # ============================================================
+# Kill orphaned command.sh wrappers from older versions (v3.3.5).
+# During a click upgrade, `kill: prospect-mail` stops the Electron process
+# but NOT the old shell wrapper, which keeps looping and can write
+# "tried too more" into the close flag while the NEW process is starting —
+# the new process then exits 2s after launch (intermittent startup crash).
+# The current wrapper ($$) and its parent are never killed.
+# ============================================================
+utoutlook_kill_stale_wrappers() {
+	local self=$$ parent=$PPID p
+	for p in $("${UTOUTLOOK_BIN}/pgrep" -f 'click.ubuntu.com/utoutlook.mathias.*command\.sh' 2>/dev/null); do
+		[ "$p" = "$self" ] && continue
+		[ "$p" = "$parent" ] && continue
+		kill -TERM "$p" 2>/dev/null || true
+	done
+}
+
+# ============================================================
 # Remove IPC flag files (exitclient, killedmail, close)
 # ============================================================
 utoutlook_cleanup_flags() {
@@ -194,6 +211,7 @@ utoutlook_cleanup_flags() {
 # ============================================================
 utoutlook_full_cleanup() {
 	utoutlook_kill_app
+	utoutlook_kill_stale_wrappers
 	utoutlook_cleanup_locks
 	utoutlook_cleanup_flags
 }

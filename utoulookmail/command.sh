@@ -3,13 +3,19 @@
 trap close_command EXIT
 
 function sleep_int() {
-	"${WD}"/bin/sleep $1
-
+	# Fallback si le binaire embarqué est absent (ex: pendant une mise à jour,
+	# un ancien wrapper pointe encore vers l'ancien dossier de version).
+	if [ -x "${WD}"/bin/sleep ]; then
+		"${WD}"/bin/sleep "$1"
+	else
+		/bin/sleep "$1" 2>/dev/null || true
+	fi
 }
 
 function cleanup() {
 
 	utoutlook_kill_app
+	utoutlook_kill_stale_wrappers
 	utoutlook_cleanup_locks
 	"${WD}"/bin/rm -f "${UTOUTLOOK_EXITCOMMAND}" 2>/dev/null || true
 }
@@ -66,11 +72,19 @@ function verify_prospect_life() {
 
 	clientalive=0
 	if [ -n "${oldfollow}" ] && [ "${follow}" = "${oldfollow}" ]; then
-		echo ${follow}
-		echo ${oldfollow}
-		echo "tried too more " >${exitcommand}
-		echo "******" && utoutlook_notify "$(utoutlook_t 'shell.cleaning')" && exit 0
+		# v3.3.5: exige 2 stagnations consécutives avant de conclure — une
+		# seule lecture identique peut être un artefact (lecture pendant
+		# l'écriture du heartbeat, wrapper orphelin, etc.).
+		stagnantCount=$((stagnantCount + 1))
+		echo "heartbeat stagnant (${stagnantCount}/2)"
+		if [ ${stagnantCount} -ge 2 ]; then
+			echo ${follow}
+			echo ${oldfollow}
+			echo "tried too more " >${exitcommand}
+			echo "******" && utoutlook_notify "$(utoutlook_t 'shell.cleaning')" && exit 0
+		fi
 	else
+		stagnantCount=0
 		clientalive=1
 		touch ${lock}
 	fi
@@ -144,6 +158,7 @@ export launchtry=1
 
 oldfollow="0"
 startupGrace=0
+stagnantCount=0
 "${WD}"/bin/rm -f ${exitclient}
 "${WD}"/bin/rm -f ${killedclient}
 "${WD}"/bin/rm -f /home/phablet/.config/utoutlook.mathias/close

@@ -1104,3 +1104,34 @@ test('main.mjs: single-instance lock + force-show if main window never appears (
     assert.ok(content.includes('forcing show()'),
         'heartbeat must force show() if the main window never appeared after 60s (v3.3.4)');
 });
+
+test('main.mjs: stale close flag from a previous instance cannot kill the new process (v3.3.5)', async () => {
+    const fs = await import('node:fs');
+    const mPath = path.resolve(__dirname, '../src/main.mjs');
+    const content = fs.readFileSync(mPath, 'utf-8');
+
+    // An orphaned old wrapper wrote "tried too more" into the close flag while
+    // the new process was starting → heartbeat read it → app.exit(0) 2s after
+    // launch (intermittent startup crash, race-dependent).
+    assert.ok(content.includes('PROCESS_START'),
+        'main.mjs must record the process start time (v3.3.5)');
+    assert.ok(content.includes('mtimeMs') && content.includes('mtime > PROCESS_START'),
+        'close flag must only be honored if written after process start (v3.3.5)');
+});
+
+test('command.sh + common.sh: orphan wrappers killed, double stagnation, sleep fallback (v3.3.5)', async () => {
+    const fs = await import('node:fs');
+    const cmdPath = path.resolve(__dirname, '../../command.sh');
+    const commonPath = path.resolve(__dirname, '../../utils/common.sh');
+    const cmd = fs.readFileSync(cmdPath, 'utf-8');
+    const common = fs.readFileSync(commonPath, 'utf-8');
+
+    assert.ok(common.includes('utoutlook_kill_stale_wrappers'),
+        'common.sh must define utoutlook_kill_stale_wrappers (v3.3.5)');
+    assert.ok(cmd.includes('utoutlook_kill_stale_wrappers'),
+        'command.sh cleanup must kill orphaned wrappers (v3.3.5)');
+    assert.ok(/stagnantCount.*-ge 2/s.test(cmd) || cmd.includes('-ge 2'),
+        'verify_prospect_life must require 2 consecutive stagnations before giving up (v3.3.5)');
+    assert.ok(cmd.includes('/bin/sleep "$1" 2>/dev/null'),
+        'sleep_int must fall back to /bin/sleep if the bundled binary is missing (v3.3.5)');
+});
