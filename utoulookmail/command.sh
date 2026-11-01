@@ -70,9 +70,17 @@ function verify_prospect_life() {
 			echo "heartbeat not started yet (grace ${startupGrace}/20)"
 			return
 		fi
-		echo "heartbeat never started — giving up"
-		echo "tried too more " >${exitcommand}
-		echo "******" && utoutlook_notify "$(utoutlook_t 'shell.cleaning')" && exit 0
+		# v3.3.9: au lieu de quitter, on nettoie et on RELANCE (launch_prospect
+		# a sa propre limite launchtry>3 → exit). Ne PAS écrire exitcommand ici :
+		# le close flag resterait et le process relancé le lirait (même si le
+		# mtime guard le protège, autant ne pas le poser).
+		echo "heartbeat never started — cleaning and relaunching (try ${launchtry})"
+		echo "******" && utoutlook_notify "$(utoutlook_t 'shell.cleaning')"
+		stagnantCount=0
+		startupGrace=0
+		oldfollow=""
+		launch_prospect
+		return
 	fi
 
 	clientalive=0
@@ -85,11 +93,19 @@ function verify_prospect_life() {
 		if [ ${stagnantCount} -ge 2 ]; then
 			echo ${follow}
 			echo ${oldfollow}
-			echo "tried too more " >${exitcommand}
-			echo "******" && utoutlook_notify "$(utoutlook_t 'shell.cleaning')" && exit 0
+			# v3.3.9: nettoyer puis RELANCER au lieu de quitter (limite launchtry>3).
+			echo "heartbeat dead — cleaning and relaunching (try ${launchtry})"
+			echo "******" && utoutlook_notify "$(utoutlook_t 'shell.cleaning')"
+			stagnantCount=0
+			oldfollow=""
+			launch_prospect
+			return
 		fi
 	else
 		stagnantCount=0
+		# v3.3.9: client vivant → on remet le compteur de tentatives à zéro,
+		# pour que une mort ultérieure ait droit à ses 3 essais.
+		launchtry=1
 		clientalive=1
 		touch ${lock}
 	fi

@@ -1186,3 +1186,21 @@ test('command.sh: GPU options must not allow the "GPU process isn\'t usable. Goo
     assert.ok(m[1].includes('--in-process-gpu'),
         'must use --in-process-gpu so no separate GPU process is ever spawned (v3.3.8)');
 });
+
+test('command.sh: on "cleaning" the wrapper RELAUNCHES instead of exiting (v3.3.9)', async () => {
+    const fs = await import('node:fs');
+    const cmdPath = path.resolve(__dirname, '../../command.sh');
+    const content = fs.readFileSync(cmdPath, 'utf-8');
+
+    // Extract verify_prospect_life body
+    const start = content.indexOf('function verify_prospect_life()');
+    const end = content.indexOf('\nfunction ', start + 10);
+    const body = content.slice(start, end);
+
+    assert.ok(body.includes('cleaning and relaunching'),
+        'verify_prospect_life must relaunch after cleaning (v3.3.9)');
+    assert.ok(!/tried too more[^\n]*\n[^\n]*exit 0/.test(body),
+        'verify_prospect_life must NOT exit 0 right after "tried too more" (v3.3.9)');
+    assert.ok(body.includes('launchtry=1'),
+        'launchtry must reset to 1 when the client is alive, so a later death gets its 3 tries (v3.3.9)');
+});
