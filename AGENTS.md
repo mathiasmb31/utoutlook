@@ -1,5 +1,19 @@
 # AGENTS.md — Règles de travail
 
+## Confidentialité (OBLIGATOIRE — règle de Mathias, 2026-11-01)
+
+**Ne jamais publier l'email ni le nom « Brethous »** — ni dans les commits/PR
+(messages, auteurs, committers), ni dans le code, la doc, les logs, les captures,
+les tickets. RIEN de publié ne doit contenir `brethous` (casse-insensible) ni
+l'adresse associée.
+
+- Avant chaque commit/PR : `grep -ri brethous --exclude-dir=.git .` et
+  `git log --all --format='%ae %ce %B' | grep -i brethous` doivent être vides.
+- Exception : les données strictement locales et non publiées (cookies sur le
+  téléphone, logs locaux du device, scratchpad) peuvent les contenir.
+- Si un nom/email perso apparaît dans un log ou une capture destiné à être
+  publié : le masquer (`XXXX`) avant commit.
+
 ## Branches (OBLIGATOIRE)
 
 **Ne jamais committer directement sur `main`.**
