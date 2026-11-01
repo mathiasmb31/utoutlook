@@ -252,6 +252,15 @@
       est absent (transition de version)
 - [x] Tests: +2 (82 tests, 77 pass + 5 skip, 0 fail)
 - [x] Version bump: 3.3.4 → 3.3.5
+- [x] Fix: requestSingleInstanceLock best-effort seulement — sur UT, AppArmor bloque
+      le dossier socket du singleton (« Failed to create socket directory »), le lock
+      retournait false et app.exit(0) tuait CHAQUE lancement. Ne jamais quitter là-dessus.
+- [x] Fix: pattern pgrep des wrappers orphelins match aussi la cmdline relative
+      « /bin/bash ./bin/command.sh » (l'orphelin survivait sinon et tuait le nouveau
+      process en boucle via pkill prospect-mail)
+- [x] Fix: command.sh — lecture propre de numberold (follow absent = OK)
+- [x] Testé sur téléphone: 3 cycles lancement/arrêt OK (procs actifs, heartbeat vivant,
+      « Main window became visible after 2 heartbeats », lock « unavailable (continuing anyway) »)
 
 ## Idées en réserve (non prioritaires)
 
