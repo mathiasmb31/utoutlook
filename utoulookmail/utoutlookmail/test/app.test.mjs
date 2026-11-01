@@ -1417,3 +1417,28 @@ test('v3.3.20: CSS/gestures injectés aussi dans les fenêtres secondaires (comp
     assert.ok(ctrl.includes('injectGestures(targetWin = null)'),
         'injectGestures must accept a target window (v3.3.20)');
 });
+
+test('v3.3.21: notif du nb de non lus même quand la boîte est ouverte + alerte DOM changé + CSS sans thèmes', async () => {
+    const fs = await import('node:fs');
+    const ctrl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+
+    // 1. updateUnread notifie le count même si la fenêtre est visible
+    const upd = ctrl.slice(ctrl.indexOf('ipcMain.on("updateUnread"'), ctrl.indexOf('ipcMain.on("show-notification"'));
+    assert.ok(upd.includes('lastNotifiedUnread') && upd.includes('notif.newMessages.body'),
+        'updateUnread must notify the unread count even when the window is visible (v3.3.21)');
+    // 2. urgent bypass la suppression foreground
+    const notif = ctrl.slice(ctrl.indexOf('ipcMain.on("show-notification"'));
+    assert.ok(notif.includes('!urgent && this.win.isVisible()'),
+        'urgent notifications must bypass the foreground suppression (v3.3.21)');
+    // 3. plus de thèmes injectés (dark/focus/accent)
+    const inj = ctrl.slice(ctrl.indexOf('async injectStyles'));
+    assert.ok(!inj.includes('getDarkModeCSS()') && !inj.includes('getFocusModeCSS()') && !inj.includes('getAccentColorCSS('),
+        'injectStyles must NOT inject theme variants anymore (v3.3.21)');
+
+    const preload = fs.readFileSync(path.resolve(__dirname, '../src/controller/preload.js'), 'utf-8');
+    assert.ok(preload.includes('urgent'), 'preload must pass the urgent flag (v3.3.21)');
+
+    const obs = fs.readFileSync(path.resolve(__dirname, '../public/unread-number-observer.js'), 'utf-8');
+    assert.ok(obs.includes('domFailCount') && obs.includes('domAlerted') && obs.includes('DOM CHANGED'),
+        'observer must alert when the DOM selectors stop matching (v3.3.21)');
+});
