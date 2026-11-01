@@ -52,8 +52,8 @@ export function startSocketServer(handlers) {
 
                 try {
                     const msg = JSON.parse(line);
-                    const response = handleCommand(msg, handlers);
-                    socket.write(JSON.stringify(response) + '\n');
+                    const response = handleCommand(msg, handlers, socket);
+                    if (response !== null) socket.write(JSON.stringify(response) + '\n');
                 } catch (err) {
                     socket.write(JSON.stringify({ok: false, error: err.message}) + '\n');
                 }
@@ -102,7 +102,7 @@ export function stopSocketServer() {
 /**
  * Handle a single JSON command.
  */
-function handleCommand(msg, handlers) {
+function handleCommand(msg, handlers, socket) {
     const {cmd} = msg;
 
     switch (cmd) {
@@ -133,6 +133,17 @@ function handleCommand(msg, handlers) {
         case 'reload':
             if (handlers.onReload) handlers.onReload();
             return {ok: true};
+
+        case 'eval':
+            // Debug: run JS in the renderer, reply asynchronously on the socket.
+            // Usage from adb: python3 send '{"cmd":"eval","code":"document.title"}'
+            if (handlers.onEval) {
+                Promise.resolve(handlers.onEval(msg.code || ''))
+                    .then(r => socket.write(JSON.stringify({ok: true, result: String(r).substring(0, 4000)}) + '\n'))
+                    .catch(e => socket.write(JSON.stringify({ok: false, error: e.message}) + '\n'));
+                return null; // deferred reply
+            }
+            return {ok: false, error: 'no onEval handler'};
 
         case 'ping':
             return {ok: true, pong: true};
