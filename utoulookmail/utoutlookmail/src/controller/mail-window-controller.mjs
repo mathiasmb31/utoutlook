@@ -341,24 +341,36 @@ class MailWindowController {
                 for (const newDomain of targets) {
                     const host = newDomain.replace(/^\./, '');
                     const url = `https://${host}${cookie.path || '/'}`;
-                    await ses.cookies.set({
-                        url,
-                        name: cookie.name,
-                        value: cookie.value,
-                        domain: newDomain,
-                        path: cookie.path || '/',
-                        secure: true,           // required for SameSite=None
-                        httpOnly: cookie.httpOnly,
-                        expirationDate: cookie.expirationDate,
-                        // Force SameSite=None so cookies are sent cross-site
-                        // (office.com ↔ live.com are different sites)
-                        sameSite: 'no_restriction',
-                    });
-                    copied++;
+                    // v3.3.13: __Host-/__Secure- prefixed cookies CANNOT be set
+                    // with a domain attribute — Chromium rejects them
+                    // ("invalid __Host- or __Secure- prefix"), so session cookies
+                    // like __Host-MSAAUTH were silently NOT copied and the login
+                    // page lost the account ("compte que vous pouvez utiliser ici"
+                    // with no user shown). Strip the prefix for the copy: the
+                    // target domain then reads the unprefixed name.
+                    const copyName = cookie.name.replace(/^__(?:Host|Secure)-/i, '');
+                    try {
+                        await ses.cookies.set({
+                            url,
+                            name: copyName,
+                            value: cookie.value,
+                            domain: newDomain,
+                            path: cookie.path || '/',
+                            secure: true,           // required for SameSite=None
+                            httpOnly: cookie.httpOnly,
+                            expirationDate: cookie.expirationDate,
+                            // Force SameSite=None so cookies are sent cross-site
+                            // (office.com ↔ live.com are different sites)
+                            sameSite: 'no_restriction',
+                        });
+                        copied++;
+                    } catch (e) {
+                        logger.warn(`Cookie copy failed: ${cookie.name} → ${newDomain}: ${e.message}`);
+                    }
                 }
             }
             await ses.cookies.flushStore();
-            logger.info(`Synced ${copied} cookies → live.com (SameSite=None)`);
+            logger.info(`Synced ${copied} cookies → live.com / cloud.microsoft (SameSite=None)`);
             // Debug: log cookie names for troubleshooting
             if (copied > 0) {
                 const liveCookies = await ses.cookies.get({ domain: '.live.com' });
