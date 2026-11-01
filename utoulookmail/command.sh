@@ -135,6 +135,12 @@ echo "$WD"
 # Source shared functions and path constants
 source "${WD}/utils/common.sh"
 
+# v3.3.7: record this wrapper's PID so the next launch can kill this one if it
+# became an orphan (previously only detectable via pgrep, which AppArmor may
+# restrict under confinement).
+mkdir -p "${UTOUTLOOK_DATA_DIR}" 2>/dev/null || true
+echo $$ > "${UTOUTLOOK_DATA_DIR}/wrapper.pid" 2>/dev/null || true
+
 # D-Bus session bus — required by the notify binary (QDBusConnection::sessionBus).
 # Lomiri normally sets these, but be defensive: if they are missing, the notify
 # binary silently fails and welcome notifications never appear.
