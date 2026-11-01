@@ -587,3 +587,109 @@ input[type="text"],
   padding-top: 10px !important;
   padding-bottom: 10px !important;
 }
+
+/* ============================================================
+   11. Look & feel UBUNTU TOUCH — lecture de mails (v3.3.19)
+   ============================================================ */
+
+/* --- Panneau de lecture (mail ouvert) : carte arrondie style UT --- */
+[data-app-section*="ReadingPane" i],
+[class*="readingPane" i],
+[class*="messageView" i],
+[class*="itemView" i] {
+  border-radius: 12px !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12) !important;
+  margin: 8px !important;
+  padding: 12px !important;
+}
+
+/* --- En-tête du mail ouvert : sujet plus gros et gras, méta lisible --- */
+[data-app-section*="ReadingPane" i] [class*="subject" i],
+[class*="readingPane" i] [class*="subject" i],
+[class*="messageView" i] [class*="title" i],
+[class*="itemView" i] [class*="subject" i] {
+  font-size: 1.35em !important;
+  font-weight: 700 !important;
+}
+[data-app-section*="ReadingPane" i] [class*="sender" i],
+[data-app-section*="ReadingPane" i] [class*="from" i],
+[class*="readingPane" i] [class*="displayName" i] {
+  font-size: 1.05em !important;
+  font-weight: 600 !important;
+}
+[data-app-section*="ReadingPane" i] [class*="received" i],
+[data-app-section*="ReadingPane" i] [class*="date" i],
+[data-app-section*="ReadingPane" i] [class*="time" i] {
+  font-size: 0.9em !important;
+  opacity: 0.75;
+}
+
+/* --- Corps du mail : police Ubuntu, taille confortable, interligne aéré --- */
+[class*="messageBody" i],
+[class*="bodyContent" i],
+[class*="itemBody" i],
+[data-app-section*="ReadingPane" i] [class*="body" i],
+[class*="readingPane" i] [role="document"] {
+  font-family: 'Ubuntu', 'Ubuntu Touch', sans-serif !important;
+  font-size: 1.05em !important;
+  line-height: 1.55 !important;
+}
+
+/* Liens dans le corps du mail : orange Ubuntu */
+[class*="messageBody" i] a,
+[class*="bodyContent" i] a,
+[data-app-section*="ReadingPane" i] a {
+  color: #E95420 !important;
+}
+
+/* --- Toolbar d'actions (répondre / transférer / supprimer) : boutons arrondis UT, hover orange --- */
+[data-app-section*="CommandBar" i] button,
+[data-app-section*="CommandBar" i] [role="button"],
+[class*="commandBar" i] button,
+[class*="toolbar" i] button,
+[class*="actionBar" i] [role="button"] {
+  border-radius: 8px !important;
+  min-height: 44px !important;
+  padding: 8px 14px !important;
+}
+[data-app-section*="CommandBar" i] button:hover,
+[class*="commandBar" i] button:hover,
+[class*="toolbar" i] button:hover {
+  background-color: rgba(233, 84, 32, 0.12) !important;
+  color: #E95420 !important;
+}
+
+/* --- Fenêtre de composition (compose) : arrondis + accent orange --- */
+[class*="compose" i],
+[class*="composeWindow" i],
+[role="dialog"] [class*="compose" i] {
+  border-radius: 12px !important;
+}
+[class*="compose" i] button[class*="primary" i],
+[class*="compose" i] [class*="send" i] {
+  --colorBrandBackground: #E95420 !important;
+  border-radius: 8px !important;
+}
+
+/* --- Liste des messages : hover doux, séparateurs fins --- */
+[role="list"] [role="listitem"]:hover,
+[class*="messageList"] [role="row"]:hover,
+[class*="listView"] [role="row"]:hover {
+  background-color: rgba(233, 84, 32, 0.07) !important;
+}
+[role="list"] [role="listitem"] + [role="listitem"],
+[class*="messageList"] [role="row"] + [role="row"] {
+  border-top: 1px solid rgba(128, 128, 128, 0.15) !important;
+}
+
+/* --- Fond de la zone principale légèrement gris UT (pas blanc pur) --- */
+[data-app-section*="MainPane" i],
+[class*="mainPane" i],
+[class*="contentPane" i] {
+  background-color: #F5F5F5 !important;
+}
+.dark-mode [data-app-section*="MainPane" i],
+.dark-mode [class*="mainPane" i],
+.dark-mode [class*="contentPane" i] {
+  background-color: #0f0f1a !important;
+}
