@@ -908,10 +908,22 @@ class MailWindowController {
 
         this.win.loadURL(this.mainMailServiceUrl, {userAgent: customUserAgent});
 
+        // v3.3.14: propagate session cookies to live.com/cloud.microsoft RIGHT
+        // AWAY (not only on login_hint/#code redirects). Outlook now bounces
+        // outlook.office.com → outlook.cloud.microsoft → login.microsoftonline
+        // (select_account) without ever hitting the login_hint path, so the
+        // pick-account page could render before the cookies were shared → the
+        // previously used account was sometimes not shown.
+        this.syncCookiesToLiveCom().catch(e => logger.warn('Initial cookie sync failed:', e.message));
+
         this.win.webContents.on('did-finish-load', () => {
             this.loginPage++;
             const url = this.win.webContents.getURL();
             logger.info(`Page loaded #${this.loginPage}: ${url}`);
+
+            // v3.3.14: re-sync on every load — cheap and keeps cloud.microsoft /
+            // live.com in sync as Microsoft rotates domains during the redirect chain.
+            this.syncCookiesToLiveCom().catch(() => {});
 
             // --- Splash lifecycle (hotfix #15) ---
             // The splash stays open during intermediate redirects (outlook.com →

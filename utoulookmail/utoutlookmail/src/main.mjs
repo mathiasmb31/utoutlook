@@ -259,6 +259,13 @@ class ProspectMail {
                     this.mailController.reloadWindow();
                 }
             },
+            onEval: async (code) => {
+                const mc = this.mailController;
+                if (!mc || !mc.win || mc.win.isDestroyed()) return 'no window';
+                const result = await mc.win.webContents.executeJavaScript(code);
+                logger.info(`[EVAL] ${String(result).substring(0, 2000)}`);
+                return result;
+            },
         });
     }
 

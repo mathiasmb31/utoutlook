@@ -1301,3 +1301,22 @@ test('cookie sync: __Host-/__Secure- prefix stripped for cross-domain copies (v3
     assert.ok(fn.includes('Cookie copy failed'),
         'failed cookie copies must be logged, not silently swallowed (v3.3.13)');
 });
+
+test('v3.3.14: cookie sync proactively at startup + eval debug channel', async () => {
+    const fs = await import('node:fs');
+    const cPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const ctrl = fs.readFileSync(cPath, 'utf-8');
+
+    // The pick-account page could render before cookies were shared (sync only
+    // ran on login_hint/#code) → account sometimes not shown.
+    const loadFn = ctrl.slice(ctrl.indexOf('loadMainUrl()'), ctrl.indexOf("webContents.on('did-finish-load'"));
+    assert.ok(loadFn.includes('syncCookiesToLiveCom()'),
+        'loadMainUrl must sync cookies to live.com/cloud.microsoft right away (v3.3.14)');
+
+    const mPath = path.resolve(__dirname, '../src/main.mjs');
+    const main = fs.readFileSync(mPath, 'utf-8');
+    assert.ok(main.includes('onEval'), 'main.mjs must wire an onEval handler (v3.3.14)');
+    const sPath = path.resolve(__dirname, '../src/ipc-socket.mjs');
+    const sock = fs.readFileSync(sPath, 'utf-8');
+    assert.ok(sock.includes("case 'eval'"), 'ipc-socket must support cmd=eval (v3.3.14)');
+});
