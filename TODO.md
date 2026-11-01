@@ -213,6 +213,26 @@
 - [x] Version bump: 3.3.2 → 3.3.3 (package.json + manifest.json)
 - [x] Tests: 76 tests, 71 pass + 5 skip (Electron), 0 fail
 
+## Fait (v3.3.4 — fix "l'app ne démarre pas" quand la fenêtre est cachée)
+
+- [x] Diagnostic: aucun settings.json persisted → les defaults s'appliquaient :
+      showWindowFrame=true (croix X11) + hideOnClose=true. Fermer par la croix
+      cachait la fenêtre (hide) sans tuer le process ; au tap suivant sur
+      l'icône, Lomiri « raise » une fenêtre cachée = rien ne s'affiche.
+      Process + heartbeat vivants, écran inchangé → « ne démarre pas » 1 fois sur 2-3.
+- [x] Fix: settings defaults → showWindowFrame/hideOnClose/hideOnMinimize = false
+      (comportement app UT natif : plein écran, fermer = quitter proprement,
+      le prochain tap relance un process neuf)
+- [x] Fix: main.mjs — app.requestSingleInstanceLock() (le handler second-instance
+      était du code mort sans le lock) ; second-instance → show() la fenêtre
+- [x] Fix: main.mjs — heartbeat track la fenêtre PRINCIPALE (pas le splash) :
+      si jamais visible après 30 heartbeats (~60s), force show() au lieu
+      d'attendre 120s puis auto-exit → plus d'« app vivante mais invisible »
+- [x] Logs: événements fenêtre show/hide/focus/blur/close/minimize, création
+      splash (erreur si splash.html absent de l'asar), closeSplashWindow
+- [x] Tests: +2 tests (80 tests, 75 pass + 5 skip, 0 fail)
+- [x] Version bump: 3.3.3 → 3.3.4
+
 ## Idées en réserve (non prioritaires)
 
 - [ ] Raccourcis clavier personnalisables

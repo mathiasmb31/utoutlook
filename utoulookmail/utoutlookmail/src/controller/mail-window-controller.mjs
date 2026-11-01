@@ -748,7 +748,14 @@ class MailWindowController {
 
     createSplashWindow() {
         const splashPath = path.resolve(__dirnameNew, '../../public/splash.html');
-        if (!fs.existsSync(splashPath)) return;
+        if (!fs.existsSync(splashPath)) {
+            // v3.3.4: without the splash there is no 30s safety timeout that
+            // calls closeSplashWindow() → win.show(). Log loudly so a missing
+            // splash.html in the asar is visible in the logs.
+            logger.error(`splash.html NOT FOUND at ${splashPath} — no splash timeout will fire`);
+            return;
+        }
+        logger.info('Splash window created');
 
         const primaryDisplay = screen.getPrimaryDisplay();
         const {width, height} = primaryDisplay.workAreaSize;
@@ -806,7 +813,10 @@ class MailWindowController {
         // the app content (mail interface, login page, or offline overlay)
         // immediately after the splash disappears, never a blank screen.
         if (this.win && !this.win.isDestroyed() && !this.initialMinimization.domReady) {
+            logger.info('closeSplashWindow: showing main window');
             this.win.show();
+        } else {
+            logger.warn(`closeSplashWindow: NOT showing main window (win=${!!this.win}, destroyed=${this.win?.isDestroyed()}, minimized=${this.initialMinimization.domReady})`);
         }
     }
 
@@ -1230,17 +1240,29 @@ class MailWindowController {
     }
 
     setupWindowEvents() {
+        // v3.3.4: log window lifecycle events — needed to diagnose "app does not
+        // start" episodes where the process and heartbeat are alive but the
+        // window never appears (or is hidden and never re-shown on relaunch).
+        this.win.on("show", () => logger.info('Window event: show'));
+        this.win.on("hide", () => logger.info('Window event: hide'));
+        this.win.on("focus", () => logger.info('Window event: focus'));
+        this.win.on("blur", () => logger.info('Window event: blur'));
+
         // Hide instead of quit on close
         this.win.on("close", (e) => {
             if (this.win.isVisible() && settings.get("hideOnClose")) {
+                logger.info('Window event: close intercepted (hideOnClose) → hide');
                 e.preventDefault();
                 this.win.hide();
+            } else {
+                logger.info('Window event: close → letting it close');
             }
         });
 
         // Hide instead of minimize
         this.win.on("minimize", (e) => {
             if (settings.get("hideOnMinimize")) {
+                logger.info('Window event: minimize intercepted (hideOnMinimize) → hide');
                 e.preventDefault();
                 this.win.hide();
             }

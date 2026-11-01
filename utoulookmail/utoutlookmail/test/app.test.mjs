@@ -1075,3 +1075,32 @@ test('command.sh: startup is resilient to slow network and slow Electron (v3.3.3
     assert.ok(content.includes('startupGrace'),
         'verify_prospect_life must have a startup grace window when heartbeat is absent (v3.3.3)');
 });
+
+test('settings: window behaves like a native UT app — no X11 frame, close quits (v3.3.4)', async () => {
+    const fs = await import('node:fs');
+    const sPath = path.resolve(__dirname, '../src/settings.mjs');
+    const content = fs.readFileSync(sPath, 'utf-8');
+
+    // With showWindowFrame+hideOnClose=true, closing via the X11 cross only hid
+    // the window while the process kept running; the next launcher tap raised a
+    // hidden window = nothing appeared ("app does not start", 1 in 2-3 launches).
+    assert.ok(/showWindowFrame:\s*false/.test(content),
+        'showWindowFrame default must be false on UT (v3.3.4)');
+    assert.ok(/hideOnClose:\s*false/.test(content),
+        'hideOnClose default must be false so closing quits the app (v3.3.4)');
+    assert.ok(/hideOnMinimize:\s*false/.test(content),
+        'hideOnMinimize default must be false on UT (v3.3.4)');
+});
+
+test('main.mjs: single-instance lock + force-show if main window never appears (v3.3.4)', async () => {
+    const fs = await import('node:fs');
+    const mPath = path.resolve(__dirname, '../src/main.mjs');
+    const content = fs.readFileSync(mPath, 'utf-8');
+
+    assert.ok(content.includes('requestSingleInstanceLock'),
+        'main.mjs must request the single-instance lock (v3.3.4) — the second-instance handler was dead code without it');
+    assert.ok(content.includes('mainWindowEverVisible'),
+        'heartbeat must track main-window visibility separately from the splash (v3.3.4)');
+    assert.ok(content.includes('forcing show()'),
+        'heartbeat must force show() if the main window never appeared after 60s (v3.3.4)');
+});
