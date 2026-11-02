@@ -1485,3 +1485,11 @@ test('v3.3.22: uncaughtException ne tue plus l\'app au premier coup (exit seulem
     assert.ok(seg.includes('uncaughtCount >= 5'), 'exit only after 5 uncaught exceptions in 60s (v3.3.22)');
     assert.ok(!/\(\) => app\.exit\(1\)/.test(seg), 'no immediate app.exit(1) on first exception (v3.3.22)');
 });
+
+test('v3.3.23: cacheWatcher a un handler error (CACHE_DIR supprimé ne doit pas crasher)', async () => {
+    const fs = await import('node:fs');
+    const ctrl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    const i = ctrl.indexOf('startCacheWatcher()');
+    const seg = ctrl.slice(i, i + 1600);
+    assert.ok(seg.includes("cacheWatcher.on('error'"), 'fs.watch must have an error handler (v3.3.23)');
+});
