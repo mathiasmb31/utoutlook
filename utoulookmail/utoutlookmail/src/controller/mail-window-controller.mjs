@@ -884,6 +884,10 @@ class MailWindowController {
         if (this.win && !this.win.isDestroyed() && !this.initialMinimization.domReady) {
             logger.info('closeSplashWindow: showing main window');
             this.win.show();
+            // v3.3.31: grab the X11 focus too — a visible-but-unfocused window
+            // does not raise Maliit's virtual keyboard when the login field is
+            // tapped (password field stays empty).
+            this.win.focus();
         } else {
             logger.warn(`closeSplashWindow: NOT showing main window (win=${!!this.win}, destroyed=${this.win?.isDestroyed()}, minimized=${this.initialMinimization.domReady})`);
         }
