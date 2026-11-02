@@ -1704,4 +1704,6 @@ test('v3.3.36: overlay de saisie pour les champs password (champ text pur + copi
         'overlay must stay masked (v3.3.36)');
     assert.ok(g.includes("addEventListener('mousedown'") && g.includes('e.preventDefault()'),
         'gestures.js must prevent the password field from taking focus (mousedown preventDefault) so the overlay keeps it (v3.3.37)');
+    assert.ok(g.includes("removeAttribute('autofocus')") && g.includes('defusePwFocus'),
+        'gestures.js must strip autofocus from password fields and blur them if focused — Blink sets HAS_BEEN_PASSWORD and the OSK stops typing everywhere (v3.3.38)');
 });
