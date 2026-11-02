@@ -1,4 +1,5 @@
 import path from 'node:path';
+import fs from 'node:fs';
 import {fileURLToPath} from 'node:url';
 
 // ============================================================
@@ -29,6 +30,15 @@ export const LANG_FILE = path.join(CONFIG_DIR, 'lang');
 
 // --- Unix socket for shell ↔ Electron commands ---
 export const SOCKET_PATH = path.join(CONFIG_DIR, 'utoutlook.sock');
+
+// v3.3.28: mark a DELIBERATE quit (window closed by the user / OS swipe,
+// SIGTERM/SIGINT, socket quit) by writing the exitclient flag SYNCHRONOUSLY
+// before exiting. The shell wrapper (command.sh) reads this flag to tell a
+// clean quit apart from a crash — an async writeFile raced app.exit(0) and
+// never landed, so the wrapper relaunched the app after a swipe-close.
+export function markCleanExit() {
+    try { fs.writeFileSync(EXIT_CLIENT_FILE, 'quitclient'); } catch (e) { /* ignore */ }
+}
 
 // --- Asset paths (relative to the app root) ---
 export const ASSETS_DIR = path.resolve(__dirname, '../../assets');

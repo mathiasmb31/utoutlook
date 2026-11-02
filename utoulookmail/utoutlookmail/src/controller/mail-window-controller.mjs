@@ -13,6 +13,7 @@ import {
     LOGIN_FLAG_FILE,
     NOTIF_FLAG_FILE,
     ICON_PATH,
+    markCleanExit,
 } from '../config.mjs';
 import {logger} from '../logger.mjs';
 
@@ -1394,6 +1395,13 @@ class MailWindowController {
                 e.preventDefault();
                 this.win.hide();
             } else {
+                // v3.3.28: on a swipe-close, Mir stops the session and the X11
+                // teardown can kill the process before the 'closed' handler
+                // runs — write the clean-quit flag NOW, synchronously, while
+                // the 'close' event is being handled, so the shell wrapper
+                // does not relaunch the app. Skipped during window recreation
+                // (preventAutoCloseApp) and hideOnClose.
+                if (!global.preventAutoCloseApp) markCleanExit();
                 logger.info('Window event: close → letting it close');
             }
         });
@@ -1438,6 +1446,11 @@ class MailWindowController {
             // Flush cookies one last time before window destruction
             this.flushSessionCookies();
             if (!global.preventAutoCloseApp) {
+                // v3.3.28: this app.exit(0) is what actually runs on a
+                // swipe-close (window 'closed'), before window-all-closed —
+                // write the clean-quit flag synchronously so the wrapper
+                // does not relaunch the app.
+                markCleanExit();
                 app.exit(0);
             }
             global.preventAutoCloseApp = false;

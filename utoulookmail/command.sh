@@ -18,6 +18,12 @@ function cleanup() {
 	utoutlook_kill_stale_wrappers
 	utoutlook_cleanup_locks
 	"${WD}"/bin/rm -f "${UTOUTLOOK_EXITCOMMAND}" 2>/dev/null || true
+	# v3.3.28: clear lifecycle flags AFTER killing the old app (kill_app waits
+	# for its graceful exit, so a flag it wrote synchronously is already on
+	# disk) — a stale exitclient must not make a later crash look like a
+	# clean quit. Never clear them while the client is alive: the 'close'
+	# event writes exitclient right before the process dies.
+	"${WD}"/bin/rm -f "${UTOUTLOOK_EXITCLIENT}" "${UTOUTLOOK_KILLEDCLIENT}" 2>/dev/null || true
 	# v3.3.7: record this wrapper's PID AFTER killing the previous one, so the
 	# next launch can kill this wrapper if it becomes an orphan (pgrep is not
 	# reliable under AppArmor confinement).
@@ -101,6 +107,14 @@ function verify_prospect_life() {
 		stagnantCount=$((stagnantCount + 1))
 		echo "heartbeat stagnant (${stagnantCount}/2)"
 		if [ ${stagnantCount} -ge 2 ]; then
+			# v3.3.28: heartbeat stopped — but if the app wrote its clean-quit
+			# flag (window closed by swipe / SIGTERM; written synchronously
+			# before exit), this is a DELIBERATE quit: exit the wrapper
+			# instead of relaunching the app the user just closed.
+			if [ -f ${exitclient} ]; then
+				echo "exitclient flag present — app quit cleanly, wrapper exits"
+				exit 0
+			fi
 			echo ${follow}
 			echo ${oldfollow}
 			# v3.3.9: nettoyer puis RELANCER au lieu de quitter (limite launchtry>3).
@@ -115,6 +129,9 @@ function verify_prospect_life() {
 		stagnantCount=0
 		# v3.3.9: client vivant → on remet le compteur de tentatives à zéro,
 		# pour que une mort ultérieure ait droit à ses 3 essais.
+		# v3.3.28: ne PAS toucher à ${exitclient} ici — le flag peut avoir été
+		# écrit par le 'close' de la fenêtre juste avant la mort du process,
+		# et un heartbeat peut passer entre les deux.
 		launchtry=1
 		clientalive=1
 		touch ${lock}
