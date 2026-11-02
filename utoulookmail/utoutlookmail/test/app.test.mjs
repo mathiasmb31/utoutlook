@@ -1456,3 +1456,32 @@ test('v3.3.21: parsing du count dans un title "(251 non lus)" (texte après le n
     assert.ok(obs.includes('/\\((\\d+)[^)]*\\)/g'),
         'title regex must accept text after the number inside parens: (251 non lus) (v3.3.21)');
 });
+
+test('v3.3.22: guards this.win null dans les handlers + retry limité à 5 échecs', async () => {
+    const fs = await import('node:fs');
+    const ctrl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+
+    // crash.log: TypeError setProgressBar/webContents of null → app.exit(1)
+    assert.ok(ctrl.includes('get alive()'), 'alive getter required (v3.3.22)');
+    for (const h of ['did-finish-load', 'did-stop-loading', 'did-start-loading', 'dom-ready', 'did-navigate-in-page', 'will-navigate']) {
+        const i = Math.max(ctrl.indexOf(`on('${h}'`), ctrl.indexOf(`on("${h}"`));
+        const seg = ctrl.slice(i, i + 600);
+        assert.ok(seg.includes('!this.alive'), `handler ${h} must guard !this.alive (v3.3.22)`);
+    }
+    const showIdx = ctrl.indexOf('async show()');
+    assert.ok(ctrl.slice(showIdx, showIdx + 120).includes('!this.alive'),
+        'show() must guard !this.alive (v3.3.22)');
+
+    const obs = fs.readFileSync(path.resolve(__dirname, '../public/unread-number-observer.js'), 'utf-8');
+    assert.ok(obs.includes('deadHandlers') && obs.includes('>= 5'),
+        'observer must stop retrying a handler after 5 failures (v3.3.22)');
+});
+
+test('v3.3.22: uncaughtException ne tue plus l\'app au premier coup (exit seulement après 5 en 60s)', async () => {
+    const fs = await import('node:fs');
+    const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
+    const i = main.indexOf("process.on('uncaughtException'");
+    const seg = main.slice(i, i + 900);
+    assert.ok(seg.includes('uncaughtCount >= 5'), 'exit only after 5 uncaught exceptions in 60s (v3.3.22)');
+    assert.ok(!/\(\) => app\.exit\(1\)/.test(seg), 'no immediate app.exit(1) on first exception (v3.3.22)');
+});

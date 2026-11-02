@@ -376,7 +376,9 @@ class MailWindowController {
                         });
                         copied++;
                     } catch (e) {
-                        logger.warn(`Cookie copy failed: ${cookie.name} → ${newDomain}: ${e.message}`);
+                        // v3.3.22: HttpOnly overwrite refusals are expected for tracking
+                        // cookies (MSFPC/NAP/MCN…) — debug level, not warn (log spam).
+                        logger.debug(`Cookie copy failed: ${cookie.name} → ${newDomain}: ${e.message}`);
                     }
                 }
             }
@@ -938,6 +940,13 @@ class MailWindowController {
         return null;
     }
 
+    // v3.3.22: this.win is set to null on 'closed', but webContents event handlers
+    // can still fire afterwards → TypeError (setProgressBar/webContents of null)
+    // → uncaughtException → app.exit(1) (crash.log: 10× setProgressBar, 6× webContents).
+    get alive() {
+        return !!(this.win && !this.win.isDestroyed());
+    }
+
     async loadMainUrl() {
         // v3.3.18: known account email (local only, never logged/published) — used
         // to add login_hint= to the authorize URL so the account tile shows.
@@ -959,6 +968,7 @@ class MailWindowController {
         this.win.loadURL(this.mainMailServiceUrl, {userAgent: customUserAgent});
 
         this.win.webContents.on('did-finish-load', () => {
+            if (!this.alive) return; // v3.3.22: window closed mid-load
             this.loginPage++;
             const url = this.win.webContents.getURL();
             logger.info(`Page loaded #${this.loginPage}: ${url}`);
@@ -1046,6 +1056,7 @@ class MailWindowController {
             // appear as a blue line in the Lomiri app header — jarring when
             // the splash (blue background) is showing on top.
             if (!this.splashClosed) return;
+            if (!this.alive) return; // v3.3.22
             this.win.setProgressBar(0.3);
         });
         // did-stop-loading handled in setupWebContentsEvents (merged to avoid
@@ -1248,6 +1259,7 @@ class MailWindowController {
         // progress bar). The splash is now closed by did-finish-load when the
         // URL is the actual mail interface or a login page.
         this.win.webContents.on("dom-ready", () => {
+            if (!this.alive) return; // v3.3.22
             this.injectStyles().catch(() => {});
             this.addUnreadNumberObserver().catch(() => {});
             this.injectGestures();
@@ -1259,6 +1271,7 @@ class MailWindowController {
 
         // Re-inject on SPA navigation (Outlook is a single-page app)
         this.win.webContents.on('did-navigate-in-page', (_event, url) => {
+            if (!this.alive) return; // v3.3.22
             logger.info(`SPA navigation: ${url}`);
             this.injectStyles().catch(() => {});
             this.addUnreadNumberObserver().catch(() => {});
@@ -1273,6 +1286,7 @@ class MailWindowController {
         // before loading. Keep the login_hint — the page needs it to identify
         // the account, and the synced cookies provide the session.
         this.win.webContents.on('will-navigate', (event, url) => {
+            if (!this.alive) { try { event.preventDefault(); } catch (e) {} return; } // v3.3.22
             // v3.3.11: outlook.cloud.microsoft is the new mail host — same
             // login_hint treatment as live.com.
             if ((url.includes('outlook.live.com/mail') || url.includes('outlook.cloud.microsoft/mail'))
@@ -1308,10 +1322,11 @@ class MailWindowController {
         // Also clears the progress bar — merged with setupLoadingIndicators
         // to keep a single did-stop-loading listener.
         this.win.webContents.on('did-stop-loading', () => {
+            if (!this.alive) return; // v3.3.22: crash.log — setProgressBar of null
             this.win.setProgressBar(-1);
             // Small delay to let the SPA render after load event
             setTimeout(() => {
-                if (this.win && !this.win.isDestroyed()) {
+                if (this.alive) {
                     this.addUnreadNumberObserver().catch(() => {});
                 }
             }, 2000);
@@ -1614,6 +1629,7 @@ class MailWindowController {
      * Extrait également le token fb_dtsg de la page.
      */
     async show() {
+        if (!this.alive) return; // v3.3.22
         this.initialMinimization.domReady = false;
         if (this.win.isMinimized()) {
             this.win.restore();
