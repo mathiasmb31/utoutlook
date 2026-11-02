@@ -10,63 +10,91 @@
     if (window.__utoutlookGesturesLoaded) return;
     window.__utoutlookGesturesLoaded = true;
 
-    // --- v3.3.39: password fields and the Maliit virtual keyboard ---
-    // Chromium/Blink sets the HAS_BEEN_PASSWORD flag on the window the first
-    // time a password field takes the focus (even briefly) — after that the OSK
-    // stops delivering text ANYWHERE (verified on device: "2 chars then blocked").
-    // So a password field must NEVER be focusable by a tap. Solution: swap each
-    // password field with a same-position overlay input born as type=text, and
-    // hide the real field (display:none). Taps land on the overlay (text → OSK
-    // works), and every keystroke is copied back into the real password field,
-    // so the submitted value is correct.
-    const isPwField = (el) => el && el.tagName === 'INPUT' && !el.__pwSwapped &&
-        (el.type === 'password' || /password/i.test(el.getAttribute('autocomplete') || ''));
-    const pwSwap = (el) => {
-        if (!isPwField(el) || !el.parentNode) return;
-        el.__pwSwapped = true;
-        el.removeAttribute('autofocus');
-        try {
-            const r = el.getBoundingClientRect();
-            const cs = getComputedStyle(el);
-            const o = document.createElement('input');
-            o.type = 'text';
-            o.setAttribute('autocomplete', 'off');
-            o.setAttribute('autocapitalize', 'off');
-            o.spellcheck = false;
-            o.placeholder = el.placeholder || '••••••••';
-            o.style.cssText =
-                `position:fixed;left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;` +
-                `font-size:${cs.fontSize};box-sizing:border-box;z-index:2147483646;` +
-                `-webkit-text-security:disc;background:${cs.backgroundColor};color:${cs.color};` +
-                `border:${cs.border};border-radius:${cs.borderRadius};padding:${cs.padding};`;
-            o.value = el.value || '';
-            o.addEventListener('input', () => { try { el.value = o.value; } catch (_) {} });
-            el.parentNode.insertBefore(o, el);
-            el.style.display = 'none';   // real field can no longer be tapped/focused
-        } catch (_) { /* ignore */ }
+    // --- v3.3.40: password fields and the Maliit virtual keyboard (structural fix) ---
+    // Chromium/Blink sets the HAS_BEEN_PASSWORD flag on the window the first time a
+    // password field takes the focus (even briefly) — after that the OSK stops
+    // delivering text ANYWHERE. Chromium also refuses IME commits (the exact path
+    // the Maliit on-screen keyboard uses) in input[type=password]. So NO input may
+    // ever be type=password when focused. Fix: convert every password field IN
+    // PLACE to type=text (same node → React keeps listeners/value tracker, focus and
+    // value are preserved) and mask it with CSS (-webkit-text-security:disc → dots).
+    // The prototype patches below run BEFORE any attribute or focus() call can set
+    // 'password', so the window flag is never set and IME commits always go through.
+    const PW_MASK_ATTR = 'data-pwmask';
+    const ensureMaskStyle = () => {
+        if (document.getElementById('__pwMaskStyle')) return;
+        const st = document.createElement('style');
+        st.id = '__pwMaskStyle';
+        st.textContent = 'input[' + PW_MASK_ATTR + ']{-webkit-text-security:disc !important;}';
+        (document.head || document.documentElement).appendChild(st);
+    };
+    const demaskPw = (el) => {
+        if (!(el instanceof HTMLInputElement)) return false;
+        if (el.type === 'password' || (el.getAttribute('type') || '').toLowerCase() === 'password') {
+            try { el.setAttribute(PW_MASK_ATTR, '1'); } catch (_) {}
+            try { el.type = 'text'; } catch (_) {}
+            return true;
+        }
+        return false;
     };
     const scanPwFields = () => {
-        document.querySelectorAll('input[type=password]').forEach(pwSwap);
-        document.querySelectorAll('input[autocomplete]').forEach((el) => {
-            if (/password/i.test(el.getAttribute('autocomplete') || '')) pwSwap(el);
-        });
+        ensureMaskStyle();
+        document.querySelectorAll('input[type=password]').forEach(demaskPw);
     };
-    scanPwFields();
-    // Re-scan whenever the DOM changes (SPA / React re-creates the field)
-    new MutationObserver(() => scanPwFields())
-        .observe(document.documentElement, {childList: true, subtree: true});
-    // Safety net: if a password field somehow gets the focus (script call),
-    // blur it immediately so HAS_BEEN_PASSWORD is never set on the window.
-    document.addEventListener('focusin', (e) => {
-        if (e.target && e.target.tagName === 'INPUT' &&
-            (e.target.type === 'password' || /password/i.test(e.target.getAttribute('autocomplete') || ''))) {
-            try { e.target.blur(); } catch (_) {}
+    // 1) setAttribute / setAttributeNS (React sets type via attribute on mount)
+    const __origSetAttribute = Element.prototype.setAttribute;
+    const __origSetAttributeNS = Element.prototype.setAttributeNS;
+    Element.prototype.setAttribute = function (name, value) {
+        if (this instanceof HTMLInputElement && String(name).toLowerCase() === 'type' &&
+            String(value).toLowerCase() === 'password') {
+            try { __origSetAttribute.call(this, PW_MASK_ATTR, '1'); } catch (_) {}
+            return __origSetAttribute.call(this, name, 'text');
         }
-    }, true);
-    setInterval(function () {
-        const ae = document.activeElement;
-        if (ae && ae.tagName === 'INPUT' && ae.type === 'password') { try { ae.blur(); } catch (_) {} }
-    }, 400);
+        return __origSetAttribute.call(this, name, value);
+    };
+    Element.prototype.setAttributeNS = function (ns, name, value) {
+        if (this instanceof HTMLInputElement && String(name).toLowerCase() === 'type' &&
+            String(value).toLowerCase() === 'password') {
+            try { __origSetAttribute.call(this, PW_MASK_ATTR, '1'); } catch (_) {}
+            return __origSetAttributeNS.call(this, ns, name, 'text');
+        }
+        return __origSetAttributeNS.call(this, ns, name, value);
+    };
+    // 2) the `type` property setter (covers el.type = 'password')
+    const __typeDesc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'type');
+    if (__typeDesc && __typeDesc.set && __typeDesc.configurable) {
+        Object.defineProperty(HTMLInputElement.prototype, 'type', {
+            configurable: true,
+            get: __typeDesc.get,
+            set: function (v) {
+                if (String(v).toLowerCase() === 'password') {
+                    try { __origSetAttribute.call(this, PW_MASK_ATTR, '1'); } catch (_) {}
+                    return __typeDesc.set.call(this, 'text');
+                }
+                return __typeDesc.set.call(this, v);
+            }
+        });
+    }
+    // 3) focus(): convert BEFORE the real focus so HAS_BEEN_PASSWORD is never set
+    const __origFocus = HTMLElement.prototype.focus;
+    HTMLElement.prototype.focus = function () {
+        if (this instanceof HTMLInputElement) demaskPw(this);
+        return __origFocus.apply(this, arguments);
+    };
+    // 4) capture-phase safety nets (tap or programmatic focus on a not-yet-converted field)
+    ['pointerdown', 'mousedown', 'touchstart', 'focusin'].forEach((evt) => {
+        document.addEventListener(evt, (e) => {
+            const t = e.target;
+            if (t && t.tagName === 'INPUT' && t.type === 'password') demaskPw(t);
+        }, true);
+    });
+    // 5) MutationObserver: parser-created fields (innerHTML) and React re-renders
+    scanPwFields();
+    new MutationObserver(() => scanPwFields())
+        .observe(document.documentElement, {
+            childList: true, subtree: true,
+            attributes: true, attributeFilter: ['type']
+        });
 
     // --- Disable native overscroll/pull-to-refresh on the page ---
     // Outlook web shows an envelope icon when the user pulls down from the
