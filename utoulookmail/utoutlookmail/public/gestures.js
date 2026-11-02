@@ -10,33 +10,40 @@
     if (window.__utoutlookGesturesLoaded) return;
     window.__utoutlookGesturesLoaded = true;
 
-    // --- v3.3.33: password fields accept NO input-method commits in Chromium ---
-    // Chromium refuses XIM/Wayland-text-input commit strings inside
-    // <input type="password"> (anti-keylogger) → on Ubuntu Touch the Maliit
-    // virtual keyboard opens on the password field but types nothing.
-    // Workaround: on focus, switch the field to type=text while keeping the
-    // masked look with -webkit-text-security, restore password on blur.
-    // Form submission is unaffected (input type does not change the value sent).
-    document.addEventListener('focusin', (e) => {
-        const el = e.target;
-        if (el && el.tagName === 'INPUT' && el.type === 'password' && !el.__pwMask) {
-            el.__pwMask = true;
-            try {
-                el.type = 'text';
-                el.style.webkitTextSecurity = 'disc';
-            } catch (_) { /* ignore */ }
-        }
-    }, true);
-    document.addEventListener('focusout', (e) => {
-        const el = e.target;
-        if (el && el.__pwMask) {
-            try {
-                el.type = 'password';
-                el.style.webkitTextSecurity = '';
-            } catch (_) { /* ignore */ }
-            el.__pwMask = false;
-        }
-    }, true);
+    // --- v3.3.34: password fields accept NO input-method commits in Chromium ---
+    // Chromium/Blink refuses XIM/Wayland-text-input commit strings inside
+    // <input type="password"> (anti-keylogger), and the flag is frozen when the
+    // field is CREATED as password → on Ubuntu Touch the Maliit virtual keyboard
+    // opens on the password field but types nothing (verified on device:
+    // a field created as type=text receives Maliit input fine, a field created
+    // as password does not, even after switching type at focus).
+    // Workaround: switch password fields to type=text PROACTIVELY, as soon as
+    // they appear in the DOM (MutationObserver — before any focus), keeping
+    // the masked look with -webkit-text-security:disc and autocomplete=off.
+    // The submitted value is unaffected (input type does not change what is sent).
+    const pwMask = (el) => {
+        if (!el || el.__pwMask || el.tagName !== 'INPUT') return;
+        const ac = (el.getAttribute('autocomplete') || '');
+        if (el.type !== 'password' && !/password/i.test(ac)) return;
+        el.__pwMask = true;
+        try {
+            el.type = 'text';
+            el.setAttribute('autocomplete', 'off');
+            el.style.webkitTextSecurity = 'disc';
+        } catch (_) { /* ignore */ }
+    };
+    const scanPwFields = () => {
+        document.querySelectorAll('input[type=password]').forEach(pwMask);
+        document.querySelectorAll('input[autocomplete]').forEach((el) => {
+            if (/password/i.test(el.getAttribute('autocomplete') || '')) pwMask(el);
+        });
+    };
+    scanPwFields();
+    // Re-scan whenever the DOM changes (SPA / React re-creates the field)
+    new MutationObserver(() => scanPwFields())
+        .observe(document.documentElement, {childList: true, subtree: true});
+    // Safety net at focus time
+    document.addEventListener('focusin', (e) => pwMask(e.target), true);
 
     // --- Disable native overscroll/pull-to-refresh on the page ---
     // Outlook web shows an envelope icon when the user pulls down from the
