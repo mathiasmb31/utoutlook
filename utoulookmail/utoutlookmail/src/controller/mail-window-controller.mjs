@@ -197,6 +197,12 @@ class MailWindowController {
                 }
             }, 100));
         });
+        // v3.3.23: if CACHE_DIR is removed (app reset), fs.watch emits 'error' →
+        // uncaughtException. Log and recreate instead of crashing.
+        this.cacheWatcher.on('error', (err) => {
+            logger.warn('cacheWatcher error (CACHE_DIR removed?):', err.message);
+            try { fs.mkdirSync(CACHE_DIR, {recursive: true}); } catch (e) { /* ignore */ }
+        });
         logger.info(`Watching ${CACHE_DIR} for zoom/text triggers`);
     }
 
