@@ -1535,10 +1535,10 @@ test('v3.3.26: icône mascotte — enveloppe + tête UBTouch, statique + animée
         assert.ok(fs.existsSync(path.join(assets, f)), `asset ${f} must exist (v3.3.26)`);
     }
     const vibe = fs.readFileSync(path.join(assets, 'logo-vibe.svg'), 'utf-8');
-    assert.ok(vibe.includes('mascotte-512.png') && vibe.includes('#E95420'),
+    assert.ok(vibe.includes('data:image/png;base64') && vibe.includes('#E95420'),
         'logo-vibe.svg = enveloppe + tête mascotte sur fond orange UT (v3.3.26)');
     const anim = fs.readFileSync(path.join(assets, 'logo-anim.svg'), 'utf-8');
-    assert.ok(anim.includes('animateTransform') && anim.includes('mascotte-512.png'),
+    assert.ok(anim.includes('animateTransform') && anim.includes('data:image/png;base64'),
         'logo-anim.svg = tête qui entre/sort de l\'enveloppe en boucle (v3.3.26)');
     const splash = fs.readFileSync(path.resolve(__dirname, '../public/splash.html'), 'utf-8');
     assert.ok(splash.includes('logo-anim.svg'), 'splash must use the animated logo (v3.3.26)');
