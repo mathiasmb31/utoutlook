@@ -205,6 +205,11 @@ echo "################################################"
 export GDK_SCALE=2
 export GTK_IM_MODULE=Maliit
 export GTK_IM_MODULE_FILE=/home/phablet/.config/utoutlook.mathias/immodules.cache
+# v3.3.27: XMODIFIERS is what makes the Maliit virtual keyboard deliver keys to
+# X11/Chromium apps — without it the on-screen keyboard types nothing (GTK_IM_MODULE
+# alone only covers GTK apps).
+export XMODIFIERS=@im=maliit
+export QT_IM_MODULE=maliit
 export GDK_BACKEND=x11
 export DISABLE_WAYLAND=1
 export DCONF_PROFILE=/nonexistent
