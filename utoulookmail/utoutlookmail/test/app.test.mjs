@@ -1687,16 +1687,18 @@ test('v3.3.32: repaint forcé au réveil (veille → écran blanc en X11) + pas 
         'must disable background throttling so the X11 window repaints after wake (v3.3.32)');
 });
 
-test('v3.3.34: les champs password acceptent les commits IME (switch proactif type=text des l\'apparition + masque CSS)', async () => {
+test('v3.3.35: les champs password acceptent les commits IME (remplacement par clone type=text des l\'apparition)', async () => {
     const fs = await import('node:fs');
     const g = fs.readFileSync(path.resolve(__dirname, '../public/gestures.js'), 'utf-8');
-    // Chromium fige le flag "password" a la CREATION du champ → switch au focus
-    // ne suffit pas. Le script doit switcher les champs password en type=text
-    // des leur apparition dans le DOM (MutationObserver), avant tout focus.
+    // Blink fige le flag password a la CREATION du champ : switcher el.type ne
+    // suffit pas (verifie on-device). Il faut REMPLACER le noeud par un clone
+    // cree en type=text, des l'apparition dans le DOM (avant tout focus).
     assert.ok(g.includes('MutationObserver') && g.includes('scanPwFields'),
-        'gestures.js must scan/switch password fields proactively via MutationObserver (v3.3.34)');
-    assert.ok(g.includes("el.type = 'text'") && g.includes('webkitTextSecurity') && g.includes("'autocomplete', 'off'"),
-        'gestures.js must switch password→text + autocomplete=off + CSS mask (v3.3.34)');
+        'gestures.js must scan password fields proactively via MutationObserver (v3.3.35)');
+    assert.ok(g.includes('replaceChild') && g.includes("c.type = 'text'"),
+        'gestures.js must REPLACE the password node by a type=text clone (v3.3.35)');
+    assert.ok(g.includes('webkitTextSecurity') && g.includes("'autocomplete', 'off'"),
+        'gestures.js must keep the mask (text-security) and disable autocomplete (v3.3.35)');
     assert.ok(g.includes("addEventListener('focusin'"),
-        'gestures.js must keep a focusin safety net (v3.3.34)');
+        'gestures.js must keep a focusin safety net (v3.3.35)');
 });

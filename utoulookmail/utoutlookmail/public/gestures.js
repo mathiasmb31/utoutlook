@@ -10,32 +10,34 @@
     if (window.__utoutlookGesturesLoaded) return;
     window.__utoutlookGesturesLoaded = true;
 
-    // --- v3.3.34: password fields accept NO input-method commits in Chromium ---
+    // --- v3.3.35: password fields accept NO input-method commits in Chromium ---
     // Chromium/Blink refuses XIM/Wayland-text-input commit strings inside
-    // <input type="password"> (anti-keylogger), and the flag is frozen when the
-    // field is CREATED as password → on Ubuntu Touch the Maliit virtual keyboard
-    // opens on the password field but types nothing (verified on device:
-    // a field created as type=text receives Maliit input fine, a field created
-    // as password does not, even after switching type at focus).
-    // Workaround: switch password fields to type=text PROACTIVELY, as soon as
-    // they appear in the DOM (MutationObserver — before any focus), keeping
-    // the masked look with -webkit-text-security:disc and autocomplete=off.
-    // The submitted value is unaffected (input type does not change what is sent).
-    const pwMask = (el) => {
-        if (!el || el.__pwMask || el.tagName !== 'INPUT') return;
-        const ac = (el.getAttribute('autocomplete') || '');
+    // <input type="password"> (anti-keylogger), and the "password" flag is frozen
+    // when the field is CREATED as password. Verified on device: merely switching
+    // el.type at focus does NOT work; REPLACING the node by a clone created as
+    // type=text DOES work (the clone's TextField is born non-password).
+    // So: as soon as a password field appears in the DOM (MutationObserver, before
+    // any focus), replace it by a type=text clone, keeping the masked look with
+    // -webkit-text-security:disc and autocomplete=off. The submitted value is
+    // unaffected (name/value are copied to the clone).
+    const pwReplace = (el) => {
+        if (!el || el.__pwReplaced || el.tagName !== 'INPUT' || !el.parentNode) return;
+        const ac = el.getAttribute('autocomplete') || '';
         if (el.type !== 'password' && !/password/i.test(ac)) return;
-        el.__pwMask = true;
         try {
-            el.type = 'text';
-            el.setAttribute('autocomplete', 'off');
-            el.style.webkitTextSecurity = 'disc';
+            const c = el.cloneNode(true);
+            c.type = 'text';
+            c.setAttribute('autocomplete', 'off');
+            c.style.webkitTextSecurity = 'disc';
+            c.value = el.value;
+            el.__pwReplaced = true;
+            el.parentNode.replaceChild(c, el);
         } catch (_) { /* ignore */ }
     };
     const scanPwFields = () => {
-        document.querySelectorAll('input[type=password]').forEach(pwMask);
+        document.querySelectorAll('input[type=password]').forEach(pwReplace);
         document.querySelectorAll('input[autocomplete]').forEach((el) => {
-            if (/password/i.test(el.getAttribute('autocomplete') || '')) pwMask(el);
+            if (/password/i.test(el.getAttribute('autocomplete') || '')) pwReplace(el);
         });
     };
     scanPwFields();
@@ -43,7 +45,7 @@
     new MutationObserver(() => scanPwFields())
         .observe(document.documentElement, {childList: true, subtree: true});
     // Safety net at focus time
-    document.addEventListener('focusin', (e) => pwMask(e.target), true);
+    document.addEventListener('focusin', (e) => pwReplace(e.target), true);
 
     // --- Disable native overscroll/pull-to-refresh on the page ---
     // Outlook web shows an envelope icon when the user pulls down from the
