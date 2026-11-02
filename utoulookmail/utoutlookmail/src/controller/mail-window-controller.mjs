@@ -157,6 +157,24 @@ class MailWindowController {
         logger.info(`Zoom set to ${ZOOM_LEVELS[this.currentZoomIndex]}`);
     }
 
+    // v3.3.25: reading font scale steps (message body text), independent of global zoom
+    static READING_FONT_STEPS = [0.9, 1.0, 1.1, 1.25, 1.4];
+
+    handleReadingFontCommand(action) {
+        const steps = MailWindowController.READING_FONT_STEPS;
+        let scale = settings.get('readingFontScale') || 1.0;
+        let idx = steps.indexOf(scale);
+        if (idx === -1) idx = 1;
+        if (action === 'in') idx = Math.min(idx + 1, steps.length - 1);
+        else if (action === 'out') idx = Math.max(idx - 1, 0);
+        else if (action === 'reset') idx = 1;
+        else if (typeof action === 'number') { scale = action; settings.set('readingFontScale', scale); this.injectStyles().catch(() => {}); logger.info(`Reading font scale set to ${scale}`); return; }
+        scale = steps[idx];
+        settings.set('readingFontScale', scale);
+        this.injectStyles().catch(() => {});
+        logger.info(`Reading font scale: ${scale}`);
+    }
+
     /**
      * Insère du texte dans le champ actif de la page (clavier virtuel).
      * @param {string} text - Texte à insérer
@@ -1554,11 +1572,11 @@ class MailWindowController {
         if (!win || win.isDestroyed()) return;
         // v3.3.20: per-window CSS keys (compose opens in a separate window and
         // must get the UT look too)
-        if (!win.__utoutlookCssKeys) win.__utoutlookCssKeys = { main: null, noFrame: null, dark: null, focus: null, accent: null };
+        if (!win.__utoutlookCssKeys) win.__utoutlookCssKeys = { main: null, noFrame: null, reading: null };
         const keys = win.__utoutlookCssKeys;
 
         // Remove previously inserted CSS
-        for (const key of ['main', 'noFrame', 'dark', 'focus', 'accent']) {
+        for (const key of ['main', 'noFrame', 'reading']) {
             if (keys[key]) {
                 try { await win.webContents.removeInsertedCSS(keys[key]); } catch (e) { /* ignore */ }
                 keys[key] = null;
@@ -1571,6 +1589,14 @@ class MailWindowController {
         keys.main = await win.webContents.insertCSS(getClientFile("main.css"));
         if (!this.showWindowFrame) {
             keys.noFrame = await win.webContents.insertCSS(getClientFile("no-frame.css"));
+        }
+        // v3.3.25: reading font scale (message body), independent of global zoom
+        const readingScale = settings.get('readingFontScale') || 1.0;
+        if (readingScale !== 1.0) {
+            keys.reading = await win.webContents.insertCSS(
+                `[role="complementary"], [data-app-section*="ReadingPane" i], [class*="readingPane" i] ` +
+                `{ font-size: ${readingScale}em !important; }`
+            );
         }
     }
 
@@ -1586,6 +1612,8 @@ class MailWindowController {
             newMailBodyNoSubject: tr['notif.newMail.bodyNoSubject'],
             calendarTitle: tr['notif.calendar.title'],
             appName: tr['app.name'],
+            emptyTitle: tr['empty.title'],
+            emptyBody: tr['empty.body'],
         });
         // executeJavaScript returns a Promise — catch rejections to avoid
         // unhandled rejections when the page is navigating or not ready.

@@ -175,6 +175,7 @@
             observeListContainer(container);
             hideLoadingIndicators(container);
         });
+        updateEmptyState(); // v3.3.25
     }, 3000);
 
     // --- Swipe from left edge to go back (browser history) ---
@@ -303,6 +304,74 @@
             }
         }
         lastTapTime = now;
+    }, {passive: true});
+
+    // ============================================================
+    // v3.3.25: Empty state — show a friendly message when the message
+    // list has no items (instead of a blank area).
+    // ============================================================
+    const EMPTY_ID = 'utoutlook-empty-state';
+    function updateEmptyState() {
+        const list = document.querySelector('[aria-label="Liste des messages"], [aria-label="Message list"], [data-app-section="MessageList"] [aria-label*="messages" i]');
+        if (!list) return;
+        const hasItems = list.querySelectorAll('div').length > 3; // header rows etc.
+        let el = document.getElementById(EMPTY_ID);
+        if (!hasItems && !el) {
+            el = document.createElement('div');
+            el.id = EMPTY_ID;
+            el.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;' +
+                'height:40vh;color:#888;text-align:center;font-family:Ubuntu,sans-serif;pointer-events:none;';
+            el.innerHTML = '<div style="font-size:48px;opacity:0.5">&#x1F4ED;</div>' +
+                '<div style="font-size:1.2em;margin-top:12px;font-weight:600"></div>' +
+                '<div style="font-size:0.95em;margin-top:6px;opacity:0.8"></div>';
+            el.children[1].textContent = (window.__utoutlookI18n && window.__utoutlookI18n.emptyTitle) || 'No messages';
+            el.children[2].textContent = (window.__utoutlookI18n && window.__utoutlookI18n.emptyBody) || 'This folder is empty.';
+            list.appendChild(el);
+        } else if (hasItems && el) {
+            el.remove();
+        }
+    }
+
+    // ============================================================
+    // v3.3.25: Swipe actions on message list items —
+    // swipe LEFT = delete, swipe RIGHT = mark as read/unread.
+    // Best effort: clicks the matching toolbar button if present.
+    // ============================================================
+    let swipeStartX = 0, swipeStartY = 0, swipeItem = null;
+    const LIST_ITEM_SEL = '[aria-label="Liste des messages"] > div, [aria-label="Message list"] > div';
+
+    document.addEventListener('touchstart', function (e) {
+        if (e.touches.length !== 1) return;
+        const item = e.target.closest && e.target.closest(LIST_ITEM_SEL);
+        if (item) {
+            swipeItem = item;
+            swipeStartX = e.touches[0].clientX;
+            swipeStartY = e.touches[0].clientY;
+        }
+    }, {passive: true});
+
+    document.addEventListener('touchend', function (e) {
+        if (!swipeItem || e.changedTouches.length !== 1) { swipeItem = null; return; }
+        const dx = e.changedTouches[0].clientX - swipeStartX;
+        const dy = e.changedTouches[0].clientY - swipeStartY;
+        const item = swipeItem;
+        swipeItem = null;
+        if (Math.abs(dx) < 100 || Math.abs(dy) > 60) return; // not a horizontal swipe
+        const action = dx < 0 ? 'delete' : 'toggle-read';
+        console.log('[gestures] Swipe ' + action + ' on message item');
+        // Select the item first so the action toolbar appears
+        item.click();
+        setTimeout(() => {
+            const patterns = action === 'delete'
+                ? /supprimer|delete|corbeille|trash/i
+                : /marquer comme lu|marquer comme non lu|mark as read|mark as unread/i;
+            const btns = document.querySelectorAll('[role="toolbar"] button, [role="toolbar"] [role="button"], [data-app-section="CommandBar"] button');
+            for (const b of btns) {
+                const label = (b.getAttribute('aria-label') || '') + ' ' + (b.innerText || '');
+                if (patterns.test(label)) { b.click(); console.log('[gestures] Action triggered: ' + label.trim().substring(0, 40)); return; }
+            }
+            console.log('[gestures] No toolbar button found for swipe action ' + action + ' (DOM may have changed)');
+        }, 400);
     }, {passive: true});
 
     console.log('[gestures] Touch gestures initialized');
