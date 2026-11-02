@@ -17,12 +17,24 @@ import fs from 'node:fs';
 // ============================================================
 // Global error handlers — prevent silent crashes
 // ============================================================
+// v3.3.22: a single uncaughtException used to app.exit(1) immediately — one stray
+// error killed the whole app (crash.log showed repeated setProgressBar/webContents
+// of null). Now: log + crash.log always, exit only after 5 errors in 60s.
+let uncaughtCount = 0;
+let uncaughtWindowStart = Date.now();
 process.on('uncaughtException', (err) => {
     logger.error('Uncaught exception:', err);
     fs.writeFile(`${CONFIG_DIR}/crash.log`,
-        `${new Date().toISOString()}\n${err.stack}\n`, {flag: 'a'},
-        () => app.exit(1)
+        `${new Date().toISOString()} [uncaughtException] ${err.stack}\n`, {flag: 'a'},
+        () => {}
     );
+    const now = Date.now();
+    if (now - uncaughtWindowStart > 60000) { uncaughtCount = 0; uncaughtWindowStart = now; }
+    uncaughtCount++;
+    if (uncaughtCount >= 5) {
+        logger.error('5 uncaught exceptions in 60s — exiting');
+        app.exit(1);
+    }
 });
 
 process.on('unhandledRejection', (reason, promise) => {
