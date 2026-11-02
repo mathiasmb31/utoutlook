@@ -10,7 +10,9 @@ import {
     CONFIG_DIR,
     HEARTBEAT_FILE,
     EXIT_CLIENT_FILE,
+    KILLED_CLIENT_FILE,
     CLOSE_FLAG_FILE,
+    markCleanExit,
 } from './config.mjs';
 import fs from 'node:fs';
 
@@ -55,6 +57,11 @@ fs.mkdirSync(CONFIG_DIR, {recursive: true});
 // 2s after launch ("app does not start", ~1 launch in 2-3, race-dependent).
 const PROCESS_START = Date.now();
 try { fs.unlinkSync(CLOSE_FLAG_FILE); } catch (e) { /* ignore */ }
+
+// v3.3.28: markCleanExit() lives in config.mjs (shared with the window
+// controller) — it writes the exitclient flag SYNCHRONOUSLY before every
+// deliberate quit so the shell wrapper does not relaunch the app after a
+// swipe-close (see config.mjs).
 
 // Heartbeat: write a counter to a file so the shell wrapper (command.sh) can
 // detect whether the Electron process is still alive.
@@ -106,9 +113,9 @@ const heartbeatInterval = setInterval(() => {
     // app alive in the background (screen off / app backgrounded) so that
     // new-mail notifications keep being delivered.
     if (!windowEverVisible && heartbeatSeconds > 60) {
-        fs.writeFile(EXIT_CLIENT_FILE, content, err => {
-            if (err) logger.error(err);
-        });
+        // v3.3.28: startup-failure auto-exit must NOT write the exitclient
+        // flag — that flag means "deliberate quit" to the wrapper. Here the
+        // wrapper's own stagnation detection must relaunch the app instead.
         app.exit(0);
         return;
     }
@@ -208,6 +215,7 @@ class ProspectMail {
                 .filter(b => b.isVisible())
                 .length;
             if (count === 0) {
+                markCleanExit();
                 app.exit(0);
             }
         });
@@ -243,9 +251,9 @@ class ProspectMail {
         });
 
         app.on("window-all-closed", () => {
-            fs.writeFile(EXIT_CLIENT_FILE, "quitclient", err => {
-                if (err) logger.error(err);
-            });
+            // v3.3.28: sync write — the wrapper must see this flag to avoid
+            // relaunching the app after a swipe-close (see markCleanExit).
+            markCleanExit();
             app.exit(0);
         });
     }
@@ -312,6 +320,11 @@ class ProspectMail {
     async cleanupAndExit() {
         if (this.isQuitting) return;
         this.isQuitting = true;
+        // v3.3.28: write the clean-quit flag FIRST, synchronously, before the
+        // async cookie flushes below — a SIGKILL during the flush must not
+        // lose the flag (the wrapper would relaunch a deliberately quit app).
+        // Skipped when the quit is a restart (settings import/reset).
+        if (!global.restartRequested) markCleanExit();
         heartbeatExiting = true;
         clearInterval(heartbeatInterval);
         stopSocketServer();
@@ -338,9 +351,9 @@ class ProspectMail {
             logger.warn('Failed to flush session cookies on exit:', err.message);
         }
 
-        fs.writeFile(`${CONFIG_DIR}/killedmail`, "quitclient", err => {
-            if (err) logger.error(err);
-        });
+        // v3.3.28: clean-quit flag already written synchronously at the top
+        // of cleanupAndExit (before the awaits). keptmail kept for compat.
+        try { fs.writeFileSync(KILLED_CLIENT_FILE, 'quitclient'); } catch (e) { /* ignore */ }
         app.exit(0);
     }
 
