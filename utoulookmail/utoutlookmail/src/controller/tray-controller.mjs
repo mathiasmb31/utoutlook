@@ -6,7 +6,7 @@ import {fileURLToPath} from 'url';
 import path from 'node:path';
 
 import {promises as fs} from 'fs';
-import {openAboutWindow} from "./about-window.js";
+import {openAboutWindow} from "./about-window.mjs";
 import {logger} from '../logger.mjs';
 
 const macOS = process.platform === "darwin";
