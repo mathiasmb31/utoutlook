@@ -1702,4 +1702,6 @@ test('v3.3.36: overlay de saisie pour les champs password (champ text pur + copi
         'gestures.js must copy overlay input back into the real password field (v3.3.36)');
     assert.ok(g.includes('-webkit-text-security'),
         'overlay must stay masked (v3.3.36)');
+    assert.ok(g.includes("addEventListener('mousedown'") && g.includes('e.preventDefault()'),
+        'gestures.js must prevent the password field from taking focus (mousedown preventDefault) so the overlay keeps it (v3.3.37)');
 });
