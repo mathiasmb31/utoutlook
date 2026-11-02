@@ -10,42 +10,57 @@
     if (window.__utoutlookGesturesLoaded) return;
     window.__utoutlookGesturesLoaded = true;
 
-    // --- v3.3.35: password fields accept NO input-method commits in Chromium ---
-    // Chromium/Blink refuses XIM/Wayland-text-input commit strings inside
-    // <input type="password"> (anti-keylogger), and the "password" flag is frozen
-    // when the field is CREATED as password. Verified on device: merely switching
-    // el.type at focus does NOT work; REPLACING the node by a clone created as
-    // type=text DOES work (the clone's TextField is born non-password).
-    // So: as soon as a password field appears in the DOM (MutationObserver, before
-    // any focus), replace it by a type=text clone, keeping the masked look with
-    // -webkit-text-security:disc and autocomplete=off. The submitted value is
-    // unaffected (name/value are copied to the clone).
-    const pwReplace = (el) => {
-        if (!el || el.__pwReplaced || el.tagName !== 'INPUT' || !el.parentNode) return;
-        const ac = el.getAttribute('autocomplete') || '';
-        if (el.type !== 'password' && !/password/i.test(ac)) return;
-        try {
-            const c = el.cloneNode(true);
-            c.type = 'text';
-            c.setAttribute('autocomplete', 'off');
-            c.style.webkitTextSecurity = 'disc';
-            c.value = el.value;
-            el.__pwReplaced = true;
-            el.parentNode.replaceChild(c, el);
-        } catch (_) { /* ignore */ }
-    };
-    const scanPwFields = () => {
-        document.querySelectorAll('input[type=password]').forEach(pwReplace);
-        document.querySelectorAll('input[autocomplete]').forEach((el) => {
-            if (/password/i.test(el.getAttribute('autocomplete') || '')) pwReplace(el);
+    // --- v3.3.36: password fields and the Maliit virtual keyboard ---
+    // Chromium/Blink refuses XIM/Wayland-text-input commits inside fields that
+    // were EVER type=password (anti-keylogger; the flag is frozen at creation —
+    // verified on device: switching type or even replacing the node does NOT
+    // help, only a field born as type=text receives Maliit input).
+    // Solution: a dedicated overlay text field (born as type=text, so the
+    // keyboard works on it). When a password field gets focus, we move the
+    // focus to the overlay and copy every keystroke back into the real
+    // password field — so the submitted value is correct.
+    let __pwTarget = null;
+    let __pwOverlay = null;
+    const isPwField = (el) => el && el.tagName === 'INPUT' &&
+        (el.type === 'password' || /password/i.test(el.getAttribute('autocomplete') || ''));
+    const ensurePwOverlay = () => {
+        if (__pwOverlay) return __pwOverlay;
+        const o = document.createElement('input');
+        o.type = 'text';
+        o.id = '__utPwOverlay';
+        o.setAttribute('autocomplete', 'off');
+        o.setAttribute('autocapitalize', 'off');
+        o.spellcheck = false;
+        o.style.cssText = 'position:fixed;left:8px;right:8px;top:8px;z-index:2147483647;' +
+            'width:calc(100% - 16px);height:64px;font-size:28px;padding:8px 12px;' +
+            'box-sizing:border-box;-webkit-text-security:disc;background:#fff;color:#000;' +
+            'border:3px solid #e81123;border-radius:10px;display:none;';
+        o.addEventListener('input', () => {
+            if (__pwTarget) { try { __pwTarget.value = o.value; } catch (_) {} }
         });
+        (document.body || document.documentElement).appendChild(o);
+        __pwOverlay = o;
+        return o;
     };
-    scanPwFields();
-    // Re-scan whenever the DOM changes (SPA / React re-creates the field)
-    new MutationObserver(() => scanPwFields())
-        .observe(document.documentElement, {childList: true, subtree: true});
-    // Safety net at focus time
-    document.addEventListener('focusin', (e) => pwReplace(e.target), true);
+    document.addEventListener('focusin', (e) => {
+        const el = e.target;
+        if (el === __pwOverlay) return;
+        if (isPwField(el)) {
+            __pwTarget = el;
+            const o = ensurePwOverlay();
+            o.value = el.value || '';
+            o.style.display = 'block';
+            // move the focus to our pure-text field so the OSK types into it
+            setTimeout(() => { try { o.focus(); } catch (_) {} }, 0);
+        } else if (__pwOverlay) {
+            __pwOverlay.style.display = 'none';
+            __pwTarget = null;
+        }
+    }, true);
+    // Re-attach if the SPA removes the overlay
+    new MutationObserver(() => {
+        if (__pwOverlay && !document.getElementById('__utPwOverlay')) __pwOverlay = null;
+    }).observe(document.documentElement, {childList: true, subtree: true});
 
     // --- Disable native overscroll/pull-to-refresh on the page ---
     // Outlook web shows an envelope icon when the user pulls down from the

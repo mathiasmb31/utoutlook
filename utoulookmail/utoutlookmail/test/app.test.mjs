@@ -1687,18 +1687,19 @@ test('v3.3.32: repaint forcé au réveil (veille → écran blanc en X11) + pas 
         'must disable background throttling so the X11 window repaints after wake (v3.3.32)');
 });
 
-test('v3.3.35: les champs password acceptent les commits IME (remplacement par clone type=text des l\'apparition)', async () => {
+test('v3.3.36: overlay de saisie pour les champs password (champ text pur + copie vers le vrai champ)', async () => {
     const fs = await import('node:fs');
     const g = fs.readFileSync(path.resolve(__dirname, '../public/gestures.js'), 'utf-8');
-    // Blink fige le flag password a la CREATION du champ : switcher el.type ne
-    // suffit pas (verifie on-device). Il faut REMPLACER le noeud par un clone
-    // cree en type=text, des l'apparition dans le DOM (avant tout focus).
-    assert.ok(g.includes('MutationObserver') && g.includes('scanPwFields'),
-        'gestures.js must scan password fields proactively via MutationObserver (v3.3.35)');
-    assert.ok(g.includes('replaceChild') && g.includes("c.type = 'text'"),
-        'gestures.js must REPLACE the password node by a type=text clone (v3.3.35)');
-    assert.ok(g.includes('webkitTextSecurity') && g.includes("'autocomplete', 'off'"),
-        'gestures.js must keep the mask (text-security) and disable autocomplete (v3.3.35)');
-    assert.ok(g.includes("addEventListener('focusin'"),
-        'gestures.js must keep a focusin safety net (v3.3.35)');
+    // Blink fige le flag password a la creation du champ (verifie on-device:
+    // ni le switch de type ni le remplacement du noeud ne marchent). Il faut
+    // un champ text PUR (overlay) qui prend le focus et copie chaque frappe
+    // dans le vrai champ password.
+    assert.ok(g.includes('__utPwOverlay') && g.includes("o.type = 'text'"),
+        'gestures.js must create a pure-text overlay field for password input (v3.3.36)');
+    assert.ok(g.includes("addEventListener('focusin'") && g.includes('isPwField'),
+        'gestures.js must detect password fields on focusin (v3.3.36)');
+    assert.ok(g.includes('__pwTarget.value = o.value'),
+        'gestures.js must copy overlay input back into the real password field (v3.3.36)');
+    assert.ok(g.includes('-webkit-text-security'),
+        'overlay must stay masked (v3.3.36)');
 });
