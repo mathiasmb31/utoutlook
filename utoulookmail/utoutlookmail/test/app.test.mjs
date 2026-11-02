@@ -1493,3 +1493,14 @@ test('v3.3.23: cacheWatcher a un handler error (CACHE_DIR supprimé ne doit pas 
     const seg = ctrl.slice(i, i + 1600);
     assert.ok(seg.includes("cacheWatcher.on('error'"), 'fs.watch must have an error handler (v3.3.23)');
 });
+
+test('v3.3.24: le scan périodique gestures ne parcourt plus tout document.body (perf)', async () => {
+    const fs = await import('node:fs');
+    const g = fs.readFileSync(path.resolve(__dirname, '../public/gestures.js'), 'utf-8');
+    const i = g.indexOf('setInterval(() => {');
+    const seg = g.slice(i, i + 400);
+    assert.ok(!seg.includes('hideLoadingIndicators(document.body)'),
+        'periodic scan must not walk the whole body (v3.3.24)');
+    assert.ok(seg.includes('hideLoadingIndicators(container)'),
+        'periodic scan must target list containers only (v3.3.24)');
+});
