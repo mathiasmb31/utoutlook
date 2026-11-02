@@ -4,7 +4,8 @@
    width="800"
    height="800"
    viewBox="0 0 800 800"
-   xmlns="http://www.w3.org/2000/svg">
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:xlink="http://www.w3.org/1999/xlink">
 
   <defs>
     <!-- Circular text path for rotating text -->
@@ -19,10 +20,15 @@
     <text id="circle-text" font-family="Ubuntu, Cantarell, sans-serif" font-size="28" font-weight="600" letter-spacing="6" fill="#ffffff" opacity="0.85">
       <textPath href="#circle-text-path" startOffset="0%">HUMAN MADE &#x2022; VIBE VERIFIED &#x2022; HUMAN MADE &#x2022; VIBE VERIFIED &#x2022;&#160;</textPath>
     </text>
+
+    <!-- Mascotte head clipped to a circle -->
+    <clipPath id="head-clip">
+      <circle cx="400" cy="285" r="105"/>
+    </clipPath>
   </defs>
 
-  <!-- Background circle -->
-  <circle cx="400" cy="400" r="390" fill="#0078d4"/>
+  <!-- Background circle — Ubuntu Touch orange -->
+  <circle cx="400" cy="400" r="390" fill="#E95420"/>
 
   <!-- Inner subtle ring -->
   <circle cx="400" cy="400" r="360" fill="none" stroke="#ffffff" stroke-opacity="0.15" stroke-width="2"/>
@@ -41,24 +47,21 @@
     />
   </g>
 
-  <!-- Center: Outlook-style envelope icon -->
-  <g transform="translate(400, 400)">
-    <!-- Envelope body -->
-    <rect x="-110" y="-75" width="220" height="150" rx="12" fill="#ffffff"/>
+  <!-- Center: mail envelope with the UBTouch mascot head popping out -->
+  <g>
+    <!-- Envelope body (white), slightly lower so the head overlaps its top edge -->
+    <rect x="290" y="400" width="220" height="150" rx="12" fill="#ffffff"/>
     <!-- Envelope flap (top triangle) -->
-    <path d="M -110,-63 L 0,20 L 110,-63" fill="none" stroke="#0078d4" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="M 290,412 L 400,495 L 510,412" fill="none" stroke="#E95420" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
     <!-- Envelope bottom fold lines -->
-    <path d="M -110,63 L -30,0" fill="none" stroke="#0078d4" stroke-width="4" stroke-linecap="round" opacity="0.4"/>
-    <path d="M 110,63 L 30,0" fill="none" stroke="#0078d4" stroke-width="4" stroke-linecap="round" opacity="0.4"/>
-    <!-- Outlook "O" accent dot -->
-    <circle cx="0" cy="-28" r="18" fill="#0078d4"/>
-    <text x="0" y="-20" font-family="Ubuntu, Cantarell, sans-serif" font-size="24" font-weight="700" fill="#ffffff" text-anchor="middle">O</text>
+    <path d="M 290,540 L 375,470" fill="none" stroke="#E95420" stroke-width="6" stroke-linecap="round" opacity="0.55"/>
+    <path d="M 510,540 L 425,470" fill="none" stroke="#E95420" stroke-width="6" stroke-linecap="round" opacity="0.55"/>
+
+    <!-- Mascot head popping out of the envelope (circle-clipped image) -->
+    <g>
+      <circle cx="400" cy="285" r="112" fill="#ffffff"/>
+      <image xlink:href="mascotte-512.png" href="mascotte-512.png" x="295" y="180" width="210" height="210" clip-path="url(#head-clip)" preserveAspectRatio="xMidYMid slice"/>
+      <circle cx="400" cy="285" r="112" fill="none" stroke="#ffffff" stroke-width="6"/>
+    </g>
   </g>
-
-  <!-- Small decorative dots at cardinal points (static) -->
-  <circle cx="400" cy="30" r="5" fill="#ffffff" opacity="0.4"/>
-  <circle cx="400" cy="770" r="5" fill="#ffffff" opacity="0.4"/>
-  <circle cx="30" cy="400" r="5" fill="#ffffff" opacity="0.4"/>
-  <circle cx="770" cy="400" r="5" fill="#ffffff" opacity="0.4"/>
-
 </svg>
