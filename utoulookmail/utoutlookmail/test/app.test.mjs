@@ -1675,3 +1675,14 @@ test('v3.3.31: Chromium forcé en X11 (XWayland) pour que XMODIFIERS=@im=maliit 
     assert.ok(main.includes("appendSwitch('ozone-platform', 'x11')"),
         'main.mjs must appendSwitch ozone-platform=x11 before app ready (v3.3.31)');
 });
+
+test('v3.3.32: repaint forcé au réveil (veille → écran blanc en X11) + pas de background throttling', async () => {
+    const fs = await import('node:fs');
+    const m = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    assert.ok(m.includes('powerMonitor') && m.includes("powerMonitor.on('resume'"),
+        'must listen to powerMonitor resume (v3.3.32)');
+    assert.ok(m.includes('webContents.invalidate()'),
+        'must call webContents.invalidate() to force repaint after wake (v3.3.32)');
+    assert.ok(m.includes('setBackgroundThrottling(false)'),
+        'must disable background throttling so the X11 window repaints after wake (v3.3.32)');
+});
