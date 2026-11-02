@@ -14,7 +14,7 @@
              "push-helper": "push.json"
             }
     },
-    "version": "3.3.21",
+    "version": "3.3.22",
     "maintainer": "mathias <email@domain.org>",
     "framework" : "@CLICK_FRAMEWORK@"
 }
