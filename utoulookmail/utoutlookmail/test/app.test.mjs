@@ -1527,3 +1527,19 @@ test('v3.3.25: UX top3 — swipe actions, empty state i18n, compteur volet ferm�
     const sock = fs.readFileSync(path.resolve(__dirname, '../src/ipc-socket.mjs'), 'utf-8');
     assert.ok(sock.includes("case 'readingFont'"), 'socket cmd readingFont required (v3.3.25)');
 });
+
+test('v3.3.26: icône mascotte — enveloppe + tête UBTouch, statique + animée, splash animé', async () => {
+    const fs = await import('node:fs');
+    const assets = path.resolve(__dirname, '../../assets');
+    for (const f of ['logo-vibe.svg', 'logo-anim.svg', 'logo.png', 'mascotte-512.png']) {
+        assert.ok(fs.existsSync(path.join(assets, f)), `asset ${f} must exist (v3.3.26)`);
+    }
+    const vibe = fs.readFileSync(path.join(assets, 'logo-vibe.svg'), 'utf-8');
+    assert.ok(vibe.includes('mascotte-512.png') && vibe.includes('#E95420'),
+        'logo-vibe.svg = enveloppe + tête mascotte sur fond orange UT (v3.3.26)');
+    const anim = fs.readFileSync(path.join(assets, 'logo-anim.svg'), 'utf-8');
+    assert.ok(anim.includes('animateTransform') && anim.includes('mascotte-512.png'),
+        'logo-anim.svg = tête qui entre/sort de l\'enveloppe en boucle (v3.3.26)');
+    const splash = fs.readFileSync(path.resolve(__dirname, '../public/splash.html'), 'utf-8');
+    assert.ok(splash.includes('logo-anim.svg'), 'splash must use the animated logo (v3.3.26)');
+});
