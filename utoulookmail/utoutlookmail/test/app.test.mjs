@@ -1476,3 +1476,12 @@ test('v3.3.22: guards this.win null dans les handlers + retry limité à 5 éche
     assert.ok(obs.includes('deadHandlers') && obs.includes('>= 5'),
         'observer must stop retrying a handler after 5 failures (v3.3.22)');
 });
+
+test('v3.3.22: uncaughtException ne tue plus l\'app au premier coup (exit seulement après 5 en 60s)', async () => {
+    const fs = await import('node:fs');
+    const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
+    const i = main.indexOf("process.on('uncaughtException'");
+    const seg = main.slice(i, i + 900);
+    assert.ok(seg.includes('uncaughtCount >= 5'), 'exit only after 5 uncaught exceptions in 60s (v3.3.22)');
+    assert.ok(!/\(\) => app\.exit\(1\)/.test(seg), 'no immediate app.exit(1) on first exception (v3.3.22)');
+});
