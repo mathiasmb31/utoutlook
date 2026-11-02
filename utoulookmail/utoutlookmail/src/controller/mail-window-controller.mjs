@@ -376,7 +376,9 @@ class MailWindowController {
                         });
                         copied++;
                     } catch (e) {
-                        logger.warn(`Cookie copy failed: ${cookie.name} → ${newDomain}: ${e.message}`);
+                        // v3.3.22: HttpOnly overwrite refusals are expected for tracking
+                        // cookies (MSFPC/NAP/MCN…) — debug level, not warn (log spam).
+                        logger.debug(`Cookie copy failed: ${cookie.name} → ${newDomain}: ${e.message}`);
                     }
                 }
             }
