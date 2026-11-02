@@ -438,6 +438,16 @@ const T = {
         de: 'Keine Verbindung', it: 'Nessuna connessione', pt: 'Sem ligação',
         zh: '无连接', ar: 'لا يوجد اتصال',
     },
+    'empty.title': {
+        fr: 'Aucun message', en: 'No messages', es: 'Sin mensajes',
+        de: 'Keine Nachrichten', it: 'Nessun messaggio', pt: 'Sem mensagens',
+        zh: '没有邮件', ar: 'لا توجد رسائل',
+    },
+    'empty.body': {
+        fr: 'Ce dossier est vide.', en: 'This folder is empty.', es: 'Esta carpeta está vacía.',
+        de: 'Dieser Ordner ist leer.', it: 'Questa cartella è vuota.', pt: 'Esta pasta está vazia.',
+        zh: '此文件夹为空。', ar: 'هذا المجلد فارغ.',
+    },
     'offline.message': {
         fr: 'UToutlook Mail n\'arrive pas à se connecter. Vérifiez votre connexion Internet.',
         en: 'UToutlook Mail cannot connect. Check your Internet connection.',

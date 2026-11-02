@@ -134,6 +134,10 @@ function handleCommand(msg, handlers, socket) {
             if (handlers.onReload) handlers.onReload();
             return {ok: true};
 
+        case 'readingFont':
+            if (handlers.onReadingFont) handlers.onReadingFont(msg.action);
+            return {ok: true};
+
         case 'eval':
             // Debug: run JS in the renderer, reply asynchronously on the socket.
             // Usage from adb: python3 send '{"cmd":"eval","code":"document.title"}'
