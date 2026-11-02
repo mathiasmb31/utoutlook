@@ -1686,3 +1686,17 @@ test('v3.3.32: repaint forcé au réveil (veille → écran blanc en X11) + pas 
     assert.ok(m.includes('setBackgroundThrottling(false)'),
         'must disable background throttling so the X11 window repaints after wake (v3.3.32)');
 });
+
+test('v3.3.33: les champs password acceptent les commits IME (switch type=text au focus + masque CSS)', async () => {
+    const fs = await import('node:fs');
+    const g = fs.readFileSync(path.resolve(__dirname, '../public/gestures.js'), 'utf-8');
+    // Chromium refuse les commits XIM dans input[type=password] → clavier Maliit
+    // inerte sur le champ mdp. Le script injecté doit switcher le champ en
+    // type=text au focus (masquage via -webkit-text-security) et restaurer au blur.
+    assert.ok(g.includes("addEventListener('focusin'") && g.includes("el.type === 'password'"),
+        'gestures.js must detect password fields on focusin (v3.3.33)');
+    assert.ok(g.includes("el.type = 'text'") && g.includes('webkitTextSecurity'),
+        'gestures.js must switch password→text with CSS mask on focus (v3.3.33)');
+    assert.ok(g.includes("addEventListener('focusout'") && g.includes("el.type = 'password'"),
+        'gestures.js must restore type=password on focusout (v3.3.33)');
+});

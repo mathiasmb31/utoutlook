@@ -10,6 +10,34 @@
     if (window.__utoutlookGesturesLoaded) return;
     window.__utoutlookGesturesLoaded = true;
 
+    // --- v3.3.33: password fields accept NO input-method commits in Chromium ---
+    // Chromium refuses XIM/Wayland-text-input commit strings inside
+    // <input type="password"> (anti-keylogger) → on Ubuntu Touch the Maliit
+    // virtual keyboard opens on the password field but types nothing.
+    // Workaround: on focus, switch the field to type=text while keeping the
+    // masked look with -webkit-text-security, restore password on blur.
+    // Form submission is unaffected (input type does not change the value sent).
+    document.addEventListener('focusin', (e) => {
+        const el = e.target;
+        if (el && el.tagName === 'INPUT' && el.type === 'password' && !el.__pwMask) {
+            el.__pwMask = true;
+            try {
+                el.type = 'text';
+                el.style.webkitTextSecurity = 'disc';
+            } catch (_) { /* ignore */ }
+        }
+    }, true);
+    document.addEventListener('focusout', (e) => {
+        const el = e.target;
+        if (el && el.__pwMask) {
+            try {
+                el.type = 'password';
+                el.style.webkitTextSecurity = '';
+            } catch (_) { /* ignore */ }
+            el.__pwMask = false;
+        }
+    }, true);
+
     // --- Disable native overscroll/pull-to-refresh on the page ---
     // Outlook web shows an envelope icon when the user pulls down from the
     // top of the message list. Block it at the CSS level (inline style as a
