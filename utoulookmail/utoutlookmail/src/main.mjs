@@ -271,6 +271,11 @@ class ProspectMail {
                     this.mailController.reloadWindow();
                 }
             },
+            onReadingFont: (action) => {
+                if (this.mailController) {
+                    this.mailController.handleReadingFontCommand(action);
+                }
+            },
             onEval: async (code) => {
                 const mc = this.mailController;
                 if (!mc || !mc.win || mc.win.isDestroyed()) return 'no window';

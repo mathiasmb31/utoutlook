@@ -263,9 +263,27 @@ const observeUnreadHandlers = {
       // false reads (e.g. old unread=5 when real count is now 4 → false notification).
       const currentInbox = findInboxElement();
       if (!currentInbox || !document.contains(currentInbox)) {
+        // v3.3.25: the inbox treeitem only exists when the navigation pane is
+        // open. If it is closed, toggle it open for one check, read the count
+        // on the next tick, then toggle it back — invisible for the user.
+        if (!state.navToggleForRead) {
+          const btn = [...document.querySelectorAll('button,[role="button"]')]
+            .find(b => /volet de navigation|navigation pane/i.test(b.getAttribute('aria-label') || ''));
+          if (btn) {
+            state.navToggleForRead = btn;
+            btn.click();
+            debug('Nav pane toggled open to read unread count');
+          }
+        } else {
+          const btn = state.navToggleForRead;
+          state.navToggleForRead = null;
+          if (btn && document.contains(btn)) btn.click(); // toggle back closed
+          debug('Nav pane toggled back closed');
+        }
         debug('Inbox element not found or disconnected — skipping check');
         return false;
       }
+      state.navToggleForRead = null; // inbox found — make sure pane state is clean
       // Update reference for future checks
       inboxElement = currentInbox;
 
