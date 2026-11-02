@@ -14,6 +14,13 @@ function sleep_int() {
 
 function cleanup() {
 
+	# v3.3.30: record OUR pid FIRST, before killing the previous wrapper —
+	# so that when the stale wrapper's EXIT trap (close_command) runs, it sees
+	# pidfile != $$ and exits SILENTLY. Otherwise it writes the close flag /
+	# sends the socket quit, which can kill the NEW instance right after its
+	# first launch ("app exits immediately on first start, then relaunches").
+	mkdir -p "${UTOUTLOOK_DATA_DIR}" 2>/dev/null || true
+	echo $$ > "${UTOUTLOOK_DATA_DIR}/wrapper.pid" 2>/dev/null || true
 	utoutlook_kill_app
 	utoutlook_kill_stale_wrappers
 	utoutlook_cleanup_locks
@@ -24,11 +31,6 @@ function cleanup() {
 	# clean quit. Never clear them while the client is alive: the 'close'
 	# event writes exitclient right before the process dies.
 	"${WD}"/bin/rm -f "${UTOUTLOOK_EXITCLIENT}" "${UTOUTLOOK_KILLEDCLIENT}" 2>/dev/null || true
-	# v3.3.7: record this wrapper's PID AFTER killing the previous one, so the
-	# next launch can kill this wrapper if it becomes an orphan (pgrep is not
-	# reliable under AppArmor confinement).
-	mkdir -p "${UTOUTLOOK_DATA_DIR}" 2>/dev/null || true
-	echo $$ > "${UTOUTLOOK_DATA_DIR}/wrapper.pid" 2>/dev/null || true
 }
 
 function launch_prospect() {
@@ -169,6 +171,15 @@ function test_net() {
 	return 0
 }
 function close_command() {
+	# v3.3.30: a STALE wrapper (killed by a newer one — pidfile != $$) must
+	# exit silently. Writing the close flag or sending the socket quit here
+	# would reach the NEW instance (same socket path / flag path) and kill it
+	# right after its first launch.
+	local curpid
+	curpid=$("${WD}"/bin/cat "${UTOUTLOOK_DATA_DIR}/wrapper.pid" 2>/dev/null | "${WD}"/bin/tr -d '[:space:]')
+	if [ -n "${curpid}" ] && [ "${curpid}" != "$$" ]; then
+		exit 0
+	fi
 	# Send quit command via Unix socket (primary method)
 	utoutlook_send_socket_cmd '{"cmd":"quit"}'
 	# Fallback: write close flag file (picked up by heartbeat)

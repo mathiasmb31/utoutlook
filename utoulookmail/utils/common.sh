@@ -146,6 +146,16 @@ except Exception:
 # SIGKILL alone loses the most recent cookies → user sees login page.
 # ============================================================
 utoutlook_kill_app() {
+	# v3.3.30: check FIRST whether a prospect-mail is running. When none is
+	# (normal launch), skip the close flag + 3s sleep entirely — cleanup()
+	# calls this 3x per wrapper start, so the unconditional sleep cost 9s on
+	# EVERY launch ("startup is very long").
+	if ! "${UTOUTLOOK_BIN}/pkill" -0 prospect-mail 2>/dev/null; then
+		# No process running, nothing to kill
+		"${UTOUTLOOK_BIN}/pkill" -9 qmlscene 2>/dev/null || true
+		return 0
+	fi
+
 	# v3.3.10: poser un flag close FRAIS avant tout kill. L'ancien process
 	# (booté avant nous) le verra dans son heartbeat (toutes les 2s) et fera un
 	# arrêt gracieux avec flush des cookies. Indispensable à l'upgrade:
@@ -156,13 +166,6 @@ utoutlook_kill_app() {
 	echo "closed" > "${UTOUTLOOK_EXITCOMMAND}" 2>/dev/null || true
 	# ~3s pour laisser l'ancien process sortir proprement
 	"${UTOUTLOOK_BIN}/sleep" 3 2>/dev/null || /bin/sleep 3 2>/dev/null || true
-
-	# Check if any prospect-mail process is running
-	if ! "${UTOUTLOOK_BIN}/pkill" -0 prospect-mail 2>/dev/null; then
-		# No process running, nothing to kill
-		"${UTOUTLOOK_BIN}/pkill" -9 qmlscene 2>/dev/null || true
-		return 0
-	fi
 
 	# Step 1: SIGTERM — graceful shutdown (flushes cookies, closes windows)
 	"${UTOUTLOOK_BIN}/pkill" -TERM prospect-mail 2>/dev/null || true
@@ -201,14 +204,21 @@ utoutlook_cleanup_locks() {
 # ============================================================
 utoutlook_kill_stale_wrappers() {
 	local self=$$ parent=$PPID p pidfile="${UTOUTLOOK_DATA_DIR}/wrapper.pid"
+	# v3.3.30: SIGKILL directly, never SIGTERM — a TERM'd wrapper runs its EXIT
+	# trap (close_command) which writes the close flag / sends the socket quit;
+	# those reach the NEW instance (same paths) and kill it right after its
+	# first launch. SIGKILL = no trap = no flag. The old app process itself is
+	# handled separately by utoutlook_kill_app (flag + TERM + wait + KILL).
+	#
 	# Primary mechanism: pidfile (works under AppArmor — no /proc cmdline scan).
-	# Each wrapper writes its own PID at startup; the new one kills the previous.
+	# NOTE: cleanup() now writes OUR pid to the pidfile BEFORE calling this,
+	# so the pidfile branch below no longer fires for the previous wrapper —
+	# the previous wrapper self-exits via the pidfile check in
+	# verify_prospect_life, and the pgrep fallback SIGKILLs it here.
 	if [ -f "$pidfile" ]; then
 		p=$("${UTOUTLOOK_BIN}/cat" "$pidfile" 2>/dev/null | "${UTOUTLOOK_BIN}/tr" -d '[:space:]')
 		if [ -n "$p" ] && [ "$p" != "$self" ] && [ "$p" != "$parent" ] && kill -0 "$p" 2>/dev/null; then
 			echo "killing stale wrapper pid=$p (from pidfile)"
-			kill -TERM "$p" 2>/dev/null || true
-			"${UTOUTLOOK_BIN}/sleep" 1 2>/dev/null || /bin/sleep 1 2>/dev/null || true
 			kill -9 "$p" 2>/dev/null || true
 		fi
 	fi
@@ -217,12 +227,6 @@ utoutlook_kill_stale_wrappers() {
 	local found
 	found=$("${UTOUTLOOK_BIN}/pgrep" -f '^/bin/bash .*bin/command\.sh' 2>/dev/null)
 	echo "pgrep fallback found: ${found:-none} (self=$self)"
-	for p in $found; do
-		[ "$p" = "$self" ] && continue
-		[ "$p" = "$parent" ] && continue
-		kill -TERM "$p" 2>/dev/null || true
-	done
-	"${UTOUTLOOK_BIN}/sleep" 1 2>/dev/null || /bin/sleep 1 2>/dev/null || true
 	for p in $found; do
 		[ "$p" = "$self" ] && continue
 		[ "$p" = "$parent" ] && continue
