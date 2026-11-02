@@ -57,6 +57,31 @@
             __pwTarget = null;
         }
     }, true);
+    // v3.3.37: prevent the password field from EVER taking the focus (the site
+    // would re-focus it on re-render and steal the focus back from the overlay,
+    // losing keystrokes). Intercept the tap before focus happens.
+    document.addEventListener('mousedown', (e) => {
+        const el = e.target;
+        if (isPwField(el)) {
+            e.preventDefault();          // password field never gets the focus
+            __pwTarget = el;
+            const o = ensurePwOverlay();
+            o.value = el.value || '';
+            o.style.display = 'block';
+            try { o.focus(); } catch (_) {}
+        }
+    }, true);
+    document.addEventListener('touchstart', (e) => {
+        const el = e.target;
+        if (isPwField(el)) {
+            e.preventDefault();
+            __pwTarget = el;
+            const o = ensurePwOverlay();
+            o.value = el.value || '';
+            o.style.display = 'block';
+            try { o.focus(); } catch (_) {}
+        }
+    }, {capture: true, passive: false});
     // Re-attach if the SPA removes the overlay
     new MutationObserver(() => {
         if (__pwOverlay && !document.getElementById('__utPwOverlay')) __pwOverlay = null;
