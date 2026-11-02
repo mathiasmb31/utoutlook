@@ -166,10 +166,15 @@
         document.addEventListener('DOMContentLoaded', startObserving);
     }
 
-    // Réappliquer périodiquement (sécurité anti-régression SPA)
+    // Réappliquer périodiquement (sécurité anti-régression SPA).
+    // v3.3.24: ne scanner QUE les conteneurs de liste, pas tout document.body —
+    // sur le gros DOM d'Outlook, ~35 querySelectorAll sur tout le body toutes les
+    // 3s coûtaient cher en CPU sur téléphone.
     setInterval(() => {
-        document.querySelectorAll(LIST_SELECTORS).forEach(observeListContainer);
-        hideLoadingIndicators(document.body);
+        document.querySelectorAll(LIST_SELECTORS).forEach(container => {
+            observeListContainer(container);
+            hideLoadingIndicators(container);
+        });
     }, 3000);
 
     // --- Swipe from left edge to go back (browser history) ---
