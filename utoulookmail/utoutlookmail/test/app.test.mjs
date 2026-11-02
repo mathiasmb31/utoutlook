@@ -1543,3 +1543,10 @@ test('v3.3.26: icône mascotte — enveloppe + tête UBTouch, statique + animée
     const splash = fs.readFileSync(path.resolve(__dirname, '../public/splash.html'), 'utf-8');
     assert.ok(splash.includes('logo-anim.svg'), 'splash must use the animated logo (v3.3.26)');
 });
+
+test('v3.3.27: XMODIFIERS=@im=maliit exporté pour que le clavier virtuel tape dans Chromium', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    assert.ok(cmd.includes('export XMODIFIERS=@im=maliit'),
+        'command.sh must export XMODIFIERS=@im=maliit so Maliit delivers keys to Chromium (v3.3.27)');
+});
