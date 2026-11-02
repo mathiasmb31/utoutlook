@@ -311,6 +311,16 @@
 - [x] Tests: +3 (89 tests, 85 pass + 5 skip, 0 fail)
 - [x] Version bump: 3.3.10 → 3.3.11
 
+## Audit i18n (2026-11-02 — consigne transverse appliquée à tous les projets)
+
+- ✅ Notifications push/D-Bus, tray, IPC : 8 langues via `i18n.mjs` (FR/EN/ES/DE/IT/PT/ZH/AR)
+- ✅ Messages shell (command.sh/utils) : via `utoutlook_t` (8 langues)
+- ✅ Splash : textes passés en query params i18n depuis le main process
+- ❌ `qml/nonetwork.qml` : `text: "NO NETWORK !!"` en dur (pas traduit)
+- ❌ `qml/exit.qml` : texte anglais long en dur
+- ❌ `public/offline.html` : `<h1>Pas de connexion</h1>` en dur (l'overlay JS injecté utilise bien tr['offline.title'], mais la page statique non)
+- ❌ `public/splash.html` : fallback `Chargement...` en dur (remplacé par param i18n au runtime)
+
 ## Idées en réserve (non prioritaires)
 
 - [ ] Raccourcis clavier personnalisables
