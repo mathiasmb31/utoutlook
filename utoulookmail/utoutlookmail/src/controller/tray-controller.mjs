@@ -425,6 +425,9 @@ export class TrayController {
                 message: t('dialog.import.success.message'),
                 detail: t('dialog.import.success.detail'),
             });
+            // v3.3.28: this quit is a RESTART — the wrapper must relaunch,
+            // so cleanupAndExit must NOT write the clean-quit flag.
+            global.restartRequested = true;
             app.relaunch();
             app.exit(0);
         } catch (error) {
@@ -504,6 +507,8 @@ export class TrayController {
             settings.clear();
 
             // Relaunch application
+            // v3.3.28: restart, not a clean quit — wrapper must relaunch.
+            global.restartRequested = true;
             app.relaunch();
             app.exit(0);
         } catch (error) {
