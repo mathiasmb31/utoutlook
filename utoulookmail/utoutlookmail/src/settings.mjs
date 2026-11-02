@@ -69,6 +69,8 @@ const defaults = {
     startMinimized: false,
     customBrowserPath: undefined,
     focusMode: false,
+    // v3.3.25: reading font scale (message body), independent of the global zoom
+    readingFontScale: 1.0,
     accentColor: '#0078d4',
     darkMode: 'auto',
     language: 'auto',
