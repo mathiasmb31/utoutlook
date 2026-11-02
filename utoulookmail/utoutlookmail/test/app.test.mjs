@@ -1550,3 +1550,56 @@ test('v3.3.27: XMODIFIERS=@im=maliit exporté pour que le clavier virtuel tape d
     assert.ok(cmd.includes('export XMODIFIERS=@im=maliit'),
         'command.sh must export XMODIFIERS=@im=maliit so Maliit delivers keys to Chromium (v3.3.27)');
 });
+
+test('v3.3.28: clean quit writes exitclient synchronously so the wrapper does NOT relaunch after swipe-close', async () => {
+    const fs = await import('node:fs');
+    const cfg = fs.readFileSync(path.resolve(__dirname, '../src/config.mjs'), 'utf-8');
+    // markCleanExit writes the flag synchronously (async writeFile raced app.exit and never landed)
+    assert.ok(cfg.includes('export function markCleanExit()'), 'markCleanExit() must exist in config.mjs (v3.3.28)');
+    assert.ok(cfg.includes('fs.writeFileSync(EXIT_CLIENT_FILE'),
+        'markCleanExit must write exitclient with writeFileSync (v3.3.28)');
+
+    const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
+    // window-all-closed (swipe-close path) must mark the clean exit
+    const wac = main.slice(main.indexOf('window-all-closed'), main.indexOf('window-all-closed') + 300);
+    assert.ok(wac.includes('markCleanExit()'), 'window-all-closed must call markCleanExit (v3.3.28)');
+    // cleanupAndExit (SIGTERM/socket quit path) must mark the clean exit too
+    const cae = main.slice(main.indexOf('async cleanupAndExit'), main.indexOf('async cleanupAndExit') + 3000);
+    assert.ok(cae.includes('markCleanExit()'), 'cleanupAndExit must call markCleanExit (v3.3.28)');
+    // startup-failure auto-exit must NOT set the clean-quit flag (wrapper must relaunch instead)
+    const autoExit = main.slice(main.indexOf('!windowEverVisible && heartbeatSeconds > 60'));
+    const autoExitBlock = autoExit.slice(0, autoExit.indexOf('app.exit(0)'));
+    assert.ok(!autoExitBlock.includes('EXIT_CLIENT_FILE'),
+        'startup-failure auto-exit must not write EXIT_CLIENT_FILE (v3.3.28)');
+
+    // the window 'close' handler is the earliest reliable point on a
+    // swipe-close (Mir session stop can kill the process before 'closed') —
+    // it must write the flag synchronously while letting the window close
+    const ctrl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    const closeHandler = ctrl.slice(ctrl.indexOf('"close", (e)'), ctrl.indexOf('"close", (e)') + 900);
+    assert.ok(closeHandler.includes('markCleanExit()') && closeHandler.includes('letting it close'),
+        'window close handler must call markCleanExit before letting it close (v3.3.28)');
+    // the 'closed' handler (app.exit there fires before window-all-closed) must mark too
+    const closed = ctrl.slice(ctrl.indexOf('preventAutoCloseApp'), ctrl.indexOf('preventAutoCloseApp') + 500);
+    assert.ok(closed.includes('markCleanExit()'), 'window closed handler must call markCleanExit before app.exit (v3.3.28)');
+    // restart paths (settings import/reset) must NOT mark a clean quit
+    const tray = fs.readFileSync(path.resolve(__dirname, '../src/controller/tray-controller.mjs'), 'utf-8');
+    assert.ok(tray.includes('global.restartRequested = true'),
+        'tray relaunch paths must set restartRequested so the wrapper relaunches (v3.3.28)');
+    assert.ok(main.includes('if (!global.restartRequested) markCleanExit()'),
+        'cleanupAndExit must skip markCleanExit on restart (v3.3.28)');
+
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    // wrapper: on heartbeat stagnation, a clean-quit flag means exit, not relaunch
+    const stag = cmd.slice(cmd.indexOf('stagnantCount} -ge 2'), cmd.indexOf('stagnantCount} -ge 2') + 700);
+    assert.ok(stag.includes('[ -f ${exitclient} ]') && stag.includes('exit 0'),
+        'command.sh must exit (not relaunch) when exitclient exists at heartbeat stagnation (v3.3.28)');
+    // wrapper: stale lifecycle flags must be cleared in cleanup() AFTER the
+    // old app is killed (not while the client is alive — the 'close' event
+    // writes exitclient right before the process dies)
+    const cleanup = cmd.slice(cmd.indexOf('function cleanup()'), cmd.indexOf('function launch_prospect'));
+    assert.ok(cleanup.includes('rm -f "${UTOUTLOOK_EXITCLIENT}" "${UTOUTLOOK_KILLEDCLIENT}"'),
+        'command.sh cleanup() must clear exitclient/killedclient after kill_app (v3.3.28)');
+    const aliveBranch = cmd.slice(cmd.indexOf('clientalive=1'), cmd.indexOf('clientalive=1') + 200);
+    assert.ok(!aliveBranch.includes('rm -f'), 'alive branch must NOT delete lifecycle flags (v3.3.28)');
+});
