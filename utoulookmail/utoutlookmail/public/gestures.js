@@ -85,7 +85,23 @@
     // Re-attach if the SPA removes the overlay
     new MutationObserver(() => {
         if (__pwOverlay && !document.getElementById('__utPwOverlay')) __pwOverlay = null;
+        // v3.3.38: strip autofocus from password fields — an autofocused password
+        // field sets Blink's HAS_BEEN_PASSWORD flag on the window and the OSK
+        // stops delivering text EVERYWHERE (even into plain text fields).
+        document.querySelectorAll('input[type=password][autofocus]').forEach((el) => {
+            el.removeAttribute('autofocus');
+        });
     }).observe(document.documentElement, {childList: true, subtree: true});
+    // v3.3.38: if a password field somehow got the focus (autofocus, script),
+    // blur it immediately so the HAS_BEEN_PASSWORD flag is never set.
+    const defusePwFocus = () => {
+        const ae = document.activeElement;
+        if (isPwField(ae)) { try { ae.blur(); } catch (_) {} }
+    };
+    document.addEventListener('focusin', (e) => {
+        if (isPwField(e.target)) { try { e.target.blur(); } catch (_) {} }
+    }, true);
+    setInterval(defusePwFocus, 400);
 
     // --- Disable native overscroll/pull-to-refresh on the page ---
     // Outlook web shows an envelope icon when the user pulls down from the
