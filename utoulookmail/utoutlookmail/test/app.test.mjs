@@ -1630,3 +1630,33 @@ test('v3.3.28: clean quit writes exitclient synchronously so the wrapper does NO
     const aliveBranch = cmd.slice(cmd.indexOf('clientalive=1'), cmd.indexOf('clientalive=1') + 200);
     assert.ok(!aliveBranch.includes('rm -f'), 'alive branch must NOT delete lifecycle flags (v3.3.28)');
 });
+
+test('v3.3.30: démarrage rapide + wrapper périmé silencieux (pas de kill du nouvel app)', async () => {
+    const fs = await import('node:fs');
+    const common = fs.readFileSync(path.resolve(__dirname, '../../utils/common.sh'), 'utf-8');
+    // kill_app: fast path — if no prospect-mail is running, return BEFORE the
+    // close-flag write + 3s sleep (cleanup calls it 3x per start = 9s lost)
+    const killApp = common.slice(common.indexOf('utoutlook_kill_app()'), common.indexOf('utoutlook_cleanup_locks()'));
+    const checkPos = killApp.indexOf('pkill" -0 prospect-mail');
+    const flagPos = killApp.indexOf('echo "closed" > "${UTOUTLOOK_EXITCOMMAND}"');
+    assert.ok(checkPos !== -1 && flagPos !== -1 && checkPos < flagPos,
+        'kill_app must check pkill -0 prospect-mail BEFORE writing the close flag / sleeping (v3.3.30)');
+    // kill_stale_wrappers: SIGKILL only, never SIGTERM (a TERM runs the EXIT trap
+    // which writes the close flag / socket quit and can kill the NEW instance)
+    const ksw = common.slice(common.indexOf('utoutlook_kill_stale_wrappers()'), common.indexOf('utoutlook_cleanup_flags()'));
+    assert.ok(!ksw.includes('kill -TERM'), 'kill_stale_wrappers must not SIGTERM stale wrappers (v3.3.30)');
+    assert.ok(ksw.includes('kill -9'), 'kill_stale_wrappers must SIGKILL stale wrappers (v3.3.30)');
+
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    // close_command: stale wrapper (pidfile != $$) exits silently
+    const cc = cmd.slice(cmd.indexOf('function close_command()'), cmd.indexOf('function close_command()') + 700);
+    assert.ok(cc.includes('wrapper.pid') && cc.includes('exit 0') && cc.includes('curpid'),
+        'close_command must exit silently when pidfile != $$ (v3.3.30)');
+    // cleanup: pid is recorded BEFORE kill_stale_wrappers so the stale wrapper
+    // sees it is no longer the owner
+    const cu = cmd.slice(cmd.indexOf('function cleanup()'), cmd.indexOf('function launch_prospect'));
+    const pidPos = cu.indexOf('echo $$ > "${UTOUTLOOK_DATA_DIR}/wrapper.pid"');
+    const kswPos = cu.indexOf('utoutlook_kill_stale_wrappers');
+    assert.ok(pidPos !== -1 && kswPos !== -1 && pidPos < kswPos,
+        'cleanup must write wrapper.pid BEFORE kill_stale_wrappers (v3.3.30)');
+});
