@@ -1504,3 +1504,26 @@ test('v3.3.24: le scan périodique gestures ne parcourt plus tout document.body 
     assert.ok(seg.includes('hideLoadingIndicators(container)'),
         'periodic scan must target list containers only (v3.3.24)');
 });
+
+test('v3.3.25: UX top3 — swipe actions, empty state i18n, compteur volet fermé, reading font scale', async () => {
+    const fs = await import('node:fs');
+    const g = fs.readFileSync(path.resolve(__dirname, '../public/gestures.js'), 'utf-8');
+    assert.ok(g.includes('swipe LEFT = delete') && g.includes("action === 'delete'"),
+        'swipe actions on list items required (v3.3.25)');
+    assert.ok(g.includes('utoutlook-empty-state') && g.includes('emptyTitle'),
+        'empty state with i18n required (v3.3.25)');
+
+    const obs = fs.readFileSync(path.resolve(__dirname, '../public/unread-number-observer.js'), 'utf-8');
+    assert.ok(obs.includes('navToggleForRead'),
+        'observer must toggle the nav pane briefly to read the count when closed (v3.3.25)');
+
+    const i18n = fs.readFileSync(path.resolve(__dirname, '../src/i18n.mjs'), 'utf-8');
+    assert.ok(i18n.includes("'empty.title'") && i18n.includes("'empty.body'"),
+        'empty state keys must exist in all languages (v3.3.25)');
+
+    const ctrl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    assert.ok(ctrl.includes('READING_FONT_STEPS') && ctrl.includes('readingFontScale'),
+        'reading font scale command required (v3.3.25)');
+    const sock = fs.readFileSync(path.resolve(__dirname, '../src/ipc-socket.mjs'), 'utf-8');
+    assert.ok(sock.includes("case 'readingFont'"), 'socket cmd readingFont required (v3.3.25)');
+});
