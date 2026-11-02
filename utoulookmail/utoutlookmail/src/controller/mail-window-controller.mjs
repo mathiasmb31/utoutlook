@@ -1,4 +1,4 @@
-import {app, BrowserWindow, ipcMain, Menu, shell, clipboard, Notification, nativeImage, nativeTheme, screen, session} from 'electron';
+import {app, BrowserWindow, ipcMain, Menu, shell, clipboard, Notification, nativeImage, nativeTheme, screen, session, powerMonitor} from 'electron';
 import {spawn} from 'child_process';
 import getClientFile from './client-injector.mjs';
 import path from 'node:path';
@@ -806,6 +806,7 @@ class MailWindowController {
             });
         });
         this.setupWindowEvents();
+        this.setupPowerEvents();
         this.setupScreenEvents();
         this.setupOfflineDetection();
         this.startCacheWatcher();
@@ -940,6 +941,11 @@ class MailWindowController {
                 partition: this.sessionPartition, // Isolate storage per account
             },
         });
+
+        // v3.3.32: never throttle rendering when the window is hidden/backgrounded —
+        // on Ubuntu Touch a throttled X11 window is not repainted after wake →
+        // white screen. Combined with the resume handler below.
+        this.win.webContents.setBackgroundThrottling(false);
 
         this.isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
         if (this.isDev) {
@@ -1383,11 +1389,31 @@ class MailWindowController {
         });
     }
 
+    setupPowerEvents() {
+        // v3.3.32: after a suspend/resume (screen off → on), the X11/XWayland
+        // window is no longer repainted → white screen on wake ("veille puis
+        // écran blanc"). powerMonitor 'resume' fires from logind → force a
+        // full redraw of the webContents and re-assert visibility/focus.
+        powerMonitor.on('resume', () => {
+            logger.info('powerMonitor resume — forcing window repaint (v3.3.32)');
+            if (!this.alive) return;
+            try { this.win.webContents.invalidate(); } catch (e) { logger.warn('invalidate failed:', e.message); }
+            try { if (!this.win.isVisible()) this.win.show(); } catch (e) { /* ignore */ }
+            try { this.win.focus(); } catch (e) { /* ignore */ }
+        });
+        powerMonitor.on('suspend', () => logger.info('powerMonitor suspend (v3.3.32)'));
+    }
+
     setupWindowEvents() {
         // v3.3.4: log window lifecycle events — needed to diagnose "app does not
         // start" episodes where the process and heartbeat are alive but the
         // window never appears (or is hidden and never re-shown on relaunch).
-        this.win.on("show", () => logger.info('Window event: show'));
+        // v3.3.32: also force a repaint on every show — covers the return to
+        // foreground after the app was backgrounded (Lomiri may SIGSTOP it).
+        this.win.on("show", () => {
+            logger.info('Window event: show');
+            try { this.win.webContents.invalidate(); } catch (e) { /* ignore */ }
+        });
         this.win.on("hide", () => logger.info('Window event: hide'));
         this.win.on("focus", () => logger.info('Window event: focus'));
         this.win.on("blur", () => logger.info('Window event: blur'));
