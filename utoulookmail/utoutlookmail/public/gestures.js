@@ -10,98 +10,63 @@
     if (window.__utoutlookGesturesLoaded) return;
     window.__utoutlookGesturesLoaded = true;
 
-    // --- v3.3.36: password fields and the Maliit virtual keyboard ---
-    // Chromium/Blink refuses XIM/Wayland-text-input commits inside fields that
-    // were EVER type=password (anti-keylogger; the flag is frozen at creation —
-    // verified on device: switching type or even replacing the node does NOT
-    // help, only a field born as type=text receives Maliit input).
-    // Solution: a dedicated overlay text field (born as type=text, so the
-    // keyboard works on it). When a password field gets focus, we move the
-    // focus to the overlay and copy every keystroke back into the real
-    // password field — so the submitted value is correct.
-    let __pwTarget = null;
-    let __pwOverlay = null;
-    const isPwField = (el) => el && el.tagName === 'INPUT' &&
+    // --- v3.3.39: password fields and the Maliit virtual keyboard ---
+    // Chromium/Blink sets the HAS_BEEN_PASSWORD flag on the window the first
+    // time a password field takes the focus (even briefly) — after that the OSK
+    // stops delivering text ANYWHERE (verified on device: "2 chars then blocked").
+    // So a password field must NEVER be focusable by a tap. Solution: swap each
+    // password field with a same-position overlay input born as type=text, and
+    // hide the real field (display:none). Taps land on the overlay (text → OSK
+    // works), and every keystroke is copied back into the real password field,
+    // so the submitted value is correct.
+    const isPwField = (el) => el && el.tagName === 'INPUT' && !el.__pwSwapped &&
         (el.type === 'password' || /password/i.test(el.getAttribute('autocomplete') || ''));
-    const ensurePwOverlay = () => {
-        if (__pwOverlay) return __pwOverlay;
-        const o = document.createElement('input');
-        o.type = 'text';
-        o.id = '__utPwOverlay';
-        o.setAttribute('autocomplete', 'off');
-        o.setAttribute('autocapitalize', 'off');
-        o.spellcheck = false;
-        o.style.cssText = 'position:fixed;left:8px;right:8px;top:8px;z-index:2147483647;' +
-            'width:calc(100% - 16px);height:64px;font-size:28px;padding:8px 12px;' +
-            'box-sizing:border-box;-webkit-text-security:disc;background:#fff;color:#000;' +
-            'border:3px solid #e81123;border-radius:10px;display:none;';
-        o.addEventListener('input', () => {
-            if (__pwTarget) { try { __pwTarget.value = o.value; } catch (_) {} }
-        });
-        (document.body || document.documentElement).appendChild(o);
-        __pwOverlay = o;
-        return o;
+    const pwSwap = (el) => {
+        if (!isPwField(el) || !el.parentNode) return;
+        el.__pwSwapped = true;
+        el.removeAttribute('autofocus');
+        try {
+            const r = el.getBoundingClientRect();
+            const cs = getComputedStyle(el);
+            const o = document.createElement('input');
+            o.type = 'text';
+            o.setAttribute('autocomplete', 'off');
+            o.setAttribute('autocapitalize', 'off');
+            o.spellcheck = false;
+            o.placeholder = el.placeholder || '••••••••';
+            o.style.cssText =
+                `position:fixed;left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;` +
+                `font-size:${cs.fontSize};box-sizing:border-box;z-index:2147483646;` +
+                `-webkit-text-security:disc;background:${cs.backgroundColor};color:${cs.color};` +
+                `border:${cs.border};border-radius:${cs.borderRadius};padding:${cs.padding};`;
+            o.value = el.value || '';
+            o.addEventListener('input', () => { try { el.value = o.value; } catch (_) {} });
+            el.parentNode.insertBefore(o, el);
+            el.style.display = 'none';   // real field can no longer be tapped/focused
+        } catch (_) { /* ignore */ }
     };
-    document.addEventListener('focusin', (e) => {
-        const el = e.target;
-        if (el === __pwOverlay) return;
-        if (isPwField(el)) {
-            __pwTarget = el;
-            const o = ensurePwOverlay();
-            o.value = el.value || '';
-            o.style.display = 'block';
-            // move the focus to our pure-text field so the OSK types into it
-            setTimeout(() => { try { o.focus(); } catch (_) {} }, 0);
-        } else if (__pwOverlay) {
-            __pwOverlay.style.display = 'none';
-            __pwTarget = null;
-        }
-    }, true);
-    // v3.3.37: prevent the password field from EVER taking the focus (the site
-    // would re-focus it on re-render and steal the focus back from the overlay,
-    // losing keystrokes). Intercept the tap before focus happens.
-    document.addEventListener('mousedown', (e) => {
-        const el = e.target;
-        if (isPwField(el)) {
-            e.preventDefault();          // password field never gets the focus
-            __pwTarget = el;
-            const o = ensurePwOverlay();
-            o.value = el.value || '';
-            o.style.display = 'block';
-            try { o.focus(); } catch (_) {}
-        }
-    }, true);
-    document.addEventListener('touchstart', (e) => {
-        const el = e.target;
-        if (isPwField(el)) {
-            e.preventDefault();
-            __pwTarget = el;
-            const o = ensurePwOverlay();
-            o.value = el.value || '';
-            o.style.display = 'block';
-            try { o.focus(); } catch (_) {}
-        }
-    }, {capture: true, passive: false});
-    // Re-attach if the SPA removes the overlay
-    new MutationObserver(() => {
-        if (__pwOverlay && !document.getElementById('__utPwOverlay')) __pwOverlay = null;
-        // v3.3.38: strip autofocus from password fields — an autofocused password
-        // field sets Blink's HAS_BEEN_PASSWORD flag on the window and the OSK
-        // stops delivering text EVERYWHERE (even into plain text fields).
-        document.querySelectorAll('input[type=password][autofocus]').forEach((el) => {
-            el.removeAttribute('autofocus');
+    const scanPwFields = () => {
+        document.querySelectorAll('input[type=password]').forEach(pwSwap);
+        document.querySelectorAll('input[autocomplete]').forEach((el) => {
+            if (/password/i.test(el.getAttribute('autocomplete') || '')) pwSwap(el);
         });
-    }).observe(document.documentElement, {childList: true, subtree: true});
-    // v3.3.38: if a password field somehow got the focus (autofocus, script),
-    // blur it immediately so the HAS_BEEN_PASSWORD flag is never set.
-    const defusePwFocus = () => {
+    };
+    scanPwFields();
+    // Re-scan whenever the DOM changes (SPA / React re-creates the field)
+    new MutationObserver(() => scanPwFields())
+        .observe(document.documentElement, {childList: true, subtree: true});
+    // Safety net: if a password field somehow gets the focus (script call),
+    // blur it immediately so HAS_BEEN_PASSWORD is never set on the window.
+    document.addEventListener('focusin', (e) => {
+        if (e.target && e.target.tagName === 'INPUT' &&
+            (e.target.type === 'password' || /password/i.test(e.target.getAttribute('autocomplete') || ''))) {
+            try { e.target.blur(); } catch (_) {}
+        }
+    }, true);
+    setInterval(function () {
         const ae = document.activeElement;
-        if (isPwField(ae)) { try { ae.blur(); } catch (_) {} }
-    };
-    document.addEventListener('focusin', (e) => {
-        if (isPwField(e.target)) { try { e.target.blur(); } catch (_) {} }
-    }, true);
-    setInterval(defusePwFocus, 400);
+        if (ae && ae.tagName === 'INPUT' && ae.type === 'password') { try { ae.blur(); } catch (_) {} }
+    }, 400);
 
     // --- Disable native overscroll/pull-to-refresh on the page ---
     // Outlook web shows an envelope icon when the user pulls down from the
