@@ -57,6 +57,11 @@ let unreadObserver = null;
 let notificationObserver = null;
 let retryTimer = null;
 let retryDelay = CONFIG.initialRetryDelayMs;
+// v3.3.22: un handler qui échoue 5× de suite est déclaré mort (ex: interface
+// interne outlookWebAppUnread supprimée par Microsoft) — sinon retry infini
+// qui spam les logs et bouffe du CPU (vu: "Failed to connect" toutes les 3s).
+const handlerFailCount = {};
+const deadHandlers = {};
 
 // Persistent state across re-injections.
 // The observer script is re-injected on dom-ready, did-navigate-in-page,
@@ -497,14 +502,22 @@ const initializeEmailMonitoring = () => {
   const failedHandlers = [];
 
   for (const interfaceType in observeUnreadHandlers) {
+    if (deadHandlers[interfaceType]) continue; // v3.3.22: dead after 5 failures
     const handler = observeUnreadHandlers[interfaceType];
     const started = handler();
 
     if (started) {
+      handlerFailCount[interfaceType] = 0;
       debug(`Successfully connected to ${interfaceType} interface`);
       startedHandlers.push(interfaceType);
     } else {
-      debug(`Failed to connect to ${interfaceType} interface`);
+      handlerFailCount[interfaceType] = (handlerFailCount[interfaceType] || 0) + 1;
+      if (handlerFailCount[interfaceType] >= 5) {
+        deadHandlers[interfaceType] = true;
+        debug(`Giving up on ${interfaceType} after 5 failures (interface removed by Outlook?)`);
+      } else {
+        debug(`Failed to connect to ${interfaceType} interface (${handlerFailCount[interfaceType]}/5)`);
+      }
       failedHandlers.push(interfaceType);
     }
   }
@@ -519,11 +532,12 @@ const initializeEmailMonitoring = () => {
     window.__utoutlookObserverActive = false;
   }
 
-  // Retry failed handlers with exponential backoff — never give up.
-  // Outlook is a SPA that can take 30s+ to render on slow devices.
-  if (failedHandlers.length > 0 || startedHandlers.length === 0) {
+  // Retry failed handlers with exponential backoff — but NOT forever:
+  // v3.3.22 dead handlers (5 consecutive failures) are excluded from the retry.
+  const retryable = failedHandlers.filter(f => !deadHandlers[f]);
+  if (retryable.length > 0 || (startedHandlers.length === 0 && Object.keys(deadHandlers).length < Object.keys(observeUnreadHandlers).length)) {
     const currentDelay = retryDelay;
-    debug(`Retrying in ${currentDelay / 1000}s (failed: ${failedHandlers.join(', ') || 'all'})`);
+    debug(`Retrying in ${currentDelay / 1000}s (failed: ${retryable.join(', ') || 'all'})`);
     retryTimer = setTimeout(() => {
       // Exponential backoff: double the delay, capped at max
       retryDelay = Math.min(retryDelay * 2, CONFIG.maxRetryDelayMs);
