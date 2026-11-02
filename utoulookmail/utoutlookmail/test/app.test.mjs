@@ -1544,6 +1544,33 @@ test('v3.3.26: icône mascotte — enveloppe + tête UBTouch, statique + animée
     assert.ok(splash.includes('logo-anim.svg'), 'splash must use the animated logo (v3.3.26)');
 });
 
+test('v3.3.29: les logos référencés depuis l\'asar (splash/about) existent DANS l\'asar', async () => {
+    const fs = await import('node:fs');
+    // inner assets dir = utoutlookmail/assets → packed into app.asar (files: assets/**)
+    // splash.html (public/) references ../assets/logo-anim.svg, about.html (src/)
+    // references ../assets/logo-vibe.svg — both resolve INSIDE the asar at runtime.
+    // v3.3.28 bug: the new mascot logos were only in the outer click assets/ dir,
+    // so the splash showed a broken-image icon.
+    const inner = path.resolve(__dirname, '../assets');
+    for (const f of ['logo-anim.svg', 'logo-vibe.svg']) {
+        assert.ok(fs.existsSync(path.join(inner, f)), `inner asar asset ${f} must exist (v3.3.29)`);
+    }
+    const anim = fs.readFileSync(path.join(inner, 'logo-anim.svg'), 'utf-8');
+    assert.ok(anim.includes('data:image/png;base64') && anim.includes('animateTransform'),
+        'inner logo-anim.svg must be the self-contained animated mascot version (v3.3.29)');
+    const vibe = fs.readFileSync(path.join(inner, 'logo-vibe.svg'), 'utf-8');
+    assert.ok(vibe.includes('data:image/png;base64'),
+        'inner logo-vibe.svg must be the self-contained mascot version, not the old 2 KB one (v3.3.29)');
+    // every ../assets/... reference in asar-packed pages must resolve in the inner dir
+    for (const page of ['../public/splash.html', '../src/about.html']) {
+        const html = fs.readFileSync(path.resolve(__dirname, page), 'utf-8');
+        for (const m of html.matchAll(/\.\.\/assets\/([\w@.-]+)/g)) {
+            assert.ok(fs.existsSync(path.join(inner, m[1])),
+                `${page} references ../assets/${m[1]} which must exist in the asar assets (v3.3.29)`);
+        }
+    }
+});
+
 test('v3.3.27: XMODIFIERS=@im=maliit exporté pour que le clavier virtuel tape dans Chromium', async () => {
     const fs = await import('node:fs');
     const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
