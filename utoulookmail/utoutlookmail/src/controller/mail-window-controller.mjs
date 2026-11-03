@@ -1690,6 +1690,7 @@ class MailWindowController {
         const tr = getAllTranslations();
         const i18nJson = JSON.stringify({
             loginMadeFor: tr['login.madeFor'],
+            knownLogin: this.knownEmail || '',   // v3.3.57: pré-remplir le champ login (jamais loggé)
         });
         win.webContents.executeJavaScript(
             `window.__utoutlookI18n = Object.assign(window.__utoutlookI18n||{}, ${i18nJson});\n` +
