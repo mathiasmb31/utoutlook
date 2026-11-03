@@ -368,13 +368,10 @@ class ProspectMail {
     }
 }
 
-// v3.3.31: force the Ozone X11 platform so XMODIFIERS=@im=maliit (exported by
-// command.sh) is honored by Chromium. Under Lomiri, WAYLAND_DISPLAY is set in
-// the session and Electron would otherwise start as a native Wayland client,
-// where XMODIFIERS is ignored → the Maliit virtual keyboard types nothing
-// (empty password field). command.sh also unsets WAYLAND_DISPLAY; this switch
-// is the in-process guarantee, even if the app is launched without the wrapper.
-app.commandLine.appendSwitch('ozone-platform', 'x11');
+// v3.3.45: no ozone override anymore — Electron runs as a native Wayland client
+// under Lomiri and the Maliit on-screen keyboard uses the Wayland text-input
+// protocol (password fields work, as in 3.2.x). XMODIFIERS is still exported by
+// command.sh for the X11/XWayland fallback.
 
 appInstance = new ProspectMail();
 appInstance.init();

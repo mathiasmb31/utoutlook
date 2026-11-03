@@ -51,9 +51,9 @@ function launch_prospect() {
 	utoutlook_wait_notifications 15
 	utoutlook_notify "$(utoutlook_t 'shell.welcome')"
 
-	# v3.3.31: --ozone-platform=x11 forces Chromium onto XWayland where
-	# XMODIFIERS=@im=maliit works (see exports above).
-	"${WD}"/bin/App/prospect-mail "$dpioptions" "$sandboxoptions" "$gpuoptions" --ozone-platform=x11 &
+	# v3.3.45: native Wayland client (Lomiri session) — Maliit OSK goes through
+	# the Wayland text-input protocol, password fields included (as in 3.2.x).
+	"${WD}"/bin/App/prospect-mail "$dpioptions" "$sandboxoptions" "$gpuoptions" &
 	i+=1
 }
 
@@ -240,15 +240,9 @@ export GTK_IM_MODULE_FILE=/home/phablet/.config/utoutlook.mathias/immodules.cach
 # alone only covers GTK apps).
 export XMODIFIERS=@im=maliit
 export QT_IM_MODULE=maliit
-# v3.3.31: force Chromium/Electron onto X11 (XWayland). Under Lomiri the
-# session exports WAYLAND_DISPLAY, so Chromium would start as a NATIVE
-# Wayland client and ignore XMODIFIERS — Maliit then delivers no keys
-# ("password field stays empty"). On X11/XWayland, XMODIFIERS=@im=maliit
-# is the working path: XWayland bridges XIM to Maliit's text-input.
-unset WAYLAND_DISPLAY
-export XDG_SESSION_TYPE=x11
-export GDK_BACKEND=x11
-export DISABLE_WAYLAND=1
+# v3.3.45: keep the native Wayland session (do NOT unset WAYLAND_DISPLAY) —
+# Chromium then talks to Maliit through the Wayland text-input protocol.
+# XMODIFIERS/QT_IM_MODULE are kept for the X11/XWayland fallback path.
 export DCONF_PROFILE=/nonexistent
 export XDG_CONFIG_HOME=/home/phablet/.config/utoutlook.mathias/
 export XDG_DATA_HOME=/home/phablet/.config/utoutlook.mathias/
