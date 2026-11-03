@@ -182,6 +182,18 @@ class MailWindowController {
      */
     insertText(text) {
         if (!this.win || this.win.isDestroyed()) return;
+        // v3.3.48: en Wayland natif (WAYLAND_DISPLAY set, plus de forçage X11),
+        // webContents.insertText (chemin XIM/X11) ne dépose rien. Fallback :
+        // insérer dans le champ focusé via execCommand → vrai événement input.
+        if (process.env.WAYLAND_DISPLAY) {
+            this.win.webContents.executeJavaScript(
+                `(()=>{var ae=document.activeElement;` +
+                `if(ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.isContentEditable)){` +
+                `ae.focus();document.execCommand('insertText',false,${JSON.stringify(text)});` +
+                `return ae.value!==undefined?String(ae.value).length:-1;}return null;})()`
+            ).catch(() => {});
+            return;
+        }
         this.win.webContents.insertText(text);
     }
 
