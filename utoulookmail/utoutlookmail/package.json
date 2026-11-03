@@ -1,11 +1,7 @@
 {
   "name": "prospect-mail",
   "productName": "Prospect Mail",
-<<<<<<< HEAD
   "version": "3.3.42",
-=======
-  "version": "3.3.42",
->>>>>>> parent of d103c49 (fix(v3.3.41): bloquer la page de connexion GitHub (github.com) — depuis le switch ozone X11 (v3.3.31) le clavier XIM ne délivre pas de texte dans son champ password ; on reste sur la page Microsoft où la saisie fonctionne (will-navigate + will-redirect + setWindowOpenHandler))
   "type:": "module",
   "main": "src/main.mjs",
   "description": "Unofficial desktop mail client for Microsoft Outlook",
