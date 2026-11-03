@@ -1376,12 +1376,12 @@ test('v3.3.18: login_hint injection shows the account tile WITHOUT auto-login; e
         'knownEmail must never be logged (confidentiality, v3.3.18)');
 });
 
-test('v3.3.19: splash logo aussi grand que velo-touch + look UT lecture de mails', async () => {
+test('v3.3.19/v3.3.47: splash logo grand (82vw max 900px en v3.3.47) + look UT lecture de mails', async () => {
     const fs = await import('node:fs');
     const splash = fs.readFileSync(path.resolve(__dirname, '../public/splash.html'), 'utf-8');
-    // même règle que velo-touch Main.qml: logoSize = min(width*0.65, 768)
-    assert.ok(splash.includes('min(65vw, 768px)'),
-        'splash logo must be min(65vw, 768px) like velo-touch (v3.3.19)');
+    // v3.3.19: min(65vw, 768px) like velo-touch; v3.3.47: min(82vw, 900px) (mascotte plus visible)
+    assert.ok(splash.includes('min(82vw, 900px)'),
+        'splash logo must be min(82vw, 900px) since v3.3.47 (was min(65vw, 768px) in v3.3.19)');
     assert.ok(splash.includes('#0f0f1a'),
         'splash background must be the UT dark #0f0f1a (v3.3.19)');
 
