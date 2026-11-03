@@ -10,63 +10,11 @@
     if (window.__utoutlookGesturesLoaded) return;
     window.__utoutlookGesturesLoaded = true;
 
-    // --- v3.3.39: password fields and the Maliit virtual keyboard ---
-    // Chromium/Blink sets the HAS_BEEN_PASSWORD flag on the window the first
-    // time a password field takes the focus (even briefly) — after that the OSK
-    // stops delivering text ANYWHERE (verified on device: "2 chars then blocked").
-    // So a password field must NEVER be focusable by a tap. Solution: swap each
-    // password field with a same-position overlay input born as type=text, and
-    // hide the real field (display:none). Taps land on the overlay (text → OSK
-    // works), and every keystroke is copied back into the real password field,
-    // so the submitted value is correct.
-    const isPwField = (el) => el && el.tagName === 'INPUT' && !el.__pwSwapped &&
-        (el.type === 'password' || /password/i.test(el.getAttribute('autocomplete') || ''));
-    const pwSwap = (el) => {
-        if (!isPwField(el) || !el.parentNode) return;
-        el.__pwSwapped = true;
-        el.removeAttribute('autofocus');
-        try {
-            const r = el.getBoundingClientRect();
-            const cs = getComputedStyle(el);
-            const o = document.createElement('input');
-            o.type = 'text';
-            o.setAttribute('autocomplete', 'off');
-            o.setAttribute('autocapitalize', 'off');
-            o.spellcheck = false;
-            o.placeholder = el.placeholder || '••••••••';
-            o.style.cssText =
-                `position:fixed;left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;` +
-                `font-size:${cs.fontSize};box-sizing:border-box;z-index:2147483646;` +
-                `-webkit-text-security:disc;background:${cs.backgroundColor};color:${cs.color};` +
-                `border:${cs.border};border-radius:${cs.borderRadius};padding:${cs.padding};`;
-            o.value = el.value || '';
-            o.addEventListener('input', () => { try { el.value = o.value; } catch (_) {} });
-            el.parentNode.insertBefore(o, el);
-            el.style.display = 'none';   // real field can no longer be tapped/focused
-        } catch (_) { /* ignore */ }
-    };
-    const scanPwFields = () => {
-        document.querySelectorAll('input[type=password]').forEach(pwSwap);
-        document.querySelectorAll('input[autocomplete]').forEach((el) => {
-            if (/password/i.test(el.getAttribute('autocomplete') || '')) pwSwap(el);
-        });
-    };
-    scanPwFields();
-    // Re-scan whenever the DOM changes (SPA / React re-creates the field)
-    new MutationObserver(() => scanPwFields())
-        .observe(document.documentElement, {childList: true, subtree: true});
-    // Safety net: if a password field somehow gets the focus (script call),
-    // blur it immediately so HAS_BEEN_PASSWORD is never set on the window.
-    document.addEventListener('focusin', (e) => {
-        if (e.target && e.target.tagName === 'INPUT' &&
-            (e.target.type === 'password' || /password/i.test(e.target.getAttribute('autocomplete') || ''))) {
-            try { e.target.blur(); } catch (_) {}
-        }
-    }, true);
-    setInterval(function () {
-        const ae = document.activeElement;
-        if (ae && ae.tagName === 'INPUT' && ae.type === 'password') { try { ae.blur(); } catch (_) {} }
-    }, 400);
+    // --- v3.3.49: plus de pwSwap — en Wayland natif (v3.3.45+) le clavier Maliit
+    // passe par text-input et fonctionne nativement dans les champs password.
+    // Le contournement overlay (v3.3.39) cachait le vrai champ (display:none),
+    // ce qui cassait le focus programmatique et insertText. On ne touche plus
+    // aux champs password.
 
     // --- v3.3.42: masquer le bouton « Options de connexion » ---
     // Sur la page de saisie du mot de passe Microsoft, ce lien mène à la page
