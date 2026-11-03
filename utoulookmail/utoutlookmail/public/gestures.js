@@ -42,6 +42,50 @@
     new MutationObserver(() => injectLoginBadge())
         .observe(document.documentElement, {childList: true, subtree: true});
 
+    // --- v3.3.57: pré-remplir le dernier login connu + bouton ⌫ (le clavier Wayland
+    // n'envoie pas la touche backspace, seules les frappes passent en text-input) ---
+    const prefillLogin = () => {
+        if (!LOGIN_HOSTS_RE.test(location.hostname)) return;
+        const p = document.querySelector('input[name=loginfmt]');
+        const known = window.__utoutlookI18n && window.__utoutlookI18n.knownLogin;
+        if (p && known && !p.value) {
+            p.value = known;
+            p.dispatchEvent(new Event('input', {bubbles: true}));
+        }
+    };
+    const ensureBsButton = () => {
+        let b = document.getElementById('utoutlook-bs');
+        const ae = document.activeElement;
+        const inField = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable);
+        if (inField && !b) {
+            b = document.createElement('button');
+            b.id = 'utoutlook-bs';
+            b.textContent = '\u232b';
+            b.setAttribute('aria-label', 'Backspace');
+            b.style.cssText = 'position:fixed;right:14px;bottom:14px;width:56px;height:56px;border-radius:50%;border:none;background:#E95420;color:#fff;font-size:26px;z-index:2147483647;cursor:pointer;';
+            b.addEventListener('click', () => {
+                const a = document.activeElement;
+                if (!a || !(a.tagName === 'INPUT' || a.tagName === 'TEXTAREA')) return;
+                a.focus();
+                if (!document.execCommand('delete')) {
+                    const st = a.selectionStart, en = a.selectionEnd;
+                    if (st !== en) a.setRangeText('', st, en, 'end');
+                    else if (st > 0) a.setRangeText('', st - 1, st, 'end');
+                    a.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'deleteContentBackward'}));
+                }
+            });
+            (document.body || document.documentElement).appendChild(b);
+        } else if (!inField && b) {
+            b.remove();
+        }
+    };
+    prefillLogin();
+    ensureBsButton();
+    document.addEventListener('focusin', ensureBsButton, true);
+    document.addEventListener('focusout', () => setTimeout(ensureBsButton, 150), true);
+    setInterval(function () { prefillLogin(); ensureBsButton(); }, 800);
+    new MutationObserver(() => { prefillLogin(); }).observe(document.documentElement, {childList: true, subtree: true});
+
     // --- v3.3.42: masquer le bouton « Options de connexion » ---
     // Sur la page de saisie du mot de passe Microsoft, ce lien mène à la page
     // GitHub (bloquée en v3.3.41 car le clavier XIM n'y tape pas). On le cache.
