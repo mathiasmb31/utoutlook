@@ -71,7 +71,7 @@
     // --- v3.3.42: masquer le bouton « Options de connexion » ---
     // Sur la page de saisie du mot de passe Microsoft, ce lien mène à la page
     // GitHub (bloquée en v3.3.41 car le clavier XIM n'y tape pas). On le cache.
-    const SIGNIN_OPTIONS_RE = /options de connexion|autres options de connexion|sign-?in options|other sign-?in options/i;
+    const SIGNIN_OPTIONS_RE = /options\s+de\s+connexion|autres\s+options\s+de\s+connexion|sign-?\s*in\s+options|other\s+sign-?\s*in\s+options/i;
     const HIDE_SIO = 'display:none!important;visibility:hidden!important;opacity:0!important;height:0!important;min-height:0!important;max-height:0!important;overflow:hidden!important;pointer-events:none!important;';
     const hideSignInOptions = (root) => {
         const base = (root && root.querySelectorAll) ? root : document;

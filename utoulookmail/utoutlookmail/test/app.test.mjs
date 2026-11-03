@@ -1661,19 +1661,22 @@ test('v3.3.30: démarrage rapide + wrapper périmé silencieux (pas de kill du n
         'cleanup must write wrapper.pid BEFORE kill_stale_wrappers (v3.3.30)');
 });
 
-test('v3.3.31: Chromium forcé en X11 (XWayland) pour que XMODIFIERS=@im=maliit soit pris en compte (clavier virtuel)', async () => {
+test('v3.3.45: retour au Wayland natif (Lomiri) — plus de forçage X11, le clavier Maliit passe par text-input (champs password inclus, comme en 3.2.x)', async () => {
     const fs = await import('node:fs');
     const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
-    // WAYLAND_DISPLAY must be cleared, otherwise Electron starts as a native
-    // Wayland client under Lomiri and ignores XMODIFIERS (empty password field)
-    assert.ok(/unset WAYLAND_DISPLAY|export WAYLAND_DISPLAY=/.test(cmd),
-        'command.sh must clear WAYLAND_DISPLAY so Chromium uses X11/XWayland (v3.3.31)');
-    assert.ok(cmd.includes('--ozone-platform=x11'),
-        'command.sh must pass --ozone-platform=x11 to prospect-mail (v3.3.31)');
+    // WAYLAND_DISPLAY must NOT be unset anymore: Electron runs as a native
+    // Wayland client and the OSK uses the Wayland text-input protocol
+    assert.ok(!/^\s*unset WAYLAND_DISPLAY/m.test(cmd),
+        'command.sh must NOT unset WAYLAND_DISPLAY anymore (v3.3.45, native Wayland)');
+    assert.ok(!cmd.includes('--ozone-platform=x11'),
+        'command.sh must NOT pass --ozone-platform=x11 anymore (v3.3.45)');
+    // XMODIFIERS kept for the X11/XWayland fallback path
+    assert.ok(cmd.includes('XMODIFIERS=@im=maliit'),
+        'command.sh must keep XMODIFIERS=@im=maliit as X11 fallback (v3.3.45)');
 
     const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
-    assert.ok(main.includes("appendSwitch('ozone-platform', 'x11')"),
-        'main.mjs must appendSwitch ozone-platform=x11 before app ready (v3.3.31)');
+    assert.ok(!main.includes("appendSwitch('ozone-platform', 'x11')"),
+        'main.mjs must NOT appendSwitch ozone-platform=x11 anymore (v3.3.45, native Wayland)');
 });
 
 test('v3.3.32: repaint forcé au réveil (veille → écran blanc en X11) + pas de background throttling', async () => {
