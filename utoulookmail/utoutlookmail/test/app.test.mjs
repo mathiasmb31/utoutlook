@@ -1687,26 +1687,23 @@ test('v3.3.32: repaint forcé au réveil (veille → écran blanc en X11) + pas 
         'must disable background throttling so the X11 window repaints after wake (v3.3.32)');
 });
 
-test('v3.3.40: aucun input ne reste type=password (conversion in-place en type=text masqué par CSS, patchs de prototypes)', async () => {
+test('v3.3.39: champs password remplacés par un overlay text à leur place (champ réel caché, jamais focusable au tap)', async () => {
     const fs = await import('node:fs');
     const g = fs.readFileSync(path.resolve(__dirname, '../public/gestures.js'), 'utf-8');
     // Blink pose HAS_BEEN_PASSWORD des qu'un champ password prend le focus, meme
-    // fugacement → l'OSK cesse d'envoyer partout, et Chromium refuse les commits
-    // IME dans input[type=password]. Fix structurel : convertir le champ EN PLACE
-    // en type=text (meme noeud → React garde listeners/tracker, focus et value
-    // conservés) et le masquer par CSS (-webkit-text-security:disc).
-    assert.ok(g.includes('demaskPw') && g.includes("el.type = 'text'"),
-        'gestures.js must convert each password field in place to type=text (v3.3.40)');
-    assert.ok(g.includes('-webkit-text-security:disc') && g.includes('data-pwmask'),
-        'converted field must stay masked via CSS -webkit-text-security:disc (v3.3.40)');
-    assert.ok(g.includes('Element.prototype.setAttribute') && g.includes('setAttributeNS'),
-        'gestures.js must patch setAttribute/setAttributeNS so type=password never sticks (v3.3.40)');
-    assert.ok(g.includes("Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'type')"),
-        'gestures.js must patch the `type` property setter (el.type = password) (v3.3.40)');
-    assert.ok(g.includes('HTMLElement.prototype.focus') && g.includes('demaskPw(this)'),
-        'gestures.js must convert the field BEFORE focus() so HAS_BEEN_PASSWORD is never set (v3.3.40)');
-    assert.ok(g.includes('MutationObserver') && g.includes('scanPwFields') && g.includes("attributeFilter: ['type']"),
-        'gestures.js must re-scan on DOM changes incl. type attribute (SPA / innerHTML) (v3.3.40)');
-    assert.ok(!g.includes('pwSwap') && !g.includes('insertBefore'),
-        'v3.3.40 must not use the old overlay-swap approach (pwSwap) anymore');
+    // fugacement → l'OSK cesse d'envoyer partout. Il faut que le tap ne puisse
+    // jamais atteindre le champ password : on le cache (display:none) et on met
+    // un overlay input text à sa place, qui copie chaque frappe dans le vrai champ.
+    assert.ok(g.includes('pwSwap') && g.includes("o.type = 'text'") && g.includes('insertBefore'),
+        'gestures.js must swap each password field with a same-position text overlay (v3.3.39)');
+    assert.ok(g.includes("el.style.display = 'none'"),
+        'gestures.js must hide the real password field so it can never be tapped/focused (v3.3.39)');
+    assert.ok(g.includes('el.value = o.value'),
+        'gestures.js must copy overlay input back into the real password field (v3.3.39)');
+    assert.ok(g.includes('MutationObserver') && g.includes('scanPwFields'),
+        'gestures.js must re-scan on DOM changes (SPA) (v3.3.39)');
+    assert.ok(g.includes("removeAttribute('autofocus')") && g.includes('blur()'),
+        'gestures.js must strip autofocus and blur any focused password field (v3.3.39)');
+    assert.ok(g.includes('-webkit-text-security'),
+        'overlay must stay masked (v3.3.39)');
 });
