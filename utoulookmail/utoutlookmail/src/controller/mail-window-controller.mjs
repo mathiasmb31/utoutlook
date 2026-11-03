@@ -1686,7 +1686,13 @@ class MailWindowController {
     injectGestures(targetWin = null) {
         const win = targetWin || this.win;
         if (!win || win.isDestroyed()) return;
+        // v3.3.50: inject the i18n strings used by the in-page scripts (login badge label)
+        const tr = getAllTranslations();
+        const i18nJson = JSON.stringify({
+            loginMadeFor: tr['login.madeFor'],
+        });
         win.webContents.executeJavaScript(
+            `window.__utoutlookI18n = Object.assign(window.__utoutlookI18n||{}, ${i18nJson});\n` +
             getClientFile("gestures.js")
         ).catch(() => {
             // gestures.js may not exist yet or page not ready, ignore
