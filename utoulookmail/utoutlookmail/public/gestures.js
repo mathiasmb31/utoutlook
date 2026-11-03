@@ -78,8 +78,8 @@
         const testEl = (el) => {
             if (!el || el.hasAttribute('data-utoutlook-sio-hidden')) return;
             const id = (el.id || '') + ' ' + (el.getAttribute('data-automation-id') || '');
-            const t = ((el.textContent || '') + ' ' + (el.getAttribute('aria-label') || '')).trim();
-            if ((t.length > 0 && t.length < 80 && SIGNIN_OPTIONS_RE.test(t)) || /signinoption/i.test(id)) {
+            const t = ((el.textContent || '') + ' ' + (el.getAttribute('aria-label') || '')).replace(/\s+/g, ' ').trim();
+            if ((t.length > 0 && t.length < 120 && SIGNIN_OPTIONS_RE.test(t)) || /signinoption/i.test(id)) {
                 el.style.cssText += HIDE_SIO;
                 el.setAttribute('data-utoutlook-sio-hidden', 'true');
             }
