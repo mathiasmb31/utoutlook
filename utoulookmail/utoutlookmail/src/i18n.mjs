@@ -26,6 +26,11 @@ const DEFAULT_LANG = 'fr';
 // --- Translations ---
 const T = {
     // ===== Common =====
+    // ===== Login page badge (v3.3.50) =====
+    'login.madeFor': {
+        fr: 'Made for Ubtouch', en: 'Made for Ubtouch', es: 'Made for Ubtouch', de: 'Made for Ubtouch',
+        it: 'Made for Ubtouch', pt: 'Made for Ubtouch', zh: 'Made for Ubtouch', ar: 'Made for Ubtouch',
+    },
     'app.name': {
         fr: 'UToutlook Mail', en: 'UToutlook Mail', es: 'UToutlook Mail', de: 'UToutlook Mail',
         it: 'UToutlook Mail', pt: 'UToutlook Mail', zh: 'UToutlook Mail', ar: 'UToutlook Mail',

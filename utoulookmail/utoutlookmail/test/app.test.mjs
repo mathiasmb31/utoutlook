@@ -1700,3 +1700,17 @@ test('v3.3.49: plus de pwSwap — en Wayland natif le clavier fonctionne nativem
     assert.ok(g.includes('SIGNIN_OPTIONS_RE'),
         'gestures.js must still hide the "Sign-in options" button (v3.3.42+)');
 });
+
+test('v3.3.50: badge logo + « Made for Ubtouch » injecté sur la page de login Microsoft (i18n 8 langues)', async () => {
+    const fs = await import('node:fs');
+    const g = fs.readFileSync(path.resolve(__dirname, '../public/gestures.js'), 'utf-8');
+    assert.ok(g.includes('utoutlook-login-badge') && g.includes('LOGO_DATA_URI') && g.includes('microsoftonline'),
+        'gestures.js must inject the login badge (logo + label) on Microsoft login pages (v3.3.50)');
+    const i18n = fs.readFileSync(path.resolve(__dirname, '../src/i18n.mjs'), 'utf-8');
+    assert.ok(i18n.includes("'login.madeFor'"),
+        'i18n.mjs must define login.madeFor (v3.3.50)');
+    for (const lang of ['fr','en','es','de','it','pt','zh','ar']) {
+        assert.ok(new RegExp("'login.madeFor'[\\s\\S]*?" + lang + ":").test(i18n),
+            `login.madeFor must exist for ${lang} (v3.3.50)`);
+    }
+});
