@@ -75,15 +75,17 @@
     const HIDE_SIO = 'display:none!important;visibility:hidden!important;opacity:0!important;height:0!important;min-height:0!important;max-height:0!important;overflow:hidden!important;pointer-events:none!important;';
     const hideSignInOptions = (root) => {
         const base = (root && root.querySelectorAll) ? root : document;
-        base.querySelectorAll('a,button,[role=button],[tabindex]').forEach((el) => {
-            if (el.hasAttribute('data-utoutlook-sio-hidden')) return;
+        const testEl = (el) => {
+            if (!el || el.hasAttribute('data-utoutlook-sio-hidden')) return;
             const id = (el.id || '') + ' ' + (el.getAttribute('data-automation-id') || '');
             const t = ((el.textContent || '') + ' ' + (el.getAttribute('aria-label') || '')).trim();
             if ((t.length > 0 && t.length < 80 && SIGNIN_OPTIONS_RE.test(t)) || /signinoption/i.test(id)) {
                 el.style.cssText += HIDE_SIO;
                 el.setAttribute('data-utoutlook-sio-hidden', 'true');
             }
-        });
+        };
+        if (base.matches) testEl(base);   // the added node itself is not returned by querySelectorAll
+        base.querySelectorAll('a,button,[role=button],[tabindex]').forEach(testEl);
     };
     hideSignInOptions(document);
     new MutationObserver((muts) => {
