@@ -1322,15 +1322,6 @@ class MailWindowController {
         // the account, and the synced cookies provide the session.
         this.win.webContents.on('will-navigate', (event, url) => {
             if (!this.alive) { try { event.preventDefault(); } catch (e) {} return; } // v3.3.22
-            // v3.3.41: block the GitHub sign-in page. Since the ozone X11 switch
-            // (v3.3.31) the XIM on-screen keyboard cannot deliver text into the
-            // password field of that page, so the login is impossible there.
-            // Staying on the Microsoft page keeps a working password input.
-            if (url.includes('github.com')) {
-                try { event.preventDefault(); } catch (e) {}
-                logger.info('Blocked navigation to github.com (OSK password input unsupported there)');
-                return;
-            }
             // v3.3.11: outlook.cloud.microsoft is the new mail host — same
             // login_hint treatment as live.com.
             if ((url.includes('outlook.live.com/mail') || url.includes('outlook.cloud.microsoft/mail'))
@@ -1362,14 +1353,6 @@ class MailWindowController {
             // lui-même sur son compte (pas de connexion automatique).
         });
 
-        // v3.3.41: block server-side redirects to the GitHub sign-in page too
-        this.win.webContents.on('will-redirect', (event, url) => {
-            if (url.includes('github.com')) {
-                try { event.preventDefault(); } catch (e) {}
-                logger.info('Blocked redirect to github.com (OSK password input unsupported there)');
-            }
-        });
-
         // Re-inject after page finishes loading (catches late-rendered SPA content)
         // Also clears the progress bar — merged with setupLoadingIndicators
         // to keep a single did-stop-loading listener.
@@ -1387,11 +1370,6 @@ class MailWindowController {
 
     setupWindowOpenHandler() {
         this.win.webContents.setWindowOpenHandler(({url}) => {
-            // v3.3.41: block the GitHub sign-in page in new windows too
-            if (url.includes('github.com')) {
-                logger.info('Blocked window open to github.com (OSK password input unsupported there)');
-                return {action: "deny"};
-            }
             if (url === "about:blank") {
                 return {action: "allow", overrideBrowserWindowOptions: {autoHideMenuBar: true}};
             }
