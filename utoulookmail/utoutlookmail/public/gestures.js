@@ -161,16 +161,32 @@
         b.textContent = i18n.firstInstall || 'First install';
         b.setAttribute('aria-label', b.textContent);
         b.style.cssText = 'position:fixed;left:14px;bottom:14px;padding:8px 14px;border-radius:20px;border:2px solid #E95420;background:rgba(255,255,255,.92);color:#E95420;font:600 13px/1 system-ui,sans-serif;z-index:2147483647;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.15);';
+        // v3.3.66: window.confirm() is NOT implemented in Electron (always returns
+        // false) — the native confirm dialog is shown by the main process via IPC.
+        // Fallback without electronAPI: two-tap pattern (tap once to arm, tap again
+        // within 3s to confirm).
+        let armed = false, armTimer = null;
         b.addEventListener('click', async () => {
-            const msg = i18n.firstInstallConfirm || 'Clear sign-in data and start fresh?';
-            if (!window.confirm(msg)) return;
-            // v3.3.65: prefer the main-process wipe (all cookies on all Microsoft
-            // domains + clearStorageData) — the in-page clear only reaches the
-            // current origin and syncCookiesToLiveCom() would re-copy the rest.
             if (window.electronAPI && typeof window.electronAPI.firstInstall === 'function') {
-                window.electronAPI.firstInstall();
+                await window.electronAPI.firstInstall(); // native dialog inside, wipes + reloads
                 return;
             }
+            if (!armed) {
+                armed = true;
+                const orig = b.textContent;
+                b.textContent = (i18n.firstInstallConfirmAction || 'Wipe everything') + ' ?';
+                b.style.background = '#E95420';
+                b.style.color = '#fff';
+                armTimer = setTimeout(() => {
+                    armed = false;
+                    b.textContent = orig;
+                    b.style.background = 'rgba(255,255,255,.92)';
+                    b.style.color = '#E95420';
+                }, 3000);
+                return;
+            }
+            clearTimeout(armTimer);
+            armed = false;
             // Fallback: in-page clear, awaiting IndexedDB deletion BEFORE reload
             // (an immediate reload cancels the async deleteDatabase calls).
             try { localStorage.clear(); } catch (_) {}

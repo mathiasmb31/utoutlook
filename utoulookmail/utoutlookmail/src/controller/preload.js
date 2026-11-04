@@ -17,8 +17,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     setAccentColor: (color) => ipcRenderer.send("set-accent-color", color),
     // Reload the page (used by offline.html)
     reload: () => ipcRenderer.send("reload"),
-    // First install: wipe all session data (cookies, storage, cache) — v3.3.65
-    firstInstall: () => ipcRenderer.send("first-install"),
+    // First install: wipe all session data (cookies, storage, cache) — v3.3.66
+    // invoke (not send): main process shows a native confirm dialog, returns true if wiped
+    firstInstall: () => ipcRenderer.invoke("first-install"),
     // Dark mode toggle
     toggleDarkMode: () => ipcRenderer.send("toggle-dark-mode"),
 });
