@@ -148,6 +148,51 @@
     setInterval(function () { prefillLogin(); ensureBsButton(); }, 800);
     new MutationObserver(() => { prefillLogin(); }).observe(document.documentElement, {childList: true, subtree: true});
 
+    // --- v3.3.63: bouton « Première installation » visible en bas à gauche de la page
+    // de login (le bouton ⌫ est en bas à droite — aucun chevauchement, aucun contenu masqué).
+    // Vide cookies + localStorage + sessionStorage + IndexedDB puis recharge la page,
+    // pour repartir d'un état vierge quand une session Microsoft bloque (boucle 2FA, etc.). ---
+    const ensureFirstInstallButton = () => {
+        if (!LOGIN_HOSTS_RE.test(location.hostname)) return;
+        if (document.getElementById('utoutlook-first-install')) return;
+        const i18n = window.__utoutlookI18n || {};
+        const b = document.createElement('button');
+        b.id = 'utoutlook-first-install';
+        b.textContent = i18n.firstInstall || 'First install';
+        b.setAttribute('aria-label', b.textContent);
+        b.style.cssText = 'position:fixed;left:14px;bottom:14px;padding:8px 14px;border-radius:20px;border:2px solid #E95420;background:rgba(255,255,255,.92);color:#E95420;font:600 13px/1 system-ui,sans-serif;z-index:2147483647;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.15);';
+        b.addEventListener('click', () => {
+            const msg = i18n.firstInstallConfirm || 'Clear sign-in data and start fresh?';
+            if (!window.confirm(msg)) return;
+            try { localStorage.clear(); } catch (_) {}
+            try { sessionStorage.clear(); } catch (_) {}
+            try {
+                document.cookie.split(';').forEach(c => {
+                    const name = c.split('=')[0].trim();
+                    if (name) {
+                        document.cookie = name + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';
+                        document.cookie = name + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=' + location.hostname;
+                        let d = location.hostname;
+                        while (d.indexOf('.') > 0) {
+                            d = d.substring(d.indexOf('.') + 1);
+                            document.cookie = name + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=.' + d;
+                        }
+                    }
+                });
+            } catch (_) {}
+            try {
+                if (window.indexedDB && indexedDB.databases) {
+                    indexedDB.databases().then(dbs => dbs.forEach(db => { if (db.name) indexedDB.deleteDatabase(db.name); })).catch(() => {});
+                }
+            } catch (_) {}
+            location.reload();
+        });
+        (document.body || document.documentElement).appendChild(b);
+    };
+    ensureFirstInstallButton();
+    new MutationObserver(() => ensureFirstInstallButton())
+        .observe(document.documentElement, {childList: true, subtree: true});
+
     // --- v3.3.42: masquer le bouton « Options de connexion » ---
     // Sur la page de saisie du mot de passe Microsoft, ce lien mène à la page
     // GitHub (bloquée en v3.3.41 car le clavier XIM n'y tape pas). On le cache.
