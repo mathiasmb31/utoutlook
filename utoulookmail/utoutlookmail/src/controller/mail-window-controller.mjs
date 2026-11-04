@@ -1,4 +1,4 @@
-import {app, BrowserWindow, ipcMain, Menu, shell, clipboard, Notification, nativeImage, nativeTheme, screen, session, powerMonitor} from 'electron';
+import {app, BrowserWindow, dialog, ipcMain, Menu, shell, clipboard, Notification, nativeImage, nativeTheme, screen, session, powerMonitor} from 'electron';
 import {spawn} from 'child_process';
 import getClientFile from './client-injector.mjs';
 import path from 'node:path';
@@ -1099,7 +1099,7 @@ class MailWindowController {
                     this.win.loadURL(cleanUrl);
                     // Allow detector to fire again if loop persists
                     this.redirectLoopDetected = false;
-                });
+                }).catch(() => {}); // v3.3.66: avoid unhandled rejection
             }
 
             // --- v3.3.59: 2FA/MFA loop detection ---
@@ -1138,7 +1138,7 @@ class MailWindowController {
                         logger.info('2FA loop: reloading mail URL after aggressive cookie sync');
                         this.win.loadURL('https://outlook.office.com/mail/');
                         this.mfaLoopDetected = false;
-                    });
+                    }).catch(() => {}); // v3.3.66
                 }
             } else {
                 // Reset the MFA loop detector when we leave the login pages
@@ -1293,14 +1293,26 @@ class MailWindowController {
                 this.reloadWindow();
             }
         });
-        // v3.3.65: first-install — wipe ALL session data from the main process.
+        // v3.3.66: first-install — wipe ALL session data from the main process.
         // The in-page clear (document.cookie/localStorage) only reaches the current
         // origin, and syncCookiesToLiveCom() would re-copy surviving cookies to the
         // other Microsoft domains on the next login page load. Here we remove every
         // cookie from the partition and clear all storage (localStorage, IndexedDB,
         // cache) — knownEmail lives in localStorage leveldb so it goes too.
-        ipcMain.on("first-install", async (event) => {
-            if (!this.win || event.sender !== this.win.webContents) return;
+        // Confirmation uses a NATIVE dialog: window.confirm() is not implemented in
+        // Electron and always returns false, which made the in-page confirm inert.
+        ipcMain.handle("first-install", async (event) => {
+            if (!this.win || this.win.isDestroyed() || event.sender !== this.win.webContents) return false;
+            const {response} = await dialog.showMessageBox(this.win, {
+                type: 'warning',
+                title: t('app.name'),
+                message: t('login.firstInstallConfirm'),
+                buttons: [t('common.cancel'), t('login.firstInstallConfirmAction')],
+                defaultId: 0,
+                cancelId: 0,
+                noLink: true,
+            });
+            if (response !== 1) return false;
             try {
                 this.knownEmail = null;
                 const ses = session.fromPartition(this.sessionPartition);
@@ -1316,6 +1328,7 @@ class MailWindowController {
                 logger.warn('First-install clear failed:', e.message);
             }
             this.win.loadURL('https://outlook.office.com/mail/');
+            return true;
         });
     }
 
@@ -1421,7 +1434,7 @@ class MailWindowController {
                 this.syncCookiesToLiveCom().then(() => {
                     logger.info(`Loading with synced cookies (login_hint preserved)`);
                     this.win.loadURL(url); // keep login_hint
-                });
+                }).catch(() => {}); // v3.3.66
                 return;
             }
             // v3.3.18: add login_hint=<known email> to the authorize URL so the
@@ -1770,6 +1783,7 @@ class MailWindowController {
             knownLogin: this.knownEmail || '',   // v3.3.57: pré-remplir le champ login (jamais loggé)
             firstInstall: tr['login.firstInstall'],           // v3.3.63: bouton first-install sur la page de login
             firstInstallConfirm: tr['login.firstInstallConfirm'],
+            firstInstallConfirmAction: tr['login.firstInstallConfirmAction'],
         });
         win.webContents.executeJavaScript(
             `window.__utoutlookI18n = Object.assign(window.__utoutlookI18n||{}, ${i18nJson});\n` +
