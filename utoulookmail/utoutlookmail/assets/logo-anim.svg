@@ -6,35 +6,37 @@
     <rect x="0" y="0" width="800" height="465" fill="#ffffff"/>
     <rect x="0" y="465" width="800" height="335" fill="#000000"/>
   </mask>
-  <clipPath id="head-clip"><circle cx="400" cy="465" r="148"/></clipPath>
+  <clipPath id="head-clip"><circle cx="400" cy="420" r="148"/></clipPath>
   </defs>
   <circle cx="400" cy="400" r="390" fill="#E95420"/>
   <circle cx="400" cy="400" r="360" fill="none" stroke="#ffffff" stroke-opacity="0.15" stroke-width="2"/>
+  <!-- open envelope flap, behind the head -->
+  <path d="M 225,465 L 400,240 L 575,465 Z" fill="#ffffff" stroke="#E95420" stroke-width="9" stroke-linejoin="round"/>
   <g mask="url(#above-envelope)">
   <g>
     <animateTransform attributeName="transform" attributeType="XML" type="translate"
-      values="0,170; 0,-80; 0,170" keyTimes="0; 0.5; 1" dur="3s" repeatCount="indefinite"
+      values="0,130; 0,-70; 0,130" keyTimes="0; 0.5; 1" dur="3s" repeatCount="indefinite"
       calcMode="spline" keySplines="0.4 0 0.6 1; 0.4 0 0.6 1"/>
     <g clip-path="url(#head-clip)">
-      <circle cx="400" cy="465" r="155" fill="#ffffff"/>
+      <circle cx="400" cy="420" r="155" fill="#ffffff"/>
       <g stroke="#2d2d2d" stroke-linecap="round" stroke-linejoin="round" fill="none">
-        <circle cx="400" cy="465" r="118" stroke-width="15" fill="#fafafa"/>
-        <circle cx="360" cy="448" r="17" fill="#2d2d2d" stroke="none"/>
-        <circle cx="440" cy="448" r="17" fill="#2d2d2d" stroke="none"/>
-        <circle cx="366" cy="442" r="5.5" fill="#ffffff" stroke="none"/>
-        <circle cx="446" cy="442" r="5.5" fill="#ffffff" stroke="none"/>
-        <path d="M 368,492 Q 400,516 432,492" stroke-width="11"/>
+        <circle cx="400" cy="420" r="118" stroke-width="15" fill="#fafafa"/>
+        <circle cx="360" cy="403" r="17" fill="#2d2d2d" stroke="none"/>
+        <circle cx="440" cy="403" r="17" fill="#2d2d2d" stroke="none"/>
+        <circle cx="366" cy="397" r="5.5" fill="#ffffff" stroke="none"/>
+        <circle cx="446" cy="397" r="5.5" fill="#ffffff" stroke="none"/>
+        <path d="M 368,447 Q 400,471 432,447" stroke-width="11"/>
         <g stroke="#b0b0b0" stroke-width="6" opacity="0.8">
-          <path d="M 312,420 l 22,-10"/>
-          <path d="M 318,438 l 20,-8"/>
-          <path d="M 488,420 l -22,-10"/>
-          <path d="M 482,438 l -20,-8"/>
-          <path d="M 340,540 l 24,8"/>
-          <path d="M 436,548 l 24,-6"/>
+          <path d="M 312,375 l 22,-10"/>
+          <path d="M 318,393 l 20,-8"/>
+          <path d="M 488,375 l -22,-10"/>
+          <path d="M 482,393 l -20,-8"/>
+          <path d="M 340,495 l 24,8"/>
+          <path d="M 436,503 l 24,-6"/>
         </g>
       </g>
     </g>
-    <circle cx="400" cy="465" r="155" fill="none" stroke="#ffffff" stroke-width="8"/>
+    <circle cx="400" cy="420" r="155" fill="none" stroke="#ffffff" stroke-width="8"/>
   </g>
   </g>
   <g>
