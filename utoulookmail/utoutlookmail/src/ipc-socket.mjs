@@ -43,6 +43,11 @@ export function startSocketServer(handlers) {
         let buffer = '';
         socket.on('data', (data) => {
             buffer += data.toString();
+            // v3.3.66: cap the buffer — a runaway client must not grow memory unbounded
+            if (buffer.length > 1024 * 1024) {
+                socket.destroy();
+                return;
+            }
             // Process complete JSON messages (newline-delimited)
             let newlineIdx;
             while ((newlineIdx = buffer.indexOf('\n')) !== -1) {
