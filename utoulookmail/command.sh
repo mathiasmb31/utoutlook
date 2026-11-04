@@ -42,6 +42,7 @@ function launch_prospect() {
 	if [ "$launchtry" -gt 3 ]; then
 		cleanup
 		echo "tried too more " >${exitcommand}
+		utoutlook_write_qml_i18n
 		qmlscene "${WD}"/qml/nonetwork.qml
 		exit 0
 	fi
