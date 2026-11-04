@@ -622,9 +622,10 @@ class MailWindowController {
     async applyDarkModeClass() {
         if (!this.win || this.win.isDestroyed()) return;
         const dark = this.shouldUseDarkMode();
+        // v3.3.65: .catch — page may be navigating, avoid unhandled rejection
         await this.win.webContents.executeJavaScript(
             `document.documentElement.classList.toggle('dark-mode', ${dark});`
-        );
+        ).catch(() => {});
     }
 
     getDarkModeCSS() {
@@ -1291,6 +1292,30 @@ class MailWindowController {
             if (this.win && event.sender === this.win.webContents) {
                 this.reloadWindow();
             }
+        });
+        // v3.3.65: first-install — wipe ALL session data from the main process.
+        // The in-page clear (document.cookie/localStorage) only reaches the current
+        // origin, and syncCookiesToLiveCom() would re-copy surviving cookies to the
+        // other Microsoft domains on the next login page load. Here we remove every
+        // cookie from the partition and clear all storage (localStorage, IndexedDB,
+        // cache) — knownEmail lives in localStorage leveldb so it goes too.
+        ipcMain.on("first-install", async (event) => {
+            if (!this.win || event.sender !== this.win.webContents) return;
+            try {
+                this.knownEmail = null;
+                const ses = session.fromPartition(this.sessionPartition);
+                const cookies = await ses.cookies.get({});
+                for (const c of cookies) {
+                    const url = `${c.secure ? 'https' : 'http'}://${c.domain.replace(/^\./, '')}${c.path || '/'}`;
+                    await ses.cookies.remove(url, c.name).catch(() => {});
+                }
+                await ses.cookies.flushStore().catch(() => {});
+                await ses.clearStorageData().catch(() => {});
+                logger.info('First-install: all cookies and storage cleared');
+            } catch (e) {
+                logger.warn('First-install clear failed:', e.message);
+            }
+            this.win.loadURL('https://outlook.office.com/mail/');
         });
     }
 

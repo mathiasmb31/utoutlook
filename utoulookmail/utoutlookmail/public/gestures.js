@@ -161,9 +161,18 @@
         b.textContent = i18n.firstInstall || 'First install';
         b.setAttribute('aria-label', b.textContent);
         b.style.cssText = 'position:fixed;left:14px;bottom:14px;padding:8px 14px;border-radius:20px;border:2px solid #E95420;background:rgba(255,255,255,.92);color:#E95420;font:600 13px/1 system-ui,sans-serif;z-index:2147483647;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.15);';
-        b.addEventListener('click', () => {
+        b.addEventListener('click', async () => {
             const msg = i18n.firstInstallConfirm || 'Clear sign-in data and start fresh?';
             if (!window.confirm(msg)) return;
+            // v3.3.65: prefer the main-process wipe (all cookies on all Microsoft
+            // domains + clearStorageData) — the in-page clear only reaches the
+            // current origin and syncCookiesToLiveCom() would re-copy the rest.
+            if (window.electronAPI && typeof window.electronAPI.firstInstall === 'function') {
+                window.electronAPI.firstInstall();
+                return;
+            }
+            // Fallback: in-page clear, awaiting IndexedDB deletion BEFORE reload
+            // (an immediate reload cancels the async deleteDatabase calls).
             try { localStorage.clear(); } catch (_) {}
             try { sessionStorage.clear(); } catch (_) {}
             try {
@@ -182,7 +191,10 @@
             } catch (_) {}
             try {
                 if (window.indexedDB && indexedDB.databases) {
-                    indexedDB.databases().then(dbs => dbs.forEach(db => { if (db.name) indexedDB.deleteDatabase(db.name); })).catch(() => {});
+                    const dbs = await indexedDB.databases();
+                    await Promise.all(dbs.map(db => db.name
+                        ? new Promise(res => { const r = indexedDB.deleteDatabase(db.name); r.onsuccess = r.onerror = r.onblocked = () => res(); })
+                        : Promise.resolve()));
                 }
             } catch (_) {}
             location.reload();
