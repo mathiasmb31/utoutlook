@@ -1,4 +1,4 @@
-import {app, BrowserWindow, ipcMain, Menu, shell, clipboard, Notification, nativeImage, nativeTheme, screen, session} from 'electron';
+import {app, BrowserWindow, ipcMain, Menu, shell, clipboard, Notification, nativeImage, nativeTheme, screen, session, powerMonitor} from 'electron';
 import {spawn} from 'child_process';
 import getClientFile from './client-injector.mjs';
 import path from 'node:path';
@@ -45,9 +45,11 @@ class MailWindowController {
         this.showWindowFrame = true;
         this.loginPage = 0;
         this.pageLoadTimes = []; // timestamps of recent page loads for loop detection
+        this.loginPageLoadTimes = []; // v3.3.59: timestamps of login page loads for 2FA loop detection
         this.redirectLoopDetected = false;
         this.loginHintIntercepts = 0; // count of login_hint redirects intercepted
         this.loopDetectorRetries = 0; // count of loop detector activations (max 3)
+        this.mfaLoopDetected = false; // v3.3.59: 2FA loop already handled
         this.currentZoomIndex = 2; // start at 1.0
         this.initialMinimization = { domReady: false };
 
@@ -182,6 +184,18 @@ class MailWindowController {
      */
     insertText(text) {
         if (!this.win || this.win.isDestroyed()) return;
+        // v3.3.48: en Wayland natif (WAYLAND_DISPLAY set, plus de forçage X11),
+        // webContents.insertText (chemin XIM/X11) ne dépose rien. Fallback :
+        // insérer dans le champ focusé via execCommand → vrai événement input.
+        if (process.env.WAYLAND_DISPLAY) {
+            this.win.webContents.executeJavaScript(
+                `(()=>{var ae=document.activeElement;` +
+                `if(ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.isContentEditable)){` +
+                `ae.focus();document.execCommand('insertText',false,${JSON.stringify(text)});` +
+                `return ae.value!==undefined?String(ae.value).length:-1;}return null;})()`
+            ).catch(() => {});
+            return;
+        }
         this.win.webContents.insertText(text);
     }
 
@@ -806,6 +820,7 @@ class MailWindowController {
             });
         });
         this.setupWindowEvents();
+        this.setupPowerEvents();
         this.setupScreenEvents();
         this.setupOfflineDetection();
         this.startCacheWatcher();
@@ -884,6 +899,10 @@ class MailWindowController {
         if (this.win && !this.win.isDestroyed() && !this.initialMinimization.domReady) {
             logger.info('closeSplashWindow: showing main window');
             this.win.show();
+            // v3.3.31: grab the X11 focus too — a visible-but-unfocused window
+            // does not raise Maliit's virtual keyboard when the login field is
+            // tapped (password field stays empty).
+            this.win.focus();
         } else {
             logger.warn(`closeSplashWindow: NOT showing main window (win=${!!this.win}, destroyed=${this.win?.isDestroyed()}, minimized=${this.initialMinimization.domReady})`);
         }
@@ -936,6 +955,11 @@ class MailWindowController {
                 partition: this.sessionPartition, // Isolate storage per account
             },
         });
+
+        // v3.3.32: never throttle rendering when the window is hidden/backgrounded —
+        // on Ubuntu Touch a throttled X11 window is not repainted after wake →
+        // white screen. Combined with the resume handler below.
+        this.win.webContents.setBackgroundThrottling(false);
 
         this.isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
         if (this.isDev) {
@@ -1020,8 +1044,15 @@ class MailWindowController {
             // the page will redirect to outlook.live.com/mail/?login_hint=... for
             // personal accounts. Sync cookies NOW (before the redirect) so the
             // session is valid on .live.com and the redirect loop is avoided.
-            if (url.includes('outlook.office.com/mail') && url.includes('#code=')) {
-                logger.info('Auth code detected — syncing cookies to live.com before redirect');
+            // v3.3.59: also cover outlook.live.com and outlook.cloud.microsoft with
+            // ?code= or #code= (post-2FA redirect carries an auth code too).
+            const hasAuthCode = url.includes('#code=') || url.includes('?code=');
+            const isOutlookMail = url.includes('outlook.office.com/mail') ||
+                                  url.includes('outlook.live.com/mail') ||
+                                  url.includes('outlook.office365.com/mail') ||
+                                  url.includes('outlook.cloud.microsoft/mail');
+            if (isOutlookMail && hasAuthCode) {
+                logger.info('Auth code detected — syncing cookies before redirect (v3.3.59)');
                 this.syncCookiesToLiveCom();
             }
 
@@ -1068,6 +1099,49 @@ class MailWindowController {
                     // Allow detector to fire again if loop persists
                     this.redirectLoopDetected = false;
                 });
+            }
+
+            // --- v3.3.59: 2FA/MFA loop detection ---
+            // After approving the Microsoft Authenticator push on another device,
+            // Microsoft sets session cookies on login.microsoftonline.com then
+            // redirects to outlook.live.com/mail. If those cookies are not
+            // propagated to live.com / cloud.microsoft, the mail page bounces
+            // back to the 2FA prompt → infinite loop. Detect frequent loads of
+            // login.microsoftonline.com (the 2FA/verify page) and force an
+            // aggressive cookie sync + flush.
+            const isMfaPage = url.includes('login.microsoftonline.com') ||
+                              url.includes('login.live.com') ||
+                              url.includes('account.live.com') ||
+                              url.includes('oauth') ||
+                              url.includes('consent');
+            if (isMfaPage) {
+                this.loginPageLoadTimes.push({url, time: now});
+                this.loginPageLoadTimes = this.loginPageLoadTimes.filter(p => now - p.time < 30000);
+                const recentMfaLoads = this.loginPageLoadTimes.length;
+                // Flush cookies immediately on every login page load — the 2FA
+                // approval cookie must survive even if the app is killed before
+                // the next periodic flush (15s).
+                session.fromPartition(this.sessionPartition).cookies.flushStore()
+                    .catch(() => {});
+                if (recentMfaLoads >= 4 && !this.mfaLoopDetected) {
+                    this.mfaLoopDetected = true;
+                    logger.warn(`2FA loop detected: ${recentMfaLoads} login page loads in 30s — aggressive cookie sync`);
+                    this.loginPageLoadTimes = [];
+                    this.syncCookiesToLiveCom().then(async () => {
+                        // Extra flush after sync to persist the copied cookies
+                        try {
+                            await session.fromPartition(this.sessionPartition).cookies.flushStore();
+                        } catch (e) { /* ignore */ }
+                        // Reload the mail URL directly — the session cookies
+                        // should now be valid on all domains.
+                        logger.info('2FA loop: reloading mail URL after aggressive cookie sync');
+                        this.win.loadURL('https://outlook.office.com/mail/');
+                        this.mfaLoopDetected = false;
+                    });
+                }
+            } else {
+                // Reset the MFA loop detector when we leave the login pages
+                this.loginPageLoadTimes = [];
             }
         });
 
@@ -1379,11 +1453,31 @@ class MailWindowController {
         });
     }
 
+    setupPowerEvents() {
+        // v3.3.32: after a suspend/resume (screen off → on), the X11/XWayland
+        // window is no longer repainted → white screen on wake ("veille puis
+        // écran blanc"). powerMonitor 'resume' fires from logind → force a
+        // full redraw of the webContents and re-assert visibility/focus.
+        powerMonitor.on('resume', () => {
+            logger.info('powerMonitor resume — forcing window repaint (v3.3.32)');
+            if (!this.alive) return;
+            try { this.win.webContents.invalidate(); } catch (e) { logger.warn('invalidate failed:', e.message); }
+            try { if (!this.win.isVisible()) this.win.show(); } catch (e) { /* ignore */ }
+            try { this.win.focus(); } catch (e) { /* ignore */ }
+        });
+        powerMonitor.on('suspend', () => logger.info('powerMonitor suspend (v3.3.32)'));
+    }
+
     setupWindowEvents() {
         // v3.3.4: log window lifecycle events — needed to diagnose "app does not
         // start" episodes where the process and heartbeat are alive but the
         // window never appears (or is hidden and never re-shown on relaunch).
-        this.win.on("show", () => logger.info('Window event: show'));
+        // v3.3.32: also force a repaint on every show — covers the return to
+        // foreground after the app was backgrounded (Lomiri may SIGSTOP it).
+        this.win.on("show", () => {
+            logger.info('Window event: show');
+            try { this.win.webContents.invalidate(); } catch (e) { /* ignore */ }
+        });
         this.win.on("hide", () => logger.info('Window event: hide'));
         this.win.on("focus", () => logger.info('Window event: focus'));
         this.win.on("blur", () => logger.info('Window event: blur'));
@@ -1644,7 +1738,14 @@ class MailWindowController {
     injectGestures(targetWin = null) {
         const win = targetWin || this.win;
         if (!win || win.isDestroyed()) return;
+        // v3.3.50: inject the i18n strings used by the in-page scripts (login badge label)
+        const tr = getAllTranslations();
+        const i18nJson = JSON.stringify({
+            loginMadeFor: tr['login.madeFor'],
+            knownLogin: this.knownEmail || '',   // v3.3.57: pré-remplir le champ login (jamais loggé)
+        });
         win.webContents.executeJavaScript(
+            `window.__utoutlookI18n = Object.assign(window.__utoutlookI18n||{}, ${i18nJson});\n` +
             getClientFile("gestures.js")
         ).catch(() => {
             // gestures.js may not exist yet or page not ready, ignore

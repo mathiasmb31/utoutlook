@@ -10,6 +10,111 @@
     if (window.__utoutlookGesturesLoaded) return;
     window.__utoutlookGesturesLoaded = true;
 
+    // --- v3.3.49: plus de pwSwap — en Wayland natif (v3.3.45+) le clavier Maliit
+    // passe par text-input et fonctionne nativement dans les champs password.
+    // Le contournement overlay (v3.3.39) cachait le vrai champ (display:none),
+    // ce qui cassait le focus programmatique et insertText. On ne touche plus
+    // aux champs password.
+
+
+    // --- v3.3.50/v3.3.53: badge logo + « Made for Ubtouch » centré au milieu de la page de login Microsoft ---
+    const LOGIN_HOSTS_RE = /(^|\.)login\.(microsoftonline|live)\.com$/i;
+    const LOGO_DATA_URI = 'data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjxzdmcKICAgdmVyc2lvbj0iMS4xIgogICB3aWR0aD0iODAwIgogICBoZWlnaHQ9IjgwMCIKICAgdmlld0JveD0iMCAwIDgwMCA4MDAiCiAgIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIKICAgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiPgoKICA8ZGVmcz4KICAgIDwhLS0gQ2lyY3VsYXIgdGV4dCBwYXRoIGZvciByb3RhdGluZyB0ZXh0IC0tPgogICAgPHBhdGggaWQ9ImNpcmNsZS10ZXh0LXBhdGgiIGQ9IgogICAgICBNIDQwMCw0MDAKICAgICAgbSAtMzEwLDAKICAgICAgYSAzMTAsMzEwIDAgMSwxIDYyMCwwCiAgICAgIGEgMzEwLDMxMCAwIDEsMSAtNjIwLDAKICAgICIgZmlsbD0ibm9uZSIvPgoKICAgIDwhLS0gUmV1c2FibGUgdGV4dCBvbiBwYXRoIC0tPgogICAgPHRleHQgaWQ9ImNpcmNsZS10ZXh0IiBmb250LWZhbWlseT0iVWJ1bnR1LCBDYW50YXJlbGwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjgiIGZvbnQtd2VpZ2h0PSI2MDAiIGxldHRlci1zcGFjaW5nPSI2IiBmaWxsPSIjZmZmZmZmIiBvcGFjaXR5PSIwLjg1Ij4KICAgICAgPHRleHRQYXRoIGhyZWY9IiNjaXJjbGUtdGV4dC1wYXRoIiBzdGFydE9mZnNldD0iMCUiPkhVTUFOIE1BREUgJiN4MjAyMjsgVklCRSBWRVJJRklFRCAmI3gyMDIyOyBIVU1BTiBNQURFICYjeDIwMjI7IFZJQkUgVkVSSUZJRUQgJiN4MjAyMjsmIzE2MDs8L3RleHRQYXRoPgogICAgPC90ZXh0PgoKICAgIDwhLS0gTWFzY290dGUgaGVhZCBjbGlwcGVkIHRvIGEgY2lyY2xlIC0tPgogICAgPGNsaXBQYXRoIGlkPSJoZWFkLWNsaXAiPgogICAgICA8Y2lyY2xlIGN4PSI0MDAiIGN5PSIyODUiIHI9IjEwNSIvPgogICAgPC9jbGlwUGF0aD4KICA8L2RlZnM+CgogIDwhLS0gQmFja2dyb3VuZCBjaXJjbGUg4oCUIFVidW50dSBUb3VjaCBvcmFuZ2UgLS0+CiAgPGNpcmNsZSBjeD0iNDAwIiBjeT0iNDAwIiByPSIzOTAiIGZpbGw9IiNFOTU0MjAiLz4KCiAgPCEtLSBJbm5lciBzdWJ0bGUgcmluZyAtLT4KICA8Y2lyY2xlIGN4PSI0MDAiIGN5PSI0MDAiIHI9IjM2MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utb3BhY2l0eT0iMC4xNSIgc3Ryb2tlLXdpZHRoPSIyIi8+CgogIDwhLS0gUm90YXRpbmcgdGV4dCBncm91cCAtLT4KICA8Zz4KICAgIDx1c2UgaHJlZj0iI2NpcmNsZS10ZXh0Ii8+CiAgICA8YW5pbWF0ZVRyYW5zZm9ybQogICAgICBhdHRyaWJ1dGVOYW1lPSJ0cmFuc2Zvcm0iCiAgICAgIGF0dHJpYnV0ZVR5cGU9IlhNTCIKICAgICAgdHlwZT0icm90YXRlIgogICAgICBmcm9tPSIwIDQwMCA0MDAiCiAgICAgIHRvPSIzNjAgNDAwIDQwMCIKICAgICAgZHVyPSIyMHMiCiAgICAgIHJlcGVhdENvdW50PSJpbmRlZmluaXRlIgogICAgLz4KICA8L2c+CgogIDwhLS0gQ2VudGVyOiBtYWlsIGVudmVsb3BlIHdpdGggdGhlIFVCVG91Y2ggbWFzY290IGhlYWQgcG9wcGluZyBvdXQgLS0+CiAgPGc+CiAgICA8IS0tIEVudmVsb3BlIGJvZHkgKHdoaXRlKSwgc2xpZ2h0bHkgbG93ZXIgc28gdGhlIGhlYWQgb3ZlcmxhcHMgaXRzIHRvcCBlZGdlIC0tPgogICAgPHJlY3QgeD0iMjkwIiB5PSI0MDAiIHdpZHRoPSIyMjAiIGhlaWdodD0iMTUwIiByeD0iMTIiIGZpbGw9IiNmZmZmZmYiLz4KICAgIDwhLS0gRW52ZWxvcGUgZmxhcCAodG9wIHRyaWFuZ2xlKSAtLT4KICAgIDxwYXRoIGQ9Ik0gMjkwLDQxMiBMIDQwMCw0OTUgTCA1MTAsNDEyIiBmaWxsPSJub25lIiBzdHJva2U9IiNFOTU0MjAiIHN0cm9rZS13aWR0aD0iOCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+CiAgICA8IS0tIEVudmVsb3BlIGJvdHRvbSBmb2xkIGxpbmVzIC0tPgogICAgPHBhdGggZD0iTSAyOTAsNTQwIEwgMzc1LDQ3MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjRTk1NDIwIiBzdHJva2Utd2lkdGg9IjYiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgb3BhY2l0eT0iMC41NSIvPgogICAgPHBhdGggZD0iTSA1MTAsNTQwIEwgNDI1LDQ3MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjRTk1NDIwIiBzdHJva2Utd2lkdGg9IjYiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgb3BhY2l0eT0iMC41NSIvPgoKICAgIDwhLS0gTWFzY290IGhlYWQgcG9wcGluZyBvdXQgb2YgdGhlIGVudmVsb3BlIChjaXJjbGUtY2xpcHBlZCBpbWFnZSkgLS0+CiAgICA8Zz4KICAgICAgPGNpcmNsZSBjeD0iNDAwIiBjeT0iMjg1IiByPSIxMTIiIGZpbGw9IiNmZmZmZmYiLz4KICAgICAgPGltYWdlIHhsaW5rOmhyZWY9Im1hc2NvdHRlLTUxMi5wbmciIGhyZWY9Im1hc2NvdHRlLTUxMi5wbmciIHg9IjI5NSIgeT0iMTgwIiB3aWR0aD0iMjEwIiBoZWlnaHQ9IjIxMCIgY2xpcC1wYXRoPSJ1cmwoI2hlYWQtY2xpcCkiIHByZXNlcnZlQXNwZWN0UmF0aW89InhNaWRZTWlkIHNsaWNlIi8+CiAgICAgIDxjaXJjbGUgY3g9IjQwMCIgY3k9IjI4NSIgcj0iMTEyIiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iNiIvPgogICAgPC9nPgogIDwvZz4KPC9zdmc+Cg==';
+    const injectLoginBadge = () => {
+        if (!LOGIN_HOSTS_RE.test(location.hostname)) return;
+        if (document.getElementById('utoutlook-login-badge')) return;
+        const label = (window.__utoutlookI18n && window.__utoutlookI18n.loginMadeFor) || 'Made for Ubtouch';
+        const d = document.createElement('div');
+        d.id = 'utoutlook-login-badge';
+        d.style.cssText = 'position:fixed;left:0;right:0;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;z-index:2147483647;pointer-events:none;';
+        const img = document.createElement('img');
+        img.alt = '';
+        img.style.cssText = 'width:56px;height:56px;';
+        img.src = LOGO_DATA_URI;
+        const cap = document.createElement('div');
+        cap.textContent = label;
+        cap.style.cssText = 'font:600 13px/1.2 system-ui,sans-serif;color:#E95420;background:rgba(255,255,255,.85);padding:2px 10px;border-radius:10px;';
+        d.appendChild(img);
+        d.appendChild(cap);
+        (document.body || document.documentElement).appendChild(d);
+    };
+    injectLoginBadge();
+    new MutationObserver(() => injectLoginBadge())
+        .observe(document.documentElement, {childList: true, subtree: true});
+
+    // --- v3.3.57: pré-remplir le dernier login connu + bouton ⌫ (le clavier Wayland
+    // n'envoie pas la touche backspace, seules les frappes passent en text-input) ---
+    const prefillLogin = () => {
+        if (!LOGIN_HOSTS_RE.test(location.hostname)) return;
+        const p = document.querySelector('input[name=loginfmt]');
+        const known = window.__utoutlookI18n && window.__utoutlookI18n.knownLogin;
+        if (p && known && !p.value) {
+            p.value = known;
+            p.dispatchEvent(new Event('input', {bubbles: true}));
+        }
+    };
+    const ensureBsButton = () => {
+        let b = document.getElementById('utoutlook-bs');
+        const ae = document.activeElement;
+        const inField = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable);
+        if (inField && !b) {
+            b = document.createElement('button');
+            b.id = 'utoutlook-bs';
+            b.textContent = '\u232b';
+            b.setAttribute('aria-label', 'Backspace');
+            b.style.cssText = 'position:fixed;right:14px;bottom:14px;width:56px;height:56px;border-radius:50%;border:none;background:#E95420;color:#fff;font-size:26px;z-index:2147483647;cursor:pointer;';
+            b.addEventListener('click', () => {
+                const a = document.activeElement;
+                if (!a || !(a.tagName === 'INPUT' || a.tagName === 'TEXTAREA')) return;
+                a.focus();
+                if (!document.execCommand('delete')) {
+                    const st = a.selectionStart, en = a.selectionEnd;
+                    if (st !== en) a.setRangeText('', st, en, 'end');
+                    else if (st > 0) a.setRangeText('', st - 1, st, 'end');
+                    a.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'deleteContentBackward'}));
+                }
+            });
+            (document.body || document.documentElement).appendChild(b);
+        } else if (!inField && b) {
+            b.remove();
+        }
+    };
+    prefillLogin();
+    ensureBsButton();
+    document.addEventListener('focusin', ensureBsButton, true);
+    document.addEventListener('focusout', () => setTimeout(ensureBsButton, 150), true);
+    setInterval(function () { prefillLogin(); ensureBsButton(); }, 800);
+    new MutationObserver(() => { prefillLogin(); }).observe(document.documentElement, {childList: true, subtree: true});
+
+    // --- v3.3.42: masquer le bouton « Options de connexion » ---
+    // Sur la page de saisie du mot de passe Microsoft, ce lien mène à la page
+    // GitHub (bloquée en v3.3.41 car le clavier XIM n'y tape pas). On le cache.
+    const SIGNIN_OPTIONS_RE = /options\s+de\s+connexion|autres\s+options\s+de\s+connexion|sign-?\s*in\s+options|other\s+sign-?\s*in\s+options/i;
+    const HIDE_SIO = 'display:none!important;visibility:hidden!important;opacity:0!important;height:0!important;min-height:0!important;max-height:0!important;overflow:hidden!important;pointer-events:none!important;';
+    const hideSignInOptions = (root) => {
+        const base = (root && root.querySelectorAll) ? root : document;
+        const testEl = (el) => {
+            if (!el || el.hasAttribute('data-utoutlook-sio-hidden')) return;
+            const id = (el.id || '') + ' ' + (el.getAttribute('data-automation-id') || '');
+            const t = ((el.textContent || '') + ' ' + (el.getAttribute('aria-label') || '')).replace(/\s+/g, ' ').trim();
+            if ((t.length > 0 && t.length < 120 && SIGNIN_OPTIONS_RE.test(t)) || /signinoption/i.test(id)) {
+                el.style.cssText += HIDE_SIO;
+                el.setAttribute('data-utoutlook-sio-hidden', 'true');
+            }
+        };
+        if (base.matches) testEl(base);   // the added node itself is not returned by querySelectorAll
+        base.querySelectorAll('a,button,[role=button],[tabindex]').forEach(testEl);
+    };
+    hideSignInOptions(document);
+    new MutationObserver((muts) => {
+        for (const m of muts) {
+            for (const n of m.addedNodes) {
+                if (n.nodeType === Node.ELEMENT_NODE) hideSignInOptions(n);
+            }
+        }
+    }).observe(document.documentElement, {childList: true, subtree: true});
+    setInterval(() => hideSignInOptions(document), 3000);
+
     // --- Disable native overscroll/pull-to-refresh on the page ---
     // Outlook web shows an envelope icon when the user pulls down from the
     // top of the message list. Block it at the CSS level (inline style as a

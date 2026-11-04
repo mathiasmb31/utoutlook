@@ -1376,12 +1376,12 @@ test('v3.3.18: login_hint injection shows the account tile WITHOUT auto-login; e
         'knownEmail must never be logged (confidentiality, v3.3.18)');
 });
 
-test('v3.3.19: splash logo aussi grand que velo-touch + look UT lecture de mails', async () => {
+test('v3.3.19/v3.3.47: splash logo grand (82vw max 900px en v3.3.47) + look UT lecture de mails', async () => {
     const fs = await import('node:fs');
     const splash = fs.readFileSync(path.resolve(__dirname, '../public/splash.html'), 'utf-8');
-    // même règle que velo-touch Main.qml: logoSize = min(width*0.65, 768)
-    assert.ok(splash.includes('min(65vw, 768px)'),
-        'splash logo must be min(65vw, 768px) like velo-touch (v3.3.19)');
+    // v3.3.19: min(65vw, 768px) like velo-touch; v3.3.47: min(82vw, 900px) (mascotte plus visible)
+    assert.ok(splash.includes('min(82vw, 900px)'),
+        'splash logo must be min(82vw, 900px) since v3.3.47 (was min(65vw, 768px) in v3.3.19)');
     assert.ok(splash.includes('#0f0f1a'),
         'splash background must be the UT dark #0f0f1a (v3.3.19)');
 
@@ -1629,4 +1629,88 @@ test('v3.3.28: clean quit writes exitclient synchronously so the wrapper does NO
         'command.sh cleanup() must clear exitclient/killedclient after kill_app (v3.3.28)');
     const aliveBranch = cmd.slice(cmd.indexOf('clientalive=1'), cmd.indexOf('clientalive=1') + 200);
     assert.ok(!aliveBranch.includes('rm -f'), 'alive branch must NOT delete lifecycle flags (v3.3.28)');
+});
+
+test('v3.3.30: démarrage rapide + wrapper périmé silencieux (pas de kill du nouvel app)', async () => {
+    const fs = await import('node:fs');
+    const common = fs.readFileSync(path.resolve(__dirname, '../../utils/common.sh'), 'utf-8');
+    // kill_app: fast path — if no prospect-mail is running, return BEFORE the
+    // close-flag write + 3s sleep (cleanup calls it 3x per start = 9s lost)
+    const killApp = common.slice(common.indexOf('utoutlook_kill_app()'), common.indexOf('utoutlook_cleanup_locks()'));
+    const checkPos = killApp.indexOf('pkill" -0 prospect-mail');
+    const flagPos = killApp.indexOf('echo "closed" > "${UTOUTLOOK_EXITCOMMAND}"');
+    assert.ok(checkPos !== -1 && flagPos !== -1 && checkPos < flagPos,
+        'kill_app must check pkill -0 prospect-mail BEFORE writing the close flag / sleeping (v3.3.30)');
+    // kill_stale_wrappers: SIGKILL only, never SIGTERM (a TERM runs the EXIT trap
+    // which writes the close flag / socket quit and can kill the NEW instance)
+    const ksw = common.slice(common.indexOf('utoutlook_kill_stale_wrappers()'), common.indexOf('utoutlook_cleanup_flags()'));
+    assert.ok(!ksw.includes('kill -TERM'), 'kill_stale_wrappers must not SIGTERM stale wrappers (v3.3.30)');
+    assert.ok(ksw.includes('kill -9'), 'kill_stale_wrappers must SIGKILL stale wrappers (v3.3.30)');
+
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    // close_command: stale wrapper (pidfile != $$) exits silently
+    const cc = cmd.slice(cmd.indexOf('function close_command()'), cmd.indexOf('function close_command()') + 700);
+    assert.ok(cc.includes('wrapper.pid') && cc.includes('exit 0') && cc.includes('curpid'),
+        'close_command must exit silently when pidfile != $$ (v3.3.30)');
+    // cleanup: pid is recorded BEFORE kill_stale_wrappers so the stale wrapper
+    // sees it is no longer the owner
+    const cu = cmd.slice(cmd.indexOf('function cleanup()'), cmd.indexOf('function launch_prospect'));
+    const pidPos = cu.indexOf('echo $$ > "${UTOUTLOOK_DATA_DIR}/wrapper.pid"');
+    const kswPos = cu.indexOf('utoutlook_kill_stale_wrappers');
+    assert.ok(pidPos !== -1 && kswPos !== -1 && pidPos < kswPos,
+        'cleanup must write wrapper.pid BEFORE kill_stale_wrappers (v3.3.30)');
+});
+
+test('v3.3.45: retour au Wayland natif (Lomiri) — plus de forçage X11, le clavier Maliit passe par text-input (champs password inclus, comme en 3.2.x)', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    // WAYLAND_DISPLAY must NOT be unset anymore: Electron runs as a native
+    // Wayland client and the OSK uses the Wayland text-input protocol
+    assert.ok(!/^\s*unset WAYLAND_DISPLAY/m.test(cmd),
+        'command.sh must NOT unset WAYLAND_DISPLAY anymore (v3.3.45, native Wayland)');
+    assert.ok(!cmd.includes('--ozone-platform=x11'),
+        'command.sh must NOT pass --ozone-platform=x11 anymore (v3.3.45)');
+    // XMODIFIERS kept for the X11/XWayland fallback path
+    assert.ok(cmd.includes('XMODIFIERS=@im=maliit'),
+        'command.sh must keep XMODIFIERS=@im=maliit as X11 fallback (v3.3.45)');
+
+    const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
+    assert.ok(!main.includes("appendSwitch('ozone-platform', 'x11')"),
+        'main.mjs must NOT appendSwitch ozone-platform=x11 anymore (v3.3.45, native Wayland)');
+});
+
+test('v3.3.32: repaint forcé au réveil (veille → écran blanc en X11) + pas de background throttling', async () => {
+    const fs = await import('node:fs');
+    const m = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    assert.ok(m.includes('powerMonitor') && m.includes("powerMonitor.on('resume'"),
+        'must listen to powerMonitor resume (v3.3.32)');
+    assert.ok(m.includes('webContents.invalidate()'),
+        'must call webContents.invalidate() to force repaint after wake (v3.3.32)');
+    assert.ok(m.includes('setBackgroundThrottling(false)'),
+        'must disable background throttling so the X11 window repaints after wake (v3.3.32)');
+});
+
+test('v3.3.49: plus de pwSwap — en Wayland natif le clavier fonctionne nativement dans les champs password, on ne touche plus aux champs password', async () => {
+    const fs = await import('node:fs');
+    const g = fs.readFileSync(path.resolve(__dirname, '../public/gestures.js'), 'utf-8');
+    // Le contournement overlay v3.3.39 cachait le vrai champ (display:none) ce qui
+    // cassait le focus programmatique et insertText. Supprimé en v3.3.49 (Wayland).
+    assert.ok(!g.includes('pwSwap =') && !g.includes('scanPwFields'),
+        'gestures.js must NOT swap/hide password fields anymore (v3.3.49, native Wayland)');
+    assert.ok(g.includes('SIGNIN_OPTIONS_RE'),
+        'gestures.js must still hide the "Sign-in options" button (v3.3.42+)');
+});
+
+test('v3.3.50: badge logo + « Made for Ubtouch » injecté sur la page de login Microsoft (i18n 8 langues)', async () => {
+    const fs = await import('node:fs');
+    const g = fs.readFileSync(path.resolve(__dirname, '../public/gestures.js'), 'utf-8');
+    assert.ok(g.includes('utoutlook-login-badge') && g.includes('LOGO_DATA_URI') && g.includes('microsoftonline'),
+        'gestures.js must inject the login badge (logo + label) on Microsoft login pages (v3.3.50)');
+    const i18n = fs.readFileSync(path.resolve(__dirname, '../src/i18n.mjs'), 'utf-8');
+    assert.ok(i18n.includes("'login.madeFor'"),
+        'i18n.mjs must define login.madeFor (v3.3.50)');
+    for (const lang of ['fr','en','es','de','it','pt','zh','ar']) {
+        assert.ok(new RegExp("'login.madeFor'[\\s\\S]*?" + lang + ":").test(i18n),
+            `login.madeFor must exist for ${lang} (v3.3.50)`);
+    }
 });

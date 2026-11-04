@@ -200,6 +200,10 @@ class ProspectMail {
             const lang = resolveLanguage();
             setLanguage(lang);
             logger.info(`Language: ${lang}`);
+            // v3.3.31: log the keyboard-relevant environment at startup — this is
+            // how we confirm on-device that Chromium really runs on X11 (XWayland)
+            // and not as a native Wayland client (which would ignore XMODIFIERS).
+            logger.info(`env: DISPLAY=${process.env.DISPLAY || '(unset)'} WAYLAND_DISPLAY=${process.env.WAYLAND_DISPLAY || '(unset)'} XDG_SESSION_TYPE=${process.env.XDG_SESSION_TYPE || '(unset)'} XMODIFIERS=${process.env.XMODIFIERS || '(unset)'} QT_IM_MODULE=${process.env.QT_IM_MODULE || '(unset)'}`);
             // Ensure lang file exists (re-write if deleted manually)
             writeLangFile();
 
@@ -363,6 +367,11 @@ class ProspectMail {
         this.trayController = new TrayController(this.accountManager);
     }
 }
+
+// v3.3.45: no ozone override anymore — Electron runs as a native Wayland client
+// under Lomiri and the Maliit on-screen keyboard uses the Wayland text-input
+// protocol (password fields work, as in 3.2.x). XMODIFIERS is still exported by
+// command.sh for the X11/XWayland fallback.
 
 appInstance = new ProspectMail();
 appInstance.init();
