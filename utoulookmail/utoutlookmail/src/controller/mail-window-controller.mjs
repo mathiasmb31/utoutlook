@@ -45,9 +45,11 @@ class MailWindowController {
         this.showWindowFrame = true;
         this.loginPage = 0;
         this.pageLoadTimes = []; // timestamps of recent page loads for loop detection
+        this.loginPageLoadTimes = []; // v3.3.59: timestamps of login page loads for 2FA loop detection
         this.redirectLoopDetected = false;
         this.loginHintIntercepts = 0; // count of login_hint redirects intercepted
         this.loopDetectorRetries = 0; // count of loop detector activations (max 3)
+        this.mfaLoopDetected = false; // v3.3.59: 2FA loop already handled
         this.currentZoomIndex = 2; // start at 1.0
         this.initialMinimization = { domReady: false };
 
@@ -1042,8 +1044,15 @@ class MailWindowController {
             // the page will redirect to outlook.live.com/mail/?login_hint=... for
             // personal accounts. Sync cookies NOW (before the redirect) so the
             // session is valid on .live.com and the redirect loop is avoided.
-            if (url.includes('outlook.office.com/mail') && url.includes('#code=')) {
-                logger.info('Auth code detected — syncing cookies to live.com before redirect');
+            // v3.3.59: also cover outlook.live.com and outlook.cloud.microsoft with
+            // ?code= or #code= (post-2FA redirect carries an auth code too).
+            const hasAuthCode = url.includes('#code=') || url.includes('?code=');
+            const isOutlookMail = url.includes('outlook.office.com/mail') ||
+                                  url.includes('outlook.live.com/mail') ||
+                                  url.includes('outlook.office365.com/mail') ||
+                                  url.includes('outlook.cloud.microsoft/mail');
+            if (isOutlookMail && hasAuthCode) {
+                logger.info('Auth code detected — syncing cookies before redirect (v3.3.59)');
                 this.syncCookiesToLiveCom();
             }
 
@@ -1090,6 +1099,49 @@ class MailWindowController {
                     // Allow detector to fire again if loop persists
                     this.redirectLoopDetected = false;
                 });
+            }
+
+            // --- v3.3.59: 2FA/MFA loop detection ---
+            // After approving the Microsoft Authenticator push on another device,
+            // Microsoft sets session cookies on login.microsoftonline.com then
+            // redirects to outlook.live.com/mail. If those cookies are not
+            // propagated to live.com / cloud.microsoft, the mail page bounces
+            // back to the 2FA prompt → infinite loop. Detect frequent loads of
+            // login.microsoftonline.com (the 2FA/verify page) and force an
+            // aggressive cookie sync + flush.
+            const isMfaPage = url.includes('login.microsoftonline.com') ||
+                              url.includes('login.live.com') ||
+                              url.includes('account.live.com') ||
+                              url.includes('oauth') ||
+                              url.includes('consent');
+            if (isMfaPage) {
+                this.loginPageLoadTimes.push({url, time: now});
+                this.loginPageLoadTimes = this.loginPageLoadTimes.filter(p => now - p.time < 30000);
+                const recentMfaLoads = this.loginPageLoadTimes.length;
+                // Flush cookies immediately on every login page load — the 2FA
+                // approval cookie must survive even if the app is killed before
+                // the next periodic flush (15s).
+                session.fromPartition(this.sessionPartition).cookies.flushStore()
+                    .catch(() => {});
+                if (recentMfaLoads >= 4 && !this.mfaLoopDetected) {
+                    this.mfaLoopDetected = true;
+                    logger.warn(`2FA loop detected: ${recentMfaLoads} login page loads in 30s — aggressive cookie sync`);
+                    this.loginPageLoadTimes = [];
+                    this.syncCookiesToLiveCom().then(async () => {
+                        // Extra flush after sync to persist the copied cookies
+                        try {
+                            await session.fromPartition(this.sessionPartition).cookies.flushStore();
+                        } catch (e) { /* ignore */ }
+                        // Reload the mail URL directly — the session cookies
+                        // should now be valid on all domains.
+                        logger.info('2FA loop: reloading mail URL after aggressive cookie sync');
+                        this.win.loadURL('https://outlook.office.com/mail/');
+                        this.mfaLoopDetected = false;
+                    });
+                }
+            } else {
+                // Reset the MFA loop detector when we leave the login pages
+                this.loginPageLoadTimes = [];
             }
         });
 
