@@ -10,12 +10,74 @@
     if (window.__utoutlookGesturesLoaded) return;
     window.__utoutlookGesturesLoaded = true;
 
-    // --- v3.3.49: plus de pwSwap — en Wayland natif (v3.3.45+) le clavier Maliit
-    // passe par text-input et fonctionne nativement dans les champs password.
-    // Le contournement overlay (v3.3.39) cachait le vrai champ (display:none),
-    // ce qui cassait le focus programmatique et insertText. On ne touche plus
-    // aux champs password.
-
+    // --- v3.3.60: structural password-field fix (réappliqué, corrigé) ---
+    // Chromium/Blink sets the HAS_BEEN_PASSWORD flag on the window the first time
+    // a password field takes focus — after that the OSK stops delivering text
+    // ANYWHERE (verified: version 2.1.1 on OpenStore works because it ships an
+    // older Chromium without this flag; Electron 44 / Chromium 142+ has it).
+    // Chromium also refuses IME commits in input[type=password]. Fix: convert
+    // every password field IN PLACE to type=text (same node → React keeps its
+    // listeners and value tracker, focus/insertText are preserved) and mask it
+    // with CSS (-webkit-text-security:disc → dots). The prototype patches below
+    // run BEFORE any setAttribute/focus can set 'password', so HAS_BEEN_PASSWORD
+    // is never set and IME commits always go through.
+    const PW_MASK_ATTR = 'data-pwmask';
+    const ensureMaskStyle = () => {
+        if (document.getElementById('__pwMaskStyle')) return;
+        const st = document.createElement('style');
+        st.id = '__pwMaskStyle';
+        st.textContent = 'input[' + PW_MASK_ATTR + ']{-webkit-text-security:disc !important;}';
+        (document.head || document.documentElement).appendChild(st);
+    };
+    const demaskPw = (el) => {
+        if (!(el instanceof HTMLInputElement)) return false;
+        if (el.type === 'password' || (el.getAttribute('type') || '').toLowerCase() === 'password') {
+            try { el.setAttribute(PW_MASK_ATTR, '1'); } catch (_) {}
+            try { el.type = 'text'; } catch (_) {}
+            return true;
+        }
+        return false;
+    };
+    const scanPwFields = () => {
+        ensureMaskStyle();
+        document.querySelectorAll('input[type=password]').forEach(demaskPw);
+    };
+    // Patch prototypes so that even dynamically-created password fields are
+    // converted before they can receive focus (HAS_BEEN_PASSWORD never set).
+    const origSetAttr = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function (name, value) {
+        if (name === 'type' && String(value).toLowerCase() === 'password' && this instanceof HTMLInputElement) {
+            try { this.setAttribute(PW_MASK_ATTR, '1'); } catch (_) {}
+            return origSetAttr.call(this, name, 'text');
+        }
+        return origSetAttr.call(this, name, value);
+    };
+    const origSetAttrNS = Element.prototype.setAttributeNS;
+    Element.prototype.setAttributeNS = function (ns, name, value) {
+        if (name === 'type' && String(value).toLowerCase() === 'password' && this instanceof HTMLInputElement) {
+            try { this.setAttribute(PW_MASK_ATTR, '1'); } catch (_) {}
+            return origSetAttrNS.call(this, ns, name, 'text');
+        }
+        return origSetAttrNS.call(this, ns, name, value);
+    };
+    const origTypeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'type').set;
+    Object.defineProperty(HTMLInputElement.prototype, 'type', {
+        set(v) {
+            if (String(v).toLowerCase() === 'password') {
+                try { this.setAttribute(PW_MASK_ATTR, '1'); } catch (_) {}
+                return origTypeSetter.call(this, 'text');
+            }
+            return origTypeSetter.call(this, v);
+        },
+        get() {
+            return Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'type').get.call(this);
+        },
+        configurable: true,
+    });
+    scanPwFields();
+    new MutationObserver(() => scanPwFields())
+        .observe(document.documentElement, {childList: true, subtree: true});
+    setInterval(scanPwFields, 2000);
 
     // --- v3.3.50/v3.3.53: badge logo + « Made for Ubtouch » centré au milieu de la page de login Microsoft ---
     const LOGIN_HOSTS_RE = /(^|\.)login\.(microsoftonline|live)\.com$/i;
