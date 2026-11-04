@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e # Exit immediately on error
 
+# Plafond mémoire (hôte 11,5 Go RAM, crash OOM 2026-11-04) : jamais plus de 2 jobs
+# dans ce script (dpkg-buildpackage lançait 6+ cc1plus en parallèle → figeage total).
+export MAKEFLAGS="${MAKEFLAGS:--j2}"
+
 FORCE_BUILD=0
 if [ "$1" = "--force" ]; then
 	FORCE_BUILD=1
@@ -87,7 +91,7 @@ echo "${ROOT}/patches/maliit-inputcontext-gtk/client-imcontext-gtk.c.patch"
 
 echo "Compile..."
 EDITOR=true dpkg-source --commit . fix-keyboard
-DEB_BUILD_OPTIONS=nocheck dpkg-buildpackage -us -uc -a arm64
+DEB_BUILD_OPTIONS="nocheck parallel=2" dpkg-buildpackage -us -uc -a arm64
 
 echo "[7/9] Copying files..."
 
