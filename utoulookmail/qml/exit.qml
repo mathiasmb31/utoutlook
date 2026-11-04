@@ -2,6 +2,7 @@
 	import QtQuick.Window 2.2
 	import QtQuick.Controls 2.2
 	import QtQuick.Layouts 1.3
+	.import "/tmp/utoutlook-qml-i18n.js" as QmlI18n
 	
 	ApplicationWindow {
 	    visible: true
@@ -83,7 +84,7 @@
 	        }
 	}
 	   contentItem: Text {
-	        text: "\nTimeout speaking with outlook server \n This is not really a problem\n You can launch client one's more ;)"
+	        text: "\n" + QmlI18n.EXIT_TIMEOUT
 	        font.family: "Helvetica"
 	        color: "red"
 	    font.pointSize: 25

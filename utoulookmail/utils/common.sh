@@ -117,8 +117,42 @@ utoutlook_t() {
 				ar) echo "اكتمل إعادة التعيين... شغّل UToutlook Mail" ;;
 				*)  echo "Réinitialisation effectuée... lancez UToutlook Mail" ;;
 			esac ;;
+		# --- QML screens (v3.3.65: passed to qmlscene via /tmp JS file) ---
+		"qml.noNetwork")
+			case "${lang}" in
+				en) echo "NO NETWORK !!" ;;
+				es) echo "SIN RED !!" ;;
+				de) echo "KEIN NETZWERK !!" ;;
+				it) echo "NESSUNA RETE !!" ;;
+				pt) echo "SEM REDE !!" ;;
+				zh) echo "无网络 !!" ;;
+				ar) echo "لا توجد شبكة !!" ;;
+				*)  echo "PAS DE RÉSEAU !!" ;;
+			esac ;;
+		"qml.exitTimeout")
+			case "${lang}" in
+				en) echo "Timeout speaking with outlook server. This is not really a problem — you can launch the client once more ;)" ;;
+				es) echo "Tiempo de espera agotado con el servidor de outlook. No es un problema real — puedes iniciar el cliente otra vez ;)" ;;
+				de) echo "Zeitüberschreitung bei der Verbindung zum Outlook-Server. Kein wirkliches Problem — du kannst den Client erneut starten ;)" ;;
+				it) echo "Timeout nella comunicazione con il server outlook. Non è un vero problema — puoi riavviare il client ;)" ;;
+				pt) echo "Tempo limite ao falar com o servidor do outlook. Não é um problema real — podes iniciar o cliente outra vez ;)" ;;
+				zh) echo "连接 outlook 服务器超时。这其实不是问题 — 你可以再启动一次客户端 ;)" ;;
+				ar) echo "انتهت مهلة الاتصال بخادم outlook. هذه ليست مشكلة حقيقية — يمكنك تشغيل العميل مرة أخرى ;)" ;;
+				*)  echo "Délai dépassé avec le serveur outlook. Ce n'est pas vraiment un problème — vous pouvez relancer le client ;)" ;;
+			esac ;;
 		*) echo "${key}" ;;
 	esac
+}
+
+# Write a JS file with the translated QML strings, imported by the .qml screens.
+# qmlscene cannot read env vars directly; /tmp is writable on the device.
+# Usage: utoutlook_write_qml_i18n
+utoutlook_write_qml_i18n() {
+	local f="/tmp/utoutlook-qml-i18n.js"
+	{
+		echo "var NO_NETWORK = \"$(utoutlook_t 'qml.noNetwork' | sed 's/\\/\\\\/g; s/"/\\"/g')\";"
+		echo "var EXIT_TIMEOUT = \"$(utoutlook_t 'qml.exitTimeout' | sed 's/\\/\\\\/g; s/"/\\"/g')\";"
+	} > "${f}" 2>/dev/null || true
 }
 
 # ============================================================
