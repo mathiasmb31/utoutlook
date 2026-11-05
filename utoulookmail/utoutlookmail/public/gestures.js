@@ -88,7 +88,7 @@
         const label = (window.__utoutlookI18n && window.__utoutlookI18n.loginMadeFor) || 'Made for Ubtouch';
         const d = document.createElement('div');
         d.id = 'utoutlook-login-badge';
-        d.style.cssText = 'position:fixed;left:0;right:0;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;z-index:2147483647;pointer-events:none;';
+        d.style.cssText = 'position:fixed;right:8px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;z-index:2147483647;pointer-events:none;';
         const img = document.createElement('img');
         img.alt = '';
         img.style.cssText = 'width:56px;height:56px;';
