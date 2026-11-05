@@ -50,6 +50,8 @@ class MailWindowController {
         this.loginHintIntercepts = 0; // count of login_hint redirects intercepted
         this.loopDetectorRetries = 0; // count of loop detector activations (max 3)
         this.mfaLoopDetected = false; // v3.3.59: 2FA loop already handled
+        this.lastMailUrl = null; // v3.3.67: dernière URL de boîte mail chargée (sans ?code=) — cible de reprise après boucle 2FA
+        this.authStartLoadTimes = []; // v3.3.67: chargements des pages /authorize|select_account (détection boucle KMSI)
         this.currentZoomIndex = 2; // start at 1.0
         this.initialMinimization = { domReady: false };
 
@@ -1079,6 +1081,11 @@ class MailWindowController {
                 p.url.includes('outlook.office365.com/mail') ||
                 p.url.includes('outlook.cloud.microsoft/mail')
             );
+            if (isMailPage) {
+                // v3.3.67: mémorise la dernière URL mail propre (sans ?code=#) —
+                // cible de reprise après une boucle 2FA (live.com pour les comptes perso)
+                this.lastMailUrl = url.split('?')[0].split('#')[0];
+            }
 
             if (isMailPage && mailLoads.length >= 5 && !this.redirectLoopDetected) {
                 this.redirectLoopDetected = true;
@@ -1115,10 +1122,24 @@ class MailWindowController {
                               url.includes('account.live.com') ||
                               url.includes('oauth') ||
                               url.includes('consent');
+            // v3.3.67: ne compte que les pages de DÉMARRAGE d'auth (authorize /
+            // select_account). Un flux 2FA légitime (authorize → verify → KMSI)
+            // ne les visite qu'1-2 fois ; une boucle « rester connecté » les
+            // recharge à chaque cycle → seuil 4 en 30s ne se déclenche plus en
+            // plein flux 2FA légitime (qui provoquait une NOUVELLE requête d'auth).
+            let isAuthStartPage = false;
+            try {
+                const path = new URL(url).pathname;
+                isAuthStartPage = path.includes('/authorize') || path.includes('select_account');
+            } catch (e) { /* URL invalide — ignore */ }
             if (isMfaPage) {
                 this.loginPageLoadTimes.push({url, time: now});
                 this.loginPageLoadTimes = this.loginPageLoadTimes.filter(p => now - p.time < 30000);
-                const recentMfaLoads = this.loginPageLoadTimes.length;
+                if (isAuthStartPage) {
+                    this.authStartLoadTimes.push(now);
+                    this.authStartLoadTimes = this.authStartLoadTimes.filter(t => now - t < 30000);
+                }
+                const recentMfaLoads = this.authStartLoadTimes.length;
                 // Flush cookies immediately on every login page load — the 2FA
                 // approval cookie must survive even if the app is killed before
                 // the next periodic flush (15s).
@@ -1126,23 +1147,28 @@ class MailWindowController {
                     .catch(() => {});
                 if (recentMfaLoads >= 4 && !this.mfaLoopDetected) {
                     this.mfaLoopDetected = true;
-                    logger.warn(`2FA loop detected: ${recentMfaLoads} login page loads in 30s — aggressive cookie sync`);
+                    logger.warn(`2FA loop detected: ${recentMfaLoads} auth-start page loads in 30s — aggressive cookie sync`);
                     this.loginPageLoadTimes = [];
+                    this.authStartLoadTimes = [];
                     this.syncCookiesToLiveCom().then(async () => {
                         // Extra flush after sync to persist the copied cookies
                         try {
                             await session.fromPartition(this.sessionPartition).cookies.flushStore();
                         } catch (e) { /* ignore */ }
-                        // Reload the mail URL directly — the session cookies
-                        // should now be valid on all domains.
-                        logger.info('2FA loop: reloading mail URL after aggressive cookie sync');
-                        this.win.loadURL('https://outlook.office.com/mail/');
+                        // v3.3.67: recharge la dernière URL mail réellement chargée
+                        // (outlook.live.com pour les comptes perso), PAS office.com
+                        // en dur — office.com n'a pas la session perso et rebondit
+                        // sur /authorize → nouvelle requête d'auth Authenticator.
+                        const target = this.lastMailUrl || this.mainMailServiceUrl;
+                        logger.info(`2FA loop: reloading ${target} after aggressive cookie sync`);
+                        this.win.loadURL(target);
                         this.mfaLoopDetected = false;
                     }).catch(() => {}); // v3.3.66
                 }
             } else {
                 // Reset the MFA loop detector when we leave the login pages
                 this.loginPageLoadTimes = [];
+                this.authStartLoadTimes = [];
             }
         });
 
