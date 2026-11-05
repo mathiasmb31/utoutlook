@@ -14,11 +14,14 @@
   <circle cx="400" cy="400" r="390" fill="#E95420"/>
   <circle cx="400" cy="400" r="360" fill="none" stroke="#ffffff" stroke-opacity="0.15" stroke-width="2"/>
 
+  <!-- v3.3.69: contenu recentré et agrandi (la mascotte était petite et basse) -->
+  <g transform="translate(400,400) scale(1.28) translate(-400,-440)">
+
   <!-- Open envelope flap (behind the head, apex poking above it) -->
   <path d="M 225,465 L 400,240 L 575,465 Z" fill="#ffffff" stroke="#E95420" stroke-width="9" stroke-linejoin="round"/>
 
-  <!-- Mascot head more than halfway out of the open envelope -->
-  <g clip-path="url(#head-clip)">
+  <!-- Mascot head more than halfway out of the open envelope, relevée de 25px -->
+  <g clip-path="url(#head-clip)" transform="translate(0,-25)">
     <circle cx="400" cy="420" r="155" fill="#ffffff"/>
     <!-- pencil-sketch mascot: bold dark-gray strokes -->
     <g stroke="#2d2d2d" stroke-linecap="round" stroke-linejoin="round" fill="none">
@@ -42,7 +45,7 @@
       </g>
     </g>
   </g>
-  <circle cx="400" cy="420" r="155" fill="none" stroke="#ffffff" stroke-width="8"/>
+  <circle cx="400" cy="395" r="155" fill="none" stroke="#ffffff" stroke-width="8"/>
 
   <!-- Envelope body (open — front pocket only, no closed flap) -->
   <g>
@@ -51,5 +54,7 @@
     <path d="M 255,640 L 350,555" fill="none" stroke="#E95420" stroke-width="7" stroke-linecap="round" opacity="0.55"/>
     <path d="M 545,640 L 450,555" fill="none" stroke="#E95420" stroke-width="7" stroke-linecap="round" opacity="0.55"/>
   </g>
+
+  </g><!-- /v3.3.69 contenu recentré -->
 
 </svg>
