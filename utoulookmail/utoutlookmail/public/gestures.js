@@ -42,24 +42,12 @@
         ensureMaskStyle();
         document.querySelectorAll('input[type=password]').forEach(demaskPw);
     };
-    // Patch prototypes so that even dynamically-created password fields are
-    // converted before they can receive focus (HAS_BEEN_PASSWORD never set).
-    const origSetAttr = Element.prototype.setAttribute;
-    Element.prototype.setAttribute = function (name, value) {
-        if (name === 'type' && String(value).toLowerCase() === 'password' && this instanceof HTMLInputElement) {
-            try { this.setAttribute(PW_MASK_ATTR, '1'); } catch (_) {}
-            return origSetAttr.call(this, name, 'text');
-        }
-        return origSetAttr.call(this, name, value);
-    };
-    const origSetAttrNS = Element.prototype.setAttributeNS;
-    Element.prototype.setAttributeNS = function (ns, name, value) {
-        if (name === 'type' && String(value).toLowerCase() === 'password' && this instanceof HTMLInputElement) {
-            try { this.setAttribute(PW_MASK_ATTR, '1'); } catch (_) {}
-            return origSetAttrNS.call(this, ns, name, 'text');
-        }
-        return origSetAttrNS.call(this, ns, name, value);
-    };
+    // v3.3.76: NE PLUS patcher Element.prototype.setAttribute/setAttributeNS —
+    // intercepter CHAQUE setAttribute ajoute des frames de pile à chaque binding
+    // Knockout de la page de login Microsoft → « Maximum call stack size exceeded »
+    // en boucle sur la vue « Trying to sign you in ». La conversion des champs
+    // password est couverte par le setter `type` ci-dessous + scanPwFields
+    // (MutationObserver + interval), qui suffit pour les champs créés dynamiquement.
     const origTypeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'type').set;
     Object.defineProperty(HTMLInputElement.prototype, 'type', {
         set(v) {
