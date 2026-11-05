@@ -52,6 +52,8 @@ class MailWindowController {
         this.mfaLoopDetected = false; // v3.3.59: 2FA loop already handled
         this.lastMailUrl = null; // v3.3.67: dernière URL de boîte mail chargée (sans ?code=) — cible de reprise après boucle 2FA
         this.authStartLoadTimes = []; // v3.3.67: chargements des pages /authorize|select_account (détection boucle KMSI)
+        this.pageRangeErrors = []; // v3.3.74: timestamps des RangeError « Maximum call stack » de la page
+        this.sessionClearedForLoop = false; // v3.3.74: clear session déjà tenté une fois
         this.currentZoomIndex = 2; // start at 1.0
         this.initialMinimization = { domReady: false };
 
@@ -1407,6 +1409,22 @@ class MailWindowController {
         // Log console messages from the renderer — captures JS errors, CSP violations
         this.win.webContents.on('console-message', (_event, level, message, _line, _sourceId) => {
             const levelName = ['verbose', 'info', 'warning', 'error'][level] || 'log';
+            // v3.3.74: compte les RangeError de la page (page de login Microsoft qui
+            // boucle sur « tentative de connexion » quand son Knockout plante)
+            if (message.includes('Maximum call stack size exceeded')) {
+                const now = Date.now();
+                this.pageRangeErrors.push(now);
+                this.pageRangeErrors = this.pageRangeErrors.filter(t => now - t < 30000);
+                if (this.pageRangeErrors.length >= 5 && !this.sessionClearedForLoop) {
+                    this.sessionClearedForLoop = true;
+                    const url = this.win.webContents.getURL();
+                    logger.warn(`v3.3.74: ${this.pageRangeErrors.length} RangeError/30s sur ${url} — session probablement vérolée, clear + reload`);
+                    this.clearOutlookSession().then(() => {
+                        this.pageRangeErrors = [];
+                        this.win.loadURL(this.mainMailServiceUrl);
+                    }).catch(() => {});
+                }
+            }
             // Skip noisy messages
             if (message.includes('Autofill') || message.includes('DevTools')) return;
             logger.info(`[console.${levelName}] ${message.substring(0, 500)}`);
