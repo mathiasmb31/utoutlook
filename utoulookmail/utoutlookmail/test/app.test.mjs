@@ -1535,11 +1535,12 @@ test('v3.3.26: icône mascotte — enveloppe + tête UBTouch, statique + animée
         assert.ok(fs.existsSync(path.join(assets, f)), `asset ${f} must exist (v3.3.26)`);
     }
     const vibe = fs.readFileSync(path.join(assets, 'logo-vibe.svg'), 'utf-8');
-    assert.ok(vibe.includes('data:image/png;base64') && vibe.includes('#E95420'),
-        'logo-vibe.svg = enveloppe + tête mascotte sur fond orange UT (v3.3.26)');
+    // v3.3.62: mascotte redessinée en vectoriel pur (plus de PNG embarqué en base64)
+    assert.ok(vibe.includes('<svg') && vibe.includes('#E95420'),
+        'logo-vibe.svg = enveloppe + tête mascotte vectorielle sur fond orange UT (v3.3.26/v3.3.62)');
     const anim = fs.readFileSync(path.join(assets, 'logo-anim.svg'), 'utf-8');
-    assert.ok(anim.includes('animateTransform') && anim.includes('data:image/png;base64'),
-        'logo-anim.svg = tête qui entre/sort de l\'enveloppe en boucle (v3.3.26)');
+    assert.ok(anim.includes('animateTransform') && anim.includes('<svg'),
+        'logo-anim.svg = tête qui entre/sort de l\'enveloppe en boucle, vectoriel (v3.3.26/v3.3.62)');
     const splash = fs.readFileSync(path.resolve(__dirname, '../public/splash.html'), 'utf-8');
     assert.ok(splash.includes('logo-anim.svg'), 'splash must use the animated logo (v3.3.26)');
 });
@@ -1556,11 +1557,12 @@ test('v3.3.29: les logos référencés depuis l\'asar (splash/about) existent DA
         assert.ok(fs.existsSync(path.join(inner, f)), `inner asar asset ${f} must exist (v3.3.29)`);
     }
     const anim = fs.readFileSync(path.join(inner, 'logo-anim.svg'), 'utf-8');
-    assert.ok(anim.includes('data:image/png;base64') && anim.includes('animateTransform'),
-        'inner logo-anim.svg must be the self-contained animated mascot version (v3.3.29)');
+    // v3.3.62: mascotte vectorielle pure (animateTransform + <svg>, plus de base64)
+    assert.ok(anim.includes('animateTransform') && anim.includes('<svg'),
+        'inner logo-anim.svg must be the self-contained animated vector mascot version (v3.3.29/v3.3.62)');
     const vibe = fs.readFileSync(path.join(inner, 'logo-vibe.svg'), 'utf-8');
-    assert.ok(vibe.includes('data:image/png;base64'),
-        'inner logo-vibe.svg must be the self-contained mascot version, not the old 2 KB one (v3.3.29)');
+    assert.ok(vibe.includes('<svg') && vibe.includes('#E95420'),
+        'inner logo-vibe.svg must be the self-contained vector mascot version, not the old 2 KB one (v3.3.29/v3.3.62)');
     // every ../assets/... reference in asar-packed pages must resolve in the inner dir
     for (const page of ['../public/splash.html', '../src/about.html']) {
         const html = fs.readFileSync(path.resolve(__dirname, page), 'utf-8');
@@ -1690,13 +1692,18 @@ test('v3.3.32: repaint forcé au réveil (veille → écran blanc en X11) + pas 
         'must disable background throttling so the X11 window repaints after wake (v3.3.32)');
 });
 
-test('v3.3.49: plus de pwSwap — en Wayland natif le clavier fonctionne nativement dans les champs password, on ne touche plus aux champs password', async () => {
+test('v3.3.60: champ password converti IN PLACE (type=text masqué, jamais caché) — contournement du flag HAS_BEEN_PASSWORD (Chromium 142+)', async () => {
     const fs = await import('node:fs');
     const g = fs.readFileSync(path.resolve(__dirname, '../public/gestures.js'), 'utf-8');
-    // Le contournement overlay v3.3.39 cachait le vrai champ (display:none) ce qui
-    // cassait le focus programmatique et insertText. Supprimé en v3.3.49 (Wayland).
-    assert.ok(!g.includes('pwSwap =') && !g.includes('scanPwFields'),
-        'gestures.js must NOT swap/hide password fields anymore (v3.3.49, native Wayland)');
+    // v3.3.49 avait supprimé le swap overlay (cassait focus/insertText), mais
+    // v3.3.60 a RÉINTRODUIT la conversion in place : Chromium 142+ bloque les
+    // commits IME après focus d'un champ password (HAS_BEEN_PASSWORD) — on
+    // convertit le champ en type=text masqué AVANT le focus, sans jamais le
+    // cacher (display:none casserait le focus programmatique).
+    assert.ok(g.includes('demaskPw') && g.includes('PW_MASK_ATTR'),
+        'gestures.js must convert password fields IN PLACE via demaskPw (v3.3.60, HAS_BEEN_PASSWORD)');
+    assert.ok(!g.includes('pwSwap ='),
+        'gestures.js must NOT use the old pwSwap overlay (v3.3.49, cassait le focus)');
     assert.ok(g.includes('SIGNIN_OPTIONS_RE'),
         'gestures.js must still hide the "Sign-in options" button (v3.3.42+)');
 });

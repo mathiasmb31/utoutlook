@@ -1,7 +1,7 @@
 {
   "name": "prospect-mail",
   "productName": "Prospect Mail",
-  "version": "3.3.67",
+  "version": "3.3.68",
   "type:": "module",
   "main": "src/main.mjs",
   "description": "Unofficial desktop mail client for Microsoft Outlook",
@@ -46,7 +46,7 @@
     "electron-store": "^11.0.2"
   },
   "devDependencies": {
-    "electron": "^44.7.0",
+    "electron": "^45.2.3",
     "electron-builder": "^26.5.0",
     "eslint": "^9.0.0"
   },
