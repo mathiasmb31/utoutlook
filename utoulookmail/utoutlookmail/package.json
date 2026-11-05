@@ -35,6 +35,7 @@
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "dist:linux": "electron-builder --linux",
+    "predist:linux:targz": "node scripts/check-updates.mjs",
     "dist:linux:targz": "electron-builder --x64 --arm64 -l tar.gz --publish never",
     "release": "electron-builder",
     "test": "node --test",
