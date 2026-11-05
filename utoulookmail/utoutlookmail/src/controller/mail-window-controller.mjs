@@ -354,6 +354,10 @@ class MailWindowController {
             let copied = 0;
             for (const cookie of cookies) {
                 const domain = (cookie.domain || '').toLowerCase();
+                // v3.3.79: ne JAMAIS recopier stsservicecookie — sa présence sur
+                // login.microsoftonline.com déclenche le resume SSO silencieux
+                // « Trying to sign you in » dont la vue plante en boucle (RangeError)
+                if (cookie.name.toLowerCase() === 'stsservicecookie') continue;
                 // Map source domains to live.com equivalents.
                 // Also copy login.live.com cookies to outlook.live.com specifically,
                 // and office.com cookies to .live.com (parent domain) for sharing.
