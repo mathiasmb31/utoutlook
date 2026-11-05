@@ -1145,7 +1145,11 @@ class MailWindowController {
                 // the next periodic flush (15s).
                 session.fromPartition(this.sessionPartition).cookies.flushStore()
                     .catch(() => {});
-                if (recentMfaLoads >= 4 && !this.mfaLoopDetected) {
+                // v3.3.70: ne JAMAIS déclencher la reprise si aucune page mail n'a
+                // encore été chargée (connexion vierge) — recharger mainMailServiceUrl
+                // ne ferait que reboucler office.com → /authorize → « tentative de
+                // connexion en cours » en boucle, sans aucune saisie utilisateur.
+                if (recentMfaLoads >= 5 && this.lastMailUrl && !this.mfaLoopDetected) {
                     this.mfaLoopDetected = true;
                     logger.warn(`2FA loop detected: ${recentMfaLoads} auth-start page loads in 30s — aggressive cookie sync`);
                     this.loginPageLoadTimes = [];
