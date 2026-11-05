@@ -16,6 +16,12 @@ import {
 } from './config.mjs';
 import fs from 'node:fs';
 
+// v3.3.77: augmente la pile JS de V8 — la page de login Microsoft (Knockout) fait
+// des bindings récursifs profonds qui dépassent la pile par défaut dans Chromium
+// embarqué → « Maximum call stack size exceeded » en boucle sur « Trying to sign
+// you in… ». --stack-size est en Ko (défaut ~984).
+app.commandLine.appendSwitch('js-flags', '--stack-size=4000');
+
 // ============================================================
 // Global error handlers — prevent silent crashes
 // ============================================================
