@@ -1479,6 +1479,15 @@ class MailWindowController {
         // the account, and the synced cookies provide the session.
         this.win.webContents.on('will-navigate', (event, url) => {
             if (!this.alive) { try { event.preventDefault(); } catch (e) {} return; } // v3.3.22
+            // v3.3.78: supprime le cookie SSO « stsservicecookie » sur
+            // login.microsoftonline.com AVANT /authorize — sa présence déclenche
+            // le resume silencieux « Trying to sign you in » dont la vue Knockout
+            // plante en boucle (RangeError) dans Chromium embarqué.
+            if (url.includes('login.microsoftonline.com') && url.includes('/authorize')) {
+                const ses = session.fromPartition(this.sessionPartition);
+                ses.cookies.remove('https://login.microsoftonline.com/', 'stsservicecookie')
+                    .catch(() => {});
+            }
             // v3.3.11: outlook.cloud.microsoft is the new mail host — same
             // login_hint treatment as live.com.
             if ((url.includes('outlook.live.com/mail') || url.includes('outlook.cloud.microsoft/mail'))
