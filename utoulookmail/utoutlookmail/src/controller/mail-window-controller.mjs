@@ -1418,10 +1418,17 @@ class MailWindowController {
                 if (this.pageRangeErrors.length >= 5 && !this.sessionClearedForLoop) {
                     this.sessionClearedForLoop = true;
                     const url = this.win.webContents.getURL();
-                    logger.warn(`v3.3.74: ${this.pageRangeErrors.length} RangeError/30s sur ${url} — session probablement vérolée, clear + reload`);
+                    logger.warn(`v3.3.74: ${this.pageRangeErrors.length} RangeError/30s sur ${url} — session probablement vérolée, clear + reload avec prompt=login`);
                     this.clearOutlookSession().then(() => {
                         this.pageRangeErrors = [];
-                        this.win.loadURL(this.mainMailServiceUrl);
+                        // force prompt=login pour sauter le resume SSO silencieux
+                        // (c'est la vue « Trying to sign you in » qui plante en boucle)
+                        let target = this.mainMailServiceUrl;
+                        if (url.includes('/authorize')) {
+                            target = url.replace(/([?&])prompt=[^&]*/, '$1prompt=login');
+                            if (!target.includes('prompt=')) target += (target.includes('?') ? '&' : '?') + 'prompt=login';
+                        }
+                        this.win.loadURL(target);
                     }).catch(() => {});
                 }
             }
