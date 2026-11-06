@@ -1000,8 +1000,13 @@ class MailWindowController {
                 const files = fs.readdirSync(leveldbDir).filter(f => f.endsWith('.log') || f.endsWith('.ldb'));
                 for (const f of files) {
                     const buf = fs.readFileSync(path.join(leveldbDir, f));
-                    const m = buf.toString('latin1').match(/[a-zA-Z0-9._%+-]+@(outlook|hotmail|live|msn|passport)\.[a-z.]{2,}/i);
-                    if (m) return m[0];
+                    // v4.0.2: Chromium leveldb stocke souvent en UTF-16LE — tester
+                    // les deux décodages, sinon l'email n'est jamais trouvé et le
+                    // login_hint (tuile du compte sur la page de login) disparaît.
+                    for (const enc of ['latin1', 'utf16le']) {
+                        const m = buf.toString(enc).match(/[a-zA-Z0-9._%+-]+@(outlook|hotmail|live|msn|passport)\.[a-z.]{2,}/i);
+                        if (m) return m[0];
+                    }
                 }
             } catch (e) { /* répertoire absent — essayer le suivant */ }
         }
@@ -1519,6 +1524,9 @@ class MailWindowController {
             // select_account page shows the account tile. login_hint only
             // PRE-FILLS the account — it does NOT sign in (no auto-login);
             // the user still clicks the tile. Never log the email itself.
+            // v4.0.2: relire l'email connu à la volée (le leveldb n'est peuplé
+            // qu'après la 1ère connexion) pour que la tuile réapparaisse à chaque fois
+            if (!this.knownEmail) this.knownEmail = this.readKnownAccountEmail();
             if (url.includes('login.microsoftonline.com') && url.includes('/authorize') &&
                 !url.includes('login_hint=') && this.knownEmail) {
                 event.preventDefault();
