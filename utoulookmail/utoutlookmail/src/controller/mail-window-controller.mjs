@@ -1,4 +1,4 @@
-import {app, BrowserWindow, ipcMain, Menu, shell, clipboard, Notification, nativeImage, nativeTheme, screen, session} from 'electron';
+import {app, BrowserWindow, dialog, ipcMain, Menu, shell, clipboard, Notification, nativeImage, nativeTheme, screen, session, powerMonitor} from 'electron';
 import {spawn} from 'child_process';
 import getClientFile from './client-injector.mjs';
 import path from 'node:path';
@@ -45,9 +45,15 @@ class MailWindowController {
         this.showWindowFrame = true;
         this.loginPage = 0;
         this.pageLoadTimes = []; // timestamps of recent page loads for loop detection
+        this.loginPageLoadTimes = []; // v3.3.59: timestamps of login page loads for 2FA loop detection
         this.redirectLoopDetected = false;
         this.loginHintIntercepts = 0; // count of login_hint redirects intercepted
         this.loopDetectorRetries = 0; // count of loop detector activations (max 3)
+        this.mfaLoopDetected = false; // v3.3.59: 2FA loop already handled
+        this.lastMailUrl = null; // v3.3.67: dernière URL de boîte mail chargée (sans ?code=) — cible de reprise après boucle 2FA
+        this.authStartLoadTimes = []; // v3.3.67: chargements des pages /authorize|select_account (détection boucle KMSI)
+        this.pageRangeErrors = []; // v3.3.74: timestamps des RangeError « Maximum call stack » de la page
+        this.sessionClearedForLoop = false; // v3.3.74: clear session déjà tenté une fois
         this.currentZoomIndex = 2; // start at 1.0
         this.initialMinimization = { domReady: false };
 
@@ -182,6 +188,18 @@ class MailWindowController {
      */
     insertText(text) {
         if (!this.win || this.win.isDestroyed()) return;
+        // v3.3.48: en Wayland natif (WAYLAND_DISPLAY set, plus de forçage X11),
+        // webContents.insertText (chemin XIM/X11) ne dépose rien. Fallback :
+        // insérer dans le champ focusé via execCommand → vrai événement input.
+        if (process.env.WAYLAND_DISPLAY) {
+            this.win.webContents.executeJavaScript(
+                `(()=>{var ae=document.activeElement;` +
+                `if(ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.isContentEditable)){` +
+                `ae.focus();document.execCommand('insertText',false,${JSON.stringify(text)});` +
+                `return ae.value!==undefined?String(ae.value).length:-1;}return null;})()`
+            ).catch(() => {});
+            return;
+        }
         this.win.webContents.insertText(text);
     }
 
@@ -336,6 +354,10 @@ class MailWindowController {
             let copied = 0;
             for (const cookie of cookies) {
                 const domain = (cookie.domain || '').toLowerCase();
+                // v3.3.79: ne JAMAIS recopier stsservicecookie — sa présence sur
+                // login.microsoftonline.com déclenche le resume SSO silencieux
+                // « Trying to sign you in » dont la vue plante en boucle (RangeError)
+                if (cookie.name.toLowerCase() === 'stsservicecookie') continue;
                 // Map source domains to live.com equivalents.
                 // Also copy login.live.com cookies to outlook.live.com specifically,
                 // and office.com cookies to .live.com (parent domain) for sharing.
@@ -608,9 +630,10 @@ class MailWindowController {
     async applyDarkModeClass() {
         if (!this.win || this.win.isDestroyed()) return;
         const dark = this.shouldUseDarkMode();
+        // v3.3.65: .catch — page may be navigating, avoid unhandled rejection
         await this.win.webContents.executeJavaScript(
             `document.documentElement.classList.toggle('dark-mode', ${dark});`
-        );
+        ).catch(() => {});
     }
 
     getDarkModeCSS() {
@@ -806,6 +829,7 @@ class MailWindowController {
             });
         });
         this.setupWindowEvents();
+        this.setupPowerEvents();
         this.setupScreenEvents();
         this.setupOfflineDetection();
         this.startCacheWatcher();
@@ -883,7 +907,12 @@ class MailWindowController {
         // immediately after the splash disappears, never a blank screen.
         if (this.win && !this.win.isDestroyed() && !this.initialMinimization.domReady) {
             logger.info('closeSplashWindow: showing main window');
+            this.handleDisplayChange(); // v3.3.82: fenêtre plein écran dès le départ en portrait
             this.win.show();
+            // v3.3.31: grab the X11 focus too — a visible-but-unfocused window
+            // does not raise Maliit's virtual keyboard when the login field is
+            // tapped (password field stays empty).
+            this.win.focus();
         } else {
             logger.warn(`closeSplashWindow: NOT showing main window (win=${!!this.win}, destroyed=${this.win?.isDestroyed()}, minimized=${this.initialMinimization.domReady})`);
         }
@@ -937,6 +966,11 @@ class MailWindowController {
             },
         });
 
+        // v3.3.32: never throttle rendering when the window is hidden/backgrounded —
+        // on Ubuntu Touch a throttled X11 window is not repainted after wake →
+        // white screen. Combined with the resume handler below.
+        this.win.webContents.setBackgroundThrottling(false);
+
         this.isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
         if (this.isDev) {
             this.win.webContents.openDevTools();
@@ -953,15 +987,29 @@ class MailWindowController {
      * @returns {string|null}
      */
     readKnownAccountEmail() {
-        try {
-            const leveldbDir = path.join(app.getPath('userData'), 'Local Storage', 'leveldb');
-            const files = fs.readdirSync(leveldbDir).filter(f => f.endsWith('.log') || f.endsWith('.ldb'));
-            for (const f of files) {
-                const buf = fs.readFileSync(path.join(leveldbDir, f));
-                const m = buf.toString('latin1').match(/[a-zA-Z0-9._%+-]+@(outlook|hotmail|live|msn|passport)\.[a-z.]{2,}/i);
-                if (m) return m[0];
-            }
-        } catch (e) { /* ignore */ }
+        // v3.3.82: avec une partition persist:xxx, Chromium stocke le Local
+        // Storage dans userData/Partitions/<partition>/Local Storage — lire
+        // AUSSI ce répertoire (c'est celui réellement utilisé), sinon le
+        // dernier login validé n'apparaît plus dans la fenêtre de login.
+        const candidates = [
+            path.join(app.getPath('userData'), 'Local Storage', 'leveldb'),
+            path.join(app.getPath('userData'), 'Partitions', this.sessionPartition.replace(/^persist:/, ''), 'Local Storage', 'leveldb'),
+        ];
+        for (const leveldbDir of candidates) {
+            try {
+                const files = fs.readdirSync(leveldbDir).filter(f => f.endsWith('.log') || f.endsWith('.ldb'));
+                for (const f of files) {
+                    const buf = fs.readFileSync(path.join(leveldbDir, f));
+                    // v4.0.2: Chromium leveldb stocke souvent en UTF-16LE — tester
+                    // les deux décodages, sinon l'email n'est jamais trouvé et le
+                    // login_hint (tuile du compte sur la page de login) disparaît.
+                    for (const enc of ['latin1', 'utf16le']) {
+                        const m = buf.toString(enc).match(/[a-zA-Z0-9._%+-]+@(outlook|hotmail|live|msn|passport)\.[a-z.]{2,}/i);
+                        if (m) return m[0];
+                    }
+                }
+            } catch (e) { /* répertoire absent — essayer le suivant */ }
+        }
         return null;
     }
 
@@ -1020,8 +1068,15 @@ class MailWindowController {
             // the page will redirect to outlook.live.com/mail/?login_hint=... for
             // personal accounts. Sync cookies NOW (before the redirect) so the
             // session is valid on .live.com and the redirect loop is avoided.
-            if (url.includes('outlook.office.com/mail') && url.includes('#code=')) {
-                logger.info('Auth code detected — syncing cookies to live.com before redirect');
+            // v3.3.59: also cover outlook.live.com and outlook.cloud.microsoft with
+            // ?code= or #code= (post-2FA redirect carries an auth code too).
+            const hasAuthCode = url.includes('#code=') || url.includes('?code=');
+            const isOutlookMail = url.includes('outlook.office.com/mail') ||
+                                  url.includes('outlook.live.com/mail') ||
+                                  url.includes('outlook.office365.com/mail') ||
+                                  url.includes('outlook.cloud.microsoft/mail');
+            if (isOutlookMail && hasAuthCode) {
+                logger.info('Auth code detected — syncing cookies before redirect (v3.3.59)');
                 this.syncCookiesToLiveCom();
             }
 
@@ -1047,6 +1102,11 @@ class MailWindowController {
                 p.url.includes('outlook.office365.com/mail') ||
                 p.url.includes('outlook.cloud.microsoft/mail')
             );
+            if (isMailPage) {
+                // v3.3.67: mémorise la dernière URL mail propre (sans ?code=#) —
+                // cible de reprise après une boucle 2FA (live.com pour les comptes perso)
+                this.lastMailUrl = url.split('?')[0].split('#')[0];
+            }
 
             if (isMailPage && mailLoads.length >= 5 && !this.redirectLoopDetected) {
                 this.redirectLoopDetected = true;
@@ -1067,7 +1127,73 @@ class MailWindowController {
                     this.win.loadURL(cleanUrl);
                     // Allow detector to fire again if loop persists
                     this.redirectLoopDetected = false;
-                });
+                }).catch(() => {}); // v3.3.66: avoid unhandled rejection
+            }
+
+            // --- v3.3.59: 2FA/MFA loop detection ---
+            // After approving the Microsoft Authenticator push on another device,
+            // Microsoft sets session cookies on login.microsoftonline.com then
+            // redirects to outlook.live.com/mail. If those cookies are not
+            // propagated to live.com / cloud.microsoft, the mail page bounces
+            // back to the 2FA prompt → infinite loop. Detect frequent loads of
+            // login.microsoftonline.com (the 2FA/verify page) and force an
+            // aggressive cookie sync + flush.
+            const isMfaPage = url.includes('login.microsoftonline.com') ||
+                              url.includes('login.live.com') ||
+                              url.includes('account.live.com') ||
+                              url.includes('oauth') ||
+                              url.includes('consent');
+            // v3.3.67: ne compte que les pages de DÉMARRAGE d'auth (authorize /
+            // select_account). Un flux 2FA légitime (authorize → verify → KMSI)
+            // ne les visite qu'1-2 fois ; une boucle « rester connecté » les
+            // recharge à chaque cycle → seuil 4 en 30s ne se déclenche plus en
+            // plein flux 2FA légitime (qui provoquait une NOUVELLE requête d'auth).
+            let isAuthStartPage = false;
+            try {
+                const path = new URL(url).pathname;
+                isAuthStartPage = path.includes('/authorize') || path.includes('select_account');
+            } catch (e) { /* URL invalide — ignore */ }
+            if (isMfaPage) {
+                this.loginPageLoadTimes.push({url, time: now});
+                this.loginPageLoadTimes = this.loginPageLoadTimes.filter(p => now - p.time < 30000);
+                if (isAuthStartPage) {
+                    this.authStartLoadTimes.push(now);
+                    this.authStartLoadTimes = this.authStartLoadTimes.filter(t => now - t < 30000);
+                }
+                const recentMfaLoads = this.authStartLoadTimes.length;
+                // Flush cookies immediately on every login page load — the 2FA
+                // approval cookie must survive even if the app is killed before
+                // the next periodic flush (15s).
+                session.fromPartition(this.sessionPartition).cookies.flushStore()
+                    .catch(() => {});
+                // v3.3.70: ne JAMAIS déclencher la reprise si aucune page mail n'a
+                // encore été chargée (connexion vierge) — recharger mainMailServiceUrl
+                // ne ferait que reboucler office.com → /authorize → « tentative de
+                // connexion en cours » en boucle, sans aucune saisie utilisateur.
+                if (recentMfaLoads >= 5 && this.lastMailUrl && !this.mfaLoopDetected) {
+                    this.mfaLoopDetected = true;
+                    logger.warn(`2FA loop detected: ${recentMfaLoads} auth-start page loads in 30s — aggressive cookie sync`);
+                    this.loginPageLoadTimes = [];
+                    this.authStartLoadTimes = [];
+                    this.syncCookiesToLiveCom().then(async () => {
+                        // Extra flush after sync to persist the copied cookies
+                        try {
+                            await session.fromPartition(this.sessionPartition).cookies.flushStore();
+                        } catch (e) { /* ignore */ }
+                        // v3.3.67: recharge la dernière URL mail réellement chargée
+                        // (outlook.live.com pour les comptes perso), PAS office.com
+                        // en dur — office.com n'a pas la session perso et rebondit
+                        // sur /authorize → nouvelle requête d'auth Authenticator.
+                        const target = this.lastMailUrl || this.mainMailServiceUrl;
+                        logger.info(`2FA loop: reloading ${target} after aggressive cookie sync`);
+                        this.win.loadURL(target);
+                        this.mfaLoopDetected = false;
+                    }).catch(() => {}); // v3.3.66
+                }
+            } else {
+                // Reset the MFA loop detector when we leave the login pages
+                this.loginPageLoadTimes = [];
+                this.authStartLoadTimes = [];
             }
         });
 
@@ -1218,6 +1344,43 @@ class MailWindowController {
                 this.reloadWindow();
             }
         });
+        // v3.3.66: first-install — wipe ALL session data from the main process.
+        // The in-page clear (document.cookie/localStorage) only reaches the current
+        // origin, and syncCookiesToLiveCom() would re-copy surviving cookies to the
+        // other Microsoft domains on the next login page load. Here we remove every
+        // cookie from the partition and clear all storage (localStorage, IndexedDB,
+        // cache) — knownEmail lives in localStorage leveldb so it goes too.
+        // Confirmation uses a NATIVE dialog: window.confirm() is not implemented in
+        // Electron and always returns false, which made the in-page confirm inert.
+        ipcMain.handle("first-install", async (event) => {
+            if (!this.win || this.win.isDestroyed() || event.sender !== this.win.webContents) return false;
+            const {response} = await dialog.showMessageBox(this.win, {
+                type: 'warning',
+                title: t('app.name'),
+                message: t('login.firstInstallConfirm'),
+                buttons: [t('common.cancel'), t('login.firstInstallConfirmAction')],
+                defaultId: 0,
+                cancelId: 0,
+                noLink: true,
+            });
+            if (response !== 1) return false;
+            try {
+                this.knownEmail = null;
+                const ses = session.fromPartition(this.sessionPartition);
+                const cookies = await ses.cookies.get({});
+                for (const c of cookies) {
+                    const url = `${c.secure ? 'https' : 'http'}://${c.domain.replace(/^\./, '')}${c.path || '/'}`;
+                    await ses.cookies.remove(url, c.name).catch(() => {});
+                }
+                await ses.cookies.flushStore().catch(() => {});
+                await ses.clearStorageData().catch(() => {});
+                logger.info('First-install: all cookies and storage cleared');
+            } catch (e) {
+                logger.warn('First-install clear failed:', e.message);
+            }
+            this.win.loadURL('https://outlook.office.com/mail/');
+            return true;
+        });
     }
 
     /**
@@ -1265,6 +1428,29 @@ class MailWindowController {
         // Log console messages from the renderer — captures JS errors, CSP violations
         this.win.webContents.on('console-message', (_event, level, message, _line, _sourceId) => {
             const levelName = ['verbose', 'info', 'warning', 'error'][level] || 'log';
+            // v3.3.74: compte les RangeError de la page (page de login Microsoft qui
+            // boucle sur « tentative de connexion » quand son Knockout plante)
+            if (message.includes('Maximum call stack size exceeded')) {
+                const now = Date.now();
+                this.pageRangeErrors.push(now);
+                this.pageRangeErrors = this.pageRangeErrors.filter(t => now - t < 30000);
+                if (this.pageRangeErrors.length >= 5 && !this.sessionClearedForLoop) {
+                    this.sessionClearedForLoop = true;
+                    const url = this.win.webContents.getURL();
+                    logger.warn(`v3.3.74: ${this.pageRangeErrors.length} RangeError/30s sur ${url} — session probablement vérolée, clear + reload avec prompt=login`);
+                    this.clearOutlookSession().then(() => {
+                        this.pageRangeErrors = [];
+                        // force prompt=login pour sauter le resume SSO silencieux
+                        // (c'est la vue « Trying to sign you in » qui plante en boucle)
+                        let target = this.mainMailServiceUrl;
+                        if (url.includes('/authorize')) {
+                            target = url.replace(/([?&])prompt=[^&]*/, '$1prompt=login');
+                            if (!target.includes('prompt=')) target += (target.includes('?') ? '&' : '?') + 'prompt=login';
+                        }
+                        this.win.loadURL(target);
+                    }).catch(() => {});
+                }
+            }
             // Skip noisy messages
             if (message.includes('Autofill') || message.includes('DevTools')) return;
             logger.info(`[console.${levelName}] ${message.substring(0, 500)}`);
@@ -1312,6 +1498,15 @@ class MailWindowController {
         // the account, and the synced cookies provide the session.
         this.win.webContents.on('will-navigate', (event, url) => {
             if (!this.alive) { try { event.preventDefault(); } catch (e) {} return; } // v3.3.22
+            // v3.3.78: supprime le cookie SSO « stsservicecookie » sur
+            // login.microsoftonline.com AVANT /authorize — sa présence déclenche
+            // le resume silencieux « Trying to sign you in » dont la vue Knockout
+            // plante en boucle (RangeError) dans Chromium embarqué.
+            if (url.includes('login.microsoftonline.com') && url.includes('/authorize')) {
+                const ses = session.fromPartition(this.sessionPartition);
+                ses.cookies.remove('https://login.microsoftonline.com/', 'stsservicecookie')
+                    .catch(() => {});
+            }
             // v3.3.11: outlook.cloud.microsoft is the new mail host — same
             // login_hint treatment as live.com.
             if ((url.includes('outlook.live.com/mail') || url.includes('outlook.cloud.microsoft/mail'))
@@ -1322,13 +1517,16 @@ class MailWindowController {
                 this.syncCookiesToLiveCom().then(() => {
                     logger.info(`Loading with synced cookies (login_hint preserved)`);
                     this.win.loadURL(url); // keep login_hint
-                });
+                }).catch(() => {}); // v3.3.66
                 return;
             }
             // v3.3.18: add login_hint=<known email> to the authorize URL so the
             // select_account page shows the account tile. login_hint only
             // PRE-FILLS the account — it does NOT sign in (no auto-login);
             // the user still clicks the tile. Never log the email itself.
+            // v4.0.2: relire l'email connu à la volée (le leveldb n'est peuplé
+            // qu'après la 1ère connexion) pour que la tuile réapparaisse à chaque fois
+            if (!this.knownEmail) this.knownEmail = this.readKnownAccountEmail();
             if (url.includes('login.microsoftonline.com') && url.includes('/authorize') &&
                 !url.includes('login_hint=') && this.knownEmail) {
                 event.preventDefault();
@@ -1379,11 +1577,31 @@ class MailWindowController {
         });
     }
 
+    setupPowerEvents() {
+        // v3.3.32: after a suspend/resume (screen off → on), the X11/XWayland
+        // window is no longer repainted → white screen on wake ("veille puis
+        // écran blanc"). powerMonitor 'resume' fires from logind → force a
+        // full redraw of the webContents and re-assert visibility/focus.
+        powerMonitor.on('resume', () => {
+            logger.info('powerMonitor resume — forcing window repaint (v3.3.32)');
+            if (!this.alive) return;
+            try { this.win.webContents.invalidate(); } catch (e) { logger.warn('invalidate failed:', e.message); }
+            try { if (!this.win.isVisible()) this.win.show(); } catch (e) { /* ignore */ }
+            try { this.win.focus(); } catch (e) { /* ignore */ }
+        });
+        powerMonitor.on('suspend', () => logger.info('powerMonitor suspend (v3.3.32)'));
+    }
+
     setupWindowEvents() {
         // v3.3.4: log window lifecycle events — needed to diagnose "app does not
         // start" episodes where the process and heartbeat are alive but the
         // window never appears (or is hidden and never re-shown on relaunch).
-        this.win.on("show", () => logger.info('Window event: show'));
+        // v3.3.32: also force a repaint on every show — covers the return to
+        // foreground after the app was backgrounded (Lomiri may SIGSTOP it).
+        this.win.on("show", () => {
+            logger.info('Window event: show');
+            try { this.win.webContents.invalidate(); } catch (e) { /* ignore */ }
+        });
         this.win.on("hide", () => logger.info('Window event: hide'));
         this.win.on("focus", () => logger.info('Window event: focus'));
         this.win.on("blur", () => logger.info('Window event: blur'));
@@ -1469,7 +1687,12 @@ class MailWindowController {
         const {width, height} = primaryDisplay.size;
         const isPortrait = height > width;
         logger.info(`Display changed: ${width}x${height} (${isPortrait ? 'portrait' : 'landscape'})`);
-        // Could adjust zoom or layout based on orientation
+        // v3.3.82: en portrait (téléphone), la fenêtre DOIT remplir tout l'écran —
+        // sinon la liste des messages s'arrête avant le bas de l'écran (fenêtre
+        // créée en 1400x900 fixe).
+        if (isPortrait) {
+            try { this.win.setBounds({x: 0, y: 0, width, height}); } catch (e) { logger.warn('setBounds failed:', e.message); }
+        }
     }
 
     // --- Offline detection ---
@@ -1644,7 +1867,17 @@ class MailWindowController {
     injectGestures(targetWin = null) {
         const win = targetWin || this.win;
         if (!win || win.isDestroyed()) return;
+        // v3.3.50: inject the i18n strings used by the in-page scripts (login badge label)
+        const tr = getAllTranslations();
+        const i18nJson = JSON.stringify({
+            loginMadeFor: tr['login.madeFor'],
+            knownLogin: this.knownEmail || '',   // v3.3.57: pré-remplir le champ login (jamais loggé)
+            firstInstall: tr['login.firstInstall'],           // v3.3.63: bouton first-install sur la page de login
+            firstInstallConfirm: tr['login.firstInstallConfirm'],
+            firstInstallConfirmAction: tr['login.firstInstallConfirmAction'],
+        });
         win.webContents.executeJavaScript(
+            `window.__utoutlookI18n = Object.assign(window.__utoutlookI18n||{}, ${i18nJson});\n` +
             getClientFile("gestures.js")
         ).catch(() => {
             // gestures.js may not exist yet or page not ready, ignore

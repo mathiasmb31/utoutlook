@@ -8,7 +8,8 @@
 #   make rebuild      → clean + build complet
 #   make jobs=N       → Build avec N cœurs
 
-JOBS ?= $(shell nproc)
+# Plafond mémoire (hôte 11,5 Go RAM, crash OOM 2026-11-04) : 4 jobs max, surcharge via `make jobs=N`
+JOBS ?= 4
 
 .PHONY: all cpp electron clean clean-all rebuild jobs
 
