@@ -907,6 +907,7 @@ class MailWindowController {
         // immediately after the splash disappears, never a blank screen.
         if (this.win && !this.win.isDestroyed() && !this.initialMinimization.domReady) {
             logger.info('closeSplashWindow: showing main window');
+            this.handleDisplayChange(); // v3.3.82: fenêtre plein écran dès le départ en portrait
             this.win.show();
             // v3.3.31: grab the X11 focus too — a visible-but-unfocused window
             // does not raise Maliit's virtual keyboard when the login field is
@@ -986,15 +987,24 @@ class MailWindowController {
      * @returns {string|null}
      */
     readKnownAccountEmail() {
-        try {
-            const leveldbDir = path.join(app.getPath('userData'), 'Local Storage', 'leveldb');
-            const files = fs.readdirSync(leveldbDir).filter(f => f.endsWith('.log') || f.endsWith('.ldb'));
-            for (const f of files) {
-                const buf = fs.readFileSync(path.join(leveldbDir, f));
-                const m = buf.toString('latin1').match(/[a-zA-Z0-9._%+-]+@(outlook|hotmail|live|msn|passport)\.[a-z.]{2,}/i);
-                if (m) return m[0];
-            }
-        } catch (e) { /* ignore */ }
+        // v3.3.82: avec une partition persist:xxx, Chromium stocke le Local
+        // Storage dans userData/Partitions/<partition>/Local Storage — lire
+        // AUSSI ce répertoire (c'est celui réellement utilisé), sinon le
+        // dernier login validé n'apparaît plus dans la fenêtre de login.
+        const candidates = [
+            path.join(app.getPath('userData'), 'Local Storage', 'leveldb'),
+            path.join(app.getPath('userData'), 'Partitions', this.sessionPartition.replace(/^persist:/, ''), 'Local Storage', 'leveldb'),
+        ];
+        for (const leveldbDir of candidates) {
+            try {
+                const files = fs.readdirSync(leveldbDir).filter(f => f.endsWith('.log') || f.endsWith('.ldb'));
+                for (const f of files) {
+                    const buf = fs.readFileSync(path.join(leveldbDir, f));
+                    const m = buf.toString('latin1').match(/[a-zA-Z0-9._%+-]+@(outlook|hotmail|live|msn|passport)\.[a-z.]{2,}/i);
+                    if (m) return m[0];
+                }
+            } catch (e) { /* répertoire absent — essayer le suivant */ }
+        }
         return null;
     }
 
@@ -1669,7 +1679,12 @@ class MailWindowController {
         const {width, height} = primaryDisplay.size;
         const isPortrait = height > width;
         logger.info(`Display changed: ${width}x${height} (${isPortrait ? 'portrait' : 'landscape'})`);
-        // Could adjust zoom or layout based on orientation
+        // v3.3.82: en portrait (téléphone), la fenêtre DOIT remplir tout l'écran —
+        // sinon la liste des messages s'arrête avant le bas de l'écran (fenêtre
+        // créée en 1400x900 fixe).
+        if (isPortrait) {
+            try { this.win.setBounds({x: 0, y: 0, width, height}); } catch (e) { logger.warn('setBounds failed:', e.message); }
+        }
     }
 
     // --- Offline detection ---
