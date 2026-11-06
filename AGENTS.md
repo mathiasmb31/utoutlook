@@ -97,3 +97,7 @@ UToutlook Mail — client Outlook pour Ubuntu Touch (Electron + click package).
 - Build : `cd utoulookmail/utoutlookmail && npm run dist:linux:targz && cd .. && clickable build`
 - Test : `cd utoulookmail/utoutlookmail && npm test`
 - Install sur device : `clickable install`
+
+## Base de connaissances (OBLIGATOIRE — règle de Mathias, 2026-11-05, amendée 2026-11-06)
+
+Toute session sur le téléphone (adb : install, test, debug) donne lieu à une fiche datée dans `vibeworkspace/base-de-connaissances/` (métadonnées, tableau résumé, procédures copiables, pièges/leçons) + entrée dans `base-de-connaissances/INDEX.md`. **Pas de copie de la fiche poussée sur le téléphone** (supprimé le 2026-11-06 : la base de connaissances vit dans le dépôt git, pas sur l'appareil).
