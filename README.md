@@ -6,6 +6,14 @@
 adapted from original prospectmail package from https://github.com/julian-alarcon/prospect-mail?tab=readme-ov-file#readme
 rewritten for UBTOUCH and small devices.
 
+## Screen sizes
+
+Adapts to all phone screen sizes: the window is resized to the full screen on every
+display change in portrait (`setBounds(0,0,screen.width,screen.height)`), and the
+injected CSS is mobile-first (8 px paddings, 30 px touch scrollbars, 44 px minimum
+touch targets, `@media (min-width: 768px)` for tablets, dark theme via
+`prefers-color-scheme`).
+
 
 
 
