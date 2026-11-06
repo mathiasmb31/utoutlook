@@ -68,6 +68,17 @@ git checkout -b feature/ma-fonctionnalite
 - Les PR vers `main` déclenchent la CI (tests + lint + build)
 - Ne merger que si la CI est verte
 
+## Build — plafonnement du parallélisme (OBLIGATOIRE — crash OOM hôte 2026-11-04, 11,5 Go RAM)
+
+Ne jamais lancer un build avec `nproc` jobs par défaut sur le hôte (8 cœurs / 11,5 Go) :
+une compilation parallèle non plafonnée (6+ cc1plus via compiledeps.sh/dpkg-buildpackage)
+a provoqué OOM + figeage total le 2026-11-04.
+
+- Build isolé : `-j4` max par défaut (`build-fast.sh`, `MAKEFLAGS`, `CMAKE_BUILD_PARALLEL_LEVEL`)
+- Builds concurrents (build-all.sh) : `-j2` par projet (total ≤ 6 jobs)
+- `compiledeps.sh` : `MAKEFLAGS=-j2` + `DEB_BUILD_OPTIONS="nocheck parallel=2"` (déjà en place)
+- Surcharge ponctuelle possible (`./build-fast.sh N`, `make jobs=N`) en surveillant `free -h`
+
 ## Pied de commit (OBLIGATOIRE)
 
 Tout commit fait par l'agent Mistral Vibe porte systématiquement ce pied de message :
@@ -86,3 +97,7 @@ UToutlook Mail — client Outlook pour Ubuntu Touch (Electron + click package).
 - Build : `cd utoulookmail/utoutlookmail && npm run dist:linux:targz && cd .. && clickable build`
 - Test : `cd utoulookmail/utoutlookmail && npm test`
 - Install sur device : `clickable install`
+
+## Base de connaissances (OBLIGATOIRE — règle de Mathias, 2026-11-05, amendée 2026-11-06)
+
+Toute session sur le téléphone (adb : install, test, debug) donne lieu à une fiche datée dans `vibeworkspace/base-de-connaissances/` (métadonnées, tableau résumé, procédures copiables, pièges/leçons) + entrée dans `base-de-connaissances/INDEX.md`. **Pas de copie de la fiche poussée sur le téléphone** (supprimé le 2026-11-06 : la base de connaissances vit dans le dépôt git, pas sur l'appareil).

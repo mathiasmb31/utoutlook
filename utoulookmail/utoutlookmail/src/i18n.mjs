@@ -26,6 +26,26 @@ const DEFAULT_LANG = 'fr';
 // --- Translations ---
 const T = {
     // ===== Common =====
+    // ===== Login page badge (v3.3.50) =====
+    'login.madeFor': {
+        fr: 'Made for Ubtouch', en: 'Made for Ubtouch', es: 'Made for Ubtouch', de: 'Made for Ubtouch',
+        it: 'Made for Ubtouch', pt: 'Made for Ubtouch', zh: 'Made for Ubtouch', ar: 'Made for Ubtouch',
+    },
+    // ===== Login page first-install button (v3.3.63) =====
+    'login.firstInstall': {
+        fr: 'Première installation', en: 'First install', es: 'Primera instalación', de: 'Erste Installation',
+        it: 'Prima installazione', pt: 'Primeira instalação', zh: '首次安装', ar: 'التثبيت الأول',
+    },
+    'login.firstInstallConfirm': {
+        fr: 'Effacer les données de connexion et recommencer à zéro ?', en: 'Clear sign-in data and start fresh?',
+        es: '¿Borrar los datos de inicio de sesión y empezar de cero?', de: 'Anmeldedaten löschen und neu beginnen?',
+        it: 'Cancellare i dati di accesso e ricominciare da capo?', pt: 'Apagar os dados de login e começar do zero?',
+        zh: '清除登录数据并重新开始？', ar: 'مسح بيانات تسجيل الدخول والبدء من جديد؟',
+    },
+    'login.firstInstallConfirmAction': {
+        fr: 'Tout effacer', en: 'Wipe everything', es: 'Borrar todo', de: 'Alles löschen',
+        it: 'Cancella tutto', pt: 'Apagar tudo', zh: '全部清除', ar: 'مسح الكل',
+    },
     'app.name': {
         fr: 'UToutlook Mail', en: 'UToutlook Mail', es: 'UToutlook Mail', de: 'UToutlook Mail',
         it: 'UToutlook Mail', pt: 'UToutlook Mail', zh: 'UToutlook Mail', ar: 'UToutlook Mail',
