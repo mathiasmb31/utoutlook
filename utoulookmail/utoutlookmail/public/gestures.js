@@ -109,19 +109,25 @@
             p.dispatchEvent(new Event('input', {bubbles: true}));
         }
     };
+    const isField = el => el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+    let lastField = null; // v4.0.1: champ ciblé même si le focus a brièvement bougé
     const ensureBsButton = () => {
         let b = document.getElementById('utoutlook-bs');
         const ae = document.activeElement;
-        const inField = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable);
+        const inField = isField(ae) || isField(lastField);
         if (inField && !b) {
             b = document.createElement('button');
             b.id = 'utoutlook-bs';
             b.textContent = '\u232b';
             b.setAttribute('aria-label', 'Backspace');
             b.style.cssText = 'position:fixed;right:14px;bottom:14px;width:56px;height:56px;border-radius:50%;border:none;background:#E95420;color:#fff;font-size:26px;z-index:2147483647;cursor:pointer;';
+            // v4.0.1: empêcher le bouton de prendre le focus au clic — sinon
+            // activeElement devient le bouton, le handler ne retrouve plus le champ
+            // (bouton « ne marche pas ») et focusout fait disparaître le bouton.
+            b.addEventListener('mousedown', e => e.preventDefault());
             b.addEventListener('click', () => {
-                const a = document.activeElement;
-                if (!a || !(a.tagName === 'INPUT' || a.tagName === 'TEXTAREA')) return;
+                const a = isField(document.activeElement) ? document.activeElement : lastField;
+                if (!a) return;
                 a.focus();
                 if (!document.execCommand('delete')) {
                     const st = a.selectionStart, en = a.selectionEnd;
@@ -137,7 +143,7 @@
     };
     prefillLogin();
     ensureBsButton();
-    document.addEventListener('focusin', ensureBsButton, true);
+    document.addEventListener('focusin', e => { if (isField(e.target)) lastField = e.target; ensureBsButton(); }, true);
     document.addEventListener('focusout', () => setTimeout(ensureBsButton, 150), true);
     setInterval(function () { prefillLogin(); ensureBsButton(); }, 800);
     new MutationObserver(() => { prefillLogin(); }).observe(document.documentElement, {childList: true, subtree: true});
