@@ -11,7 +11,7 @@
   <circle cx="400" cy="400" r="390" fill="#E95420"/>
   <circle cx="400" cy="400" r="360" fill="none" stroke="#ffffff" stroke-opacity="0.15" stroke-width="2"/>
   <!-- open envelope flap, behind the head -->
-  <path d="M 225,465 L 400,240 L 575,465 Z" fill="#ffffff" stroke="#E95420" stroke-width="9" stroke-linejoin="round"/>
+  <path d="M 255,465 L 400,240 L 545,465 Z" fill="#ffffff" stroke="#E95420" stroke-width="9" stroke-linejoin="round"/>
   <g mask="url(#above-envelope)">
   <g>
     <animateTransform attributeName="transform" attributeType="XML" type="translate"
