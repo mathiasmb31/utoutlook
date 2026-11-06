@@ -108,6 +108,11 @@
             p.value = known;
             p.dispatchEvent(new Event('input', {bubbles: true}));
         }
+        // v4.0.2: mémorise l'email saisi pour que le login_hint (tuile du compte)
+        // soit rejoué à CHAQUE chargement de la page de login, pas une fois sur deux
+        if (p && p.value && /@(outlook|hotmail|live|msn)\./i.test(p.value)) {
+            try { localStorage.setItem('__utoutlook_known_login', p.value); } catch (_) {}
+        }
     };
     const isField = el => el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
     let lastField = null; // v4.0.1: champ ciblé même si le focus a brièvement bougé
