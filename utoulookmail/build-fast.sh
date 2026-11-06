@@ -6,7 +6,8 @@ set -e
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="$PROJECT_DIR/build-ninja"
 ELECTRON_DIR="$PROJECT_DIR/utoutlookmail"
-JOBS="${1:-$(nproc)}"
+# Plafond mémoire (hôte 11,5 Go RAM, crash OOM 2026-11-04) : -j4 max par défaut, surcharge via $1
+JOBS="${1:-4}"
 MODE="${2:-all}"
 
 # Répertoire temporaire sur /mnt/five (évite le manque d'espace sur /tmp)

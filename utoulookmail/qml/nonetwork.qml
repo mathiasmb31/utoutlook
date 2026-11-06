@@ -2,6 +2,7 @@ import QtQuick 2.9
 import QtQuick.Window 2.2
 import QtQuick.Controls 2.2
 import QtQuick.Layouts 1.3
+.import "/tmp/utoutlook-qml-i18n.js" as QmlI18n
 
 ApplicationWindow {
     visible: true
@@ -90,7 +91,7 @@ gradient: Gradient {
 		        Text {
           anchors.fill: parent
        font.pixelSize: 24
-       text: "NO NETWORK !!"
+       text: QmlI18n.NO_NETWORK
        fontSizeMode: Text.Fit 
        minimumPixelSize: 10
        wrapMode: Text.WordWrap

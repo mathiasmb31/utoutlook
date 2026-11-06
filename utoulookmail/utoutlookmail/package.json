@@ -1,7 +1,7 @@
 {
   "name": "prospect-mail",
   "productName": "Prospect Mail",
-  "version": "3.3.29",
+  "version": "4.0.2",
   "type:": "module",
   "main": "src/main.mjs",
   "description": "Unofficial desktop mail client for Microsoft Outlook",
@@ -35,6 +35,7 @@
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "dist:linux": "electron-builder --linux",
+    "predist:linux:targz": "node scripts/check-updates.mjs",
     "dist:linux:targz": "electron-builder --x64 --arm64 -l tar.gz --publish never",
     "release": "electron-builder",
     "test": "node --test",
@@ -46,7 +47,7 @@
     "electron-store": "^11.0.2"
   },
   "devDependencies": {
-    "electron": "^44.7.0",
+    "electron": "44.9.3",
     "electron-builder": "^26.5.0",
     "eslint": "^9.0.0"
   },

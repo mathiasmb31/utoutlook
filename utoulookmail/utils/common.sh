@@ -117,8 +117,42 @@ utoutlook_t() {
 				ar) echo "اكتمل إعادة التعيين... شغّل UToutlook Mail" ;;
 				*)  echo "Réinitialisation effectuée... lancez UToutlook Mail" ;;
 			esac ;;
+		# --- QML screens (v3.3.65: passed to qmlscene via /tmp JS file) ---
+		"qml.noNetwork")
+			case "${lang}" in
+				en) echo "NO NETWORK !!" ;;
+				es) echo "SIN RED !!" ;;
+				de) echo "KEIN NETZWERK !!" ;;
+				it) echo "NESSUNA RETE !!" ;;
+				pt) echo "SEM REDE !!" ;;
+				zh) echo "无网络 !!" ;;
+				ar) echo "لا توجد شبكة !!" ;;
+				*)  echo "PAS DE RÉSEAU !!" ;;
+			esac ;;
+		"qml.exitTimeout")
+			case "${lang}" in
+				en) echo "Timeout speaking with outlook server. This is not really a problem — you can launch the client once more ;)" ;;
+				es) echo "Tiempo de espera agotado con el servidor de outlook. No es un problema real — puedes iniciar el cliente otra vez ;)" ;;
+				de) echo "Zeitüberschreitung bei der Verbindung zum Outlook-Server. Kein wirkliches Problem — du kannst den Client erneut starten ;)" ;;
+				it) echo "Timeout nella comunicazione con il server outlook. Non è un vero problema — puoi riavviare il client ;)" ;;
+				pt) echo "Tempo limite ao falar com o servidor do outlook. Não é um problema real — podes iniciar o cliente outra vez ;)" ;;
+				zh) echo "连接 outlook 服务器超时。这其实不是问题 — 你可以再启动一次客户端 ;)" ;;
+				ar) echo "انتهت مهلة الاتصال بخادم outlook. هذه ليست مشكلة حقيقية — يمكنك تشغيل العميل مرة أخرى ;)" ;;
+				*)  echo "Délai dépassé avec le serveur outlook. Ce n'est pas vraiment un problème — vous pouvez relancer le client ;)" ;;
+			esac ;;
 		*) echo "${key}" ;;
 	esac
+}
+
+# Write a JS file with the translated QML strings, imported by the .qml screens.
+# qmlscene cannot read env vars directly; /tmp is writable on the device.
+# Usage: utoutlook_write_qml_i18n
+utoutlook_write_qml_i18n() {
+	local f="/tmp/utoutlook-qml-i18n.js"
+	{
+		echo "var NO_NETWORK = \"$(utoutlook_t 'qml.noNetwork' | sed 's/\\/\\\\/g; s/"/\\"/g')\";"
+		echo "var EXIT_TIMEOUT = \"$(utoutlook_t 'qml.exitTimeout' | sed 's/\\/\\\\/g; s/"/\\"/g')\";"
+	} > "${f}" 2>/dev/null || true
 }
 
 # ============================================================
@@ -146,6 +180,16 @@ except Exception:
 # SIGKILL alone loses the most recent cookies → user sees login page.
 # ============================================================
 utoutlook_kill_app() {
+	# v3.3.30: check FIRST whether a prospect-mail is running. When none is
+	# (normal launch), skip the close flag + 3s sleep entirely — cleanup()
+	# calls this 3x per wrapper start, so the unconditional sleep cost 9s on
+	# EVERY launch ("startup is very long").
+	if ! "${UTOUTLOOK_BIN}/pkill" -0 prospect-mail 2>/dev/null; then
+		# No process running, nothing to kill
+		"${UTOUTLOOK_BIN}/pkill" -9 qmlscene 2>/dev/null || true
+		return 0
+	fi
+
 	# v3.3.10: poser un flag close FRAIS avant tout kill. L'ancien process
 	# (booté avant nous) le verra dans son heartbeat (toutes les 2s) et fera un
 	# arrêt gracieux avec flush des cookies. Indispensable à l'upgrade:
@@ -156,13 +200,6 @@ utoutlook_kill_app() {
 	echo "closed" > "${UTOUTLOOK_EXITCOMMAND}" 2>/dev/null || true
 	# ~3s pour laisser l'ancien process sortir proprement
 	"${UTOUTLOOK_BIN}/sleep" 3 2>/dev/null || /bin/sleep 3 2>/dev/null || true
-
-	# Check if any prospect-mail process is running
-	if ! "${UTOUTLOOK_BIN}/pkill" -0 prospect-mail 2>/dev/null; then
-		# No process running, nothing to kill
-		"${UTOUTLOOK_BIN}/pkill" -9 qmlscene 2>/dev/null || true
-		return 0
-	fi
 
 	# Step 1: SIGTERM — graceful shutdown (flushes cookies, closes windows)
 	"${UTOUTLOOK_BIN}/pkill" -TERM prospect-mail 2>/dev/null || true
@@ -201,14 +238,21 @@ utoutlook_cleanup_locks() {
 # ============================================================
 utoutlook_kill_stale_wrappers() {
 	local self=$$ parent=$PPID p pidfile="${UTOUTLOOK_DATA_DIR}/wrapper.pid"
+	# v3.3.30: SIGKILL directly, never SIGTERM — a TERM'd wrapper runs its EXIT
+	# trap (close_command) which writes the close flag / sends the socket quit;
+	# those reach the NEW instance (same paths) and kill it right after its
+	# first launch. SIGKILL = no trap = no flag. The old app process itself is
+	# handled separately by utoutlook_kill_app (flag + TERM + wait + KILL).
+	#
 	# Primary mechanism: pidfile (works under AppArmor — no /proc cmdline scan).
-	# Each wrapper writes its own PID at startup; the new one kills the previous.
+	# NOTE: cleanup() now writes OUR pid to the pidfile BEFORE calling this,
+	# so the pidfile branch below no longer fires for the previous wrapper —
+	# the previous wrapper self-exits via the pidfile check in
+	# verify_prospect_life, and the pgrep fallback SIGKILLs it here.
 	if [ -f "$pidfile" ]; then
 		p=$("${UTOUTLOOK_BIN}/cat" "$pidfile" 2>/dev/null | "${UTOUTLOOK_BIN}/tr" -d '[:space:]')
 		if [ -n "$p" ] && [ "$p" != "$self" ] && [ "$p" != "$parent" ] && kill -0 "$p" 2>/dev/null; then
 			echo "killing stale wrapper pid=$p (from pidfile)"
-			kill -TERM "$p" 2>/dev/null || true
-			"${UTOUTLOOK_BIN}/sleep" 1 2>/dev/null || /bin/sleep 1 2>/dev/null || true
 			kill -9 "$p" 2>/dev/null || true
 		fi
 	fi
@@ -217,12 +261,6 @@ utoutlook_kill_stale_wrappers() {
 	local found
 	found=$("${UTOUTLOOK_BIN}/pgrep" -f '^/bin/bash .*bin/command\.sh' 2>/dev/null)
 	echo "pgrep fallback found: ${found:-none} (self=$self)"
-	for p in $found; do
-		[ "$p" = "$self" ] && continue
-		[ "$p" = "$parent" ] && continue
-		kill -TERM "$p" 2>/dev/null || true
-	done
-	"${UTOUTLOOK_BIN}/sleep" 1 2>/dev/null || /bin/sleep 1 2>/dev/null || true
 	for p in $found; do
 		[ "$p" = "$self" ] && continue
 		[ "$p" = "$parent" ] && continue
