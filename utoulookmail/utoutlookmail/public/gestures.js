@@ -48,7 +48,13 @@
     // en boucle sur la vue « Trying to sign you in ». La conversion des champs
     // password est couverte par le setter `type` ci-dessous + scanPwFields
     // (MutationObserver + interval), qui suffit pour les champs créés dynamiquement.
-    const origTypeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'type').set;
+    // v3.3.80: le getter DOIT utiliser le descripteur ORIGINAL capturé AVANT le
+    // defineProperty — sinon il se rappelle lui-même → récursion infinie sur
+    // CHAQUE lecture de input.type (Knockout lit .type dans ses bindings →
+    // « Maximum call stack size exceeded » en boucle sur la page de login).
+    const origTypeDesc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'type');
+    const origTypeSetter = origTypeDesc.set;
+    const origTypeGetter = origTypeDesc.get;
     Object.defineProperty(HTMLInputElement.prototype, 'type', {
         set(v) {
             if (String(v).toLowerCase() === 'password') {
@@ -58,7 +64,7 @@
             return origTypeSetter.call(this, v);
         },
         get() {
-            return Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'type').get.call(this);
+            return origTypeGetter.call(this);
         },
         configurable: true,
     });
