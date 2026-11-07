@@ -511,8 +511,23 @@
             // blocks both the browser pull-to-refresh AND Outlook web's
             // own envelope refresh indicator.
             e.preventDefault();
+        } else {
+            // v4.0.4: scrolling back up releases the pull — otherwise a
+            // negative diff would leave isPulling=true and block the next
+            // downward gesture.
+            isPulling = false;
+            if (pullIndicator) pullIndicator.style.transform = 'scaleX(0)';
         }
     }, {passive: false});
+
+    // v4.0.4: touchcancel (OSK opening, notification, palm rejection) must
+    // release isPulling — without this, isPulling stays true forever and
+    // every later touchmove from the top calls preventDefault → the
+    // message list can no longer be scrolled at all.
+    document.addEventListener('touchcancel', function () {
+        isPulling = false;
+        if (pullIndicator) pullIndicator.style.transform = 'scaleX(0)';
+    }, {passive: true});
 
     document.addEventListener('touchend', function () {
         if (!isPulling) return;
