@@ -263,10 +263,70 @@ const observeUnreadHandlers = {
       // false reads (e.g. old unread=5 when real count is now 4 → false notification).
       const currentInbox = findInboxElement();
       if (!currentInbox || !document.contains(currentInbox)) {
+        // v4.0.4: read the unread count from document.title first — Outlook
+        // web always puts "(N unread)" / "(N non lus)" in the page title, even
+        // when the navigation pane is closed. No DOM toggle needed.
+        const docTitle = document.title || '';
+        const titleMatches = [...docTitle.matchAll(/\((\d+)[^)]*\)/g)];
+        if (titleMatches.length > 0) {
+          const docUnread = parseInt(titleMatches[0][1], 10);
+          debug(`Unread read from document.title: ${docUnread} ("${docTitle.substring(0, 60)}")`);
+          // Feed the same pipeline as a real inbox read: reuse by faking a
+          // minimal path — simplest is to handle it inline below.
+          state.navToggleForRead = null;
+          state.navToggleCount = 0;
+          // Inline handling equivalent to the found-inbox path for the count.
+          const prev = state.lastUnreadCount;
+          if (docUnread === 0 && prev > 0) {
+            state.zeroUnreadConfirmCount++;
+            if (state.zeroUnreadConfirmCount < 2) {
+              debug(`Zero unread pending confirmation (${state.zeroUnreadConfirmCount}/2)`);
+              return false;
+            }
+            state.zeroUnreadConfirmCount = 0;
+          } else {
+            state.zeroUnreadConfirmCount = 0;
+          }
+          state.lastUnreadCount = docUnread;
+          if (!checkOnlyZeroUnread) updateUnreadDebounced(docUnread);
+          if (docUnread > prev && !checkOnlyZeroUnread) {
+            const now = new Date();
+            const since = state.lastUnreadNotificationTime ? now - state.lastUnreadNotificationTime : Infinity;
+            if (!state.lastUnreadNotificationTime || since > CONFIG.unreadEmailThrottleMs) {
+              const mailInfo = getLatestMailInfo();
+              let title, body;
+              if (mailInfo && mailInfo.subject) {
+                title = tr('newMailTitle');
+                body = tr('newMailBody', { sender: mailInfo.sender || '', subject: mailInfo.subject });
+              } else {
+                title = `${I18N.appName}: ${tr('newMessagesTitle')}`;
+                body = tr('newMessagesBody', { count: docUnread });
+              }
+              showNotification(title, body);
+              state.lastUnreadNotificationTime = now;
+            }
+          }
+          return true;
+        }
         // v3.3.25: the inbox treeitem only exists when the navigation pane is
-        // open. If it is closed, toggle it open for one check, read the count
-        // on the next tick, then toggle it back — invisible for the user.
+        // open. Fallback: toggle it open for one check, read the count on the
+        // next tick, then toggle it back — invisible for the user.
+        // v4.0.4: capped (max 3 toggles per episode + 60s cooldown) — an
+        // uncapped toggle loop (click → mutation → observer → check → click)
+        // re-renders the Outlook DOM forever and freezes the renderer.
+        const nowMs = Date.now();
+        if (state.navToggleCooldownUntil && nowMs < state.navToggleCooldownUntil) {
+          debug('Nav pane toggle on cooldown — skipping check');
+          return false;
+        }
         if (!state.navToggleForRead) {
+          state.navToggleCount = (state.navToggleCount || 0) + 1;
+          if (state.navToggleCount > 3) {
+            state.navToggleCooldownUntil = nowMs + 60000;
+            state.navToggleCount = 0;
+            debug('Nav pane toggle limit reached (3) — cooldown 60s');
+            return false;
+          }
           const btn = [...document.querySelectorAll('button,[role="button"]')]
             .find(b => /volet de navigation|navigation pane/i.test(b.getAttribute('aria-label') || ''));
           if (btn) {
