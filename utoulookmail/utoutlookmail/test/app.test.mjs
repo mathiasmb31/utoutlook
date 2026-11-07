@@ -1721,3 +1721,72 @@ test('v3.3.50: badge logo + « Made for Ubtouch » injecté sur la page de login
             `login.madeFor must exist for ${lang} (v3.3.50)`);
     }
 });
+
+// ============================================================
+// Tests for v4.0.3 — real in-app server reachability test.
+// The old network test no longer worked because it relied only on
+// did-fail-load (fires on navigations only) and navigator.onLine
+// (stays true in Electron/Ubuntu Touch even without connectivity).
+// v4.0.3 adds checkServerReachable() (real HTTP request with timeout),
+// a periodic server monitor, and a "server not responding" overlay.
+// ============================================================
+
+test('v4.0.3: checkServerReachable performs a REAL HTTP request with timeout (net.fetch + AbortController)', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+    assert.ok(content.includes('async checkServerReachable()'),
+        'controller must define checkServerReachable() (v4.0.3)');
+    const start = content.indexOf('async checkServerReachable()');
+    const end = content.indexOf('startServerMonitor()', start);
+    const body = content.slice(start, end);
+    assert.ok(body.includes('net.fetch'), 'checkServerReachable must use net.fetch (real request, v4.0.3)');
+    assert.ok(body.includes('AbortController') && body.includes('abort()'),
+        'checkServerReachable must use AbortController timeout (v4.0.3)');
+    assert.ok(body.includes('mainMailServiceUrl'),
+        'checkServerReachable must target the configured mail/login server URL (v4.0.3)');
+});
+
+test('v4.0.3: connectivity monitor uses the real server check, not navigator.onLine', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+    const monStart = content.indexOf('startConnectivityMonitor()');
+    const monEnd = content.indexOf('// --- Server reachability test', monStart);
+    const monBody = content.slice(monStart, monEnd);
+    assert.ok(monBody.includes('checkServerReachable()'),
+        'connectivity monitor must call checkServerReachable() (v4.0.3)');
+    assert.ok(!monBody.includes("executeJavaScript('navigator.onLine')"),
+        'connectivity monitor must NOT poll navigator.onLine via executeJavaScript (v4.0.3)');
+});
+
+test('v4.0.3: periodic server monitor shows "server not responding" overlay after consecutive failures', async () => {
+    const fs = await import('node:fs');
+    const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
+    const content = fs.readFileSync(ctrlPath, 'utf-8');
+    assert.ok(content.includes('startServerMonitor()'),
+        'controller must define startServerMonitor() (v4.0.3)');
+    assert.ok(content.includes("showOfflineOverlay('server')"),
+        'server monitor must show the server-specific overlay (v4.0.3)');
+    assert.ok(content.includes("'server.title'") && content.includes("'server.message'"),
+        'overlay must support server.title / server.message keys (v4.0.3)');
+    // did-fail-load must distinguish offline vs server via an immediate check
+    const offlineStart = content.indexOf('setupOfflineDetection()');
+    const offlineEnd = content.indexOf('showOfflineOverlay(', offlineStart);
+    const offlineBody = content.slice(offlineStart, offlineEnd);
+    assert.ok(offlineBody.includes('checkServerReachable()'),
+        'did-fail-load handler must run an immediate server check to pick the right overlay (v4.0.3)');
+});
+
+test('v4.0.3: i18n has server.* and notif.server* keys in all 8 languages', async () => {
+    const {t, setLanguage, getAvailableLanguages} = await import('../src/i18n.mjs');
+    const keys = ['server.title', 'server.message', 'notif.serverUnreachable.title', 'notif.serverReachable.title'];
+    for (const lang of Object.keys(getAvailableLanguages())) {
+        setLanguage(lang);
+        for (const key of keys) {
+            const translated = t(key);
+            assert.ok(translated !== key, `Missing ${key} for ${lang} (v4.0.3)`);
+            assert.ok(translated.length > 0, `Empty ${key} for ${lang} (v4.0.3)`);
+        }
+    }
+});

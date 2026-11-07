@@ -496,6 +496,33 @@ const T = {
         de: 'Automatisch verbinden...', it: 'Riconnessione automatica...', pt: 'Reconectando automaticamente...',
         zh: '自动重连...', ar: 'إعادة الاتصال تلقائياً...',
     },
+    'notif.serverUnreachable.title': {
+        fr: 'Serveur inaccessible', en: 'Server unreachable', es: 'Servidor inaccesible',
+        de: 'Server nicht erreichbar', it: 'Server irraggiungibile', pt: 'Servidor inacessível',
+        zh: '服务器无法访问', ar: 'الخادم غير قابل للوصول',
+    },
+    'notif.serverReachable.title': {
+        fr: 'Serveur à nouveau disponible', en: 'Server available again', es: 'Servidor disponible de nuevo',
+        de: 'Server wieder verfügbar', it: 'Server di nuovo disponibile', pt: 'Servidor novamente disponível',
+        zh: '服务器已恢复', ar: 'الخادم متاح مرة أخرى',
+    },
+
+    // ===== Server not responding screen (v4.0.3) =====
+    'server.title': {
+        fr: 'Le serveur ne répond pas', en: 'Server not responding', es: 'El servidor no responde',
+        de: 'Server antwortet nicht', it: 'Il server non risponde', pt: 'O servidor não responde',
+        zh: '服务器无响应', ar: 'الخادم لا يستجيب',
+    },
+    'server.message': {
+        fr: 'UToutlook Mail ne parvient pas à joindre le serveur (la page de connexion n\'est pas disponible). Réessayez dans un instant.',
+        en: 'UToutlook Mail cannot reach the server (the login page is unavailable). Please try again in a moment.',
+        es: 'UToutlook Mail no puede contactar con el servidor (la página de inicio de sesión no está disponible). Inténtalo de nuevo en un momento.',
+        de: 'UToutlook Mail kann den Server nicht erreichen (die Anmeldeseite ist nicht verfügbar). Versuche es in einem Moment erneut.',
+        it: 'UToutlook Mail non riesce a raggiungere il server (la pagina di accesso non è disponibile). Riprova tra un momento.',
+        pt: 'O UToutlook Mail não consegue contactar o servidor (a página de início de sessão não está disponível). Tente novamente dentro de um momento.',
+        zh: 'UToutlook Mail 无法连接服务器（登录页面不可用）。请稍后重试。',
+        ar: 'لا يمكن لـ UToutlook Mail الوصول إلى الخادم (صفحة تسجيل الدخول غير متاحة). حاول مرة أخرى بعد قليل.',
+    },
 
     // ===== About =====
     'about.description': {
