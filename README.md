@@ -78,3 +78,12 @@ resolve bugs reported
 For bugs, please go on github :)
 
 
+
+## Consommation constatée (batterie / CPU)
+
+Mesures du 2026-11-07 sur téléphone 71b90fee (Ubuntu Touch 24.04.5, arm64), applis en attente/arrière-plan :
+
+- **En attente (mode daemon)** : Lomiri gèle l'appli en arrière-plan (SIGSTOP, état `T`) → **0,0 % CPU mesuré**, empreinte mémoire résiduelle ~50–90 Mo. La conso batterie en attente est donc **négligeable** ; seuls les éventuels daemons comptent.
+
+- **Au premier plan** (wrapper Electron/Chromium) : pic ~110 % CPU au chargement de la page, puis ~0,1–0,7 % ; RSS totale ~0,7–1,3 Go (Chromium embarqué).
+- **En arrière-plan** : gelée par Lomiri (SIGSTOP) → **0 % CPU** ; conso batterie négligeable tant que l'appli n'est pas au premier plan.
