@@ -1,4 +1,4 @@
-import {app, BrowserWindow, dialog, ipcMain, Menu, shell, clipboard, Notification, nativeImage, nativeTheme, screen, session, powerMonitor} from 'electron';
+import {app, BrowserWindow, dialog, ipcMain, Menu, shell, clipboard, Notification, nativeImage, nativeTheme, screen, session, powerMonitor, net} from 'electron';
 import {spawn} from 'child_process';
 import getClientFile from './client-injector.mjs';
 import path from 'node:path';
@@ -65,6 +65,9 @@ class MailWindowController {
         this.splashClosed = false; // true once splash has been dismissed (URL match or timeout)
         this.cookieFlushInterval = null; // periodic cookie flush to disk
         this.observerHealthCheck = null; // periodic observer connectivity check
+        this.serverMonitor = null; // v4.0.3: periodic real server reachability check
+        this.serverFailCount = 0; // v4.0.3: consecutive failed server checks
+        this.serverWasUnreachable = false; // v4.0.3: server overlay currently shown
         this.observerWasActive = false; // true once observer connected at least once
         // Multi-account: each account has its own config and session partition
         this.accountConfig = accountConfig;
@@ -832,6 +835,7 @@ class MailWindowController {
         this.setupPowerEvents();
         this.setupScreenEvents();
         this.setupOfflineDetection();
+        this.startServerMonitor(); // v4.0.3: real in-app server reachability test
         this.startCacheWatcher();
         this.startCookieFlush();
         this.startObserverHealthCheck();
@@ -1651,6 +1655,11 @@ class MailWindowController {
                 clearInterval(this.connectivityTimer);
                 this.connectivityTimer = null;
             }
+            // Stop server reachability monitor (v4.0.3)
+            if (this.serverMonitor) {
+                clearInterval(this.serverMonitor);
+                this.serverMonitor = null;
+            }
             // Stop cookie flush
             if (this.cookieFlushInterval) {
                 clearInterval(this.cookieFlushInterval);
@@ -1715,16 +1724,24 @@ class MailWindowController {
             const networkErrors = [-100, -101, -102, -105, -106, -109, -118, -121, -137, -323];
             if (networkErrors.includes(errorCode) && validatedURL && !validatedURL.startsWith('file://')) {
                 logger.warn(`Network error ${errorCode}: ${errorDescription} — showing offline overlay`);
-                this.showOfflineOverlay();
+                // v4.0.3: test actif immédiat pour distinguer « pas de réseau »
+                // (serveur injoignable) de « le serveur ne répond pas » (login
+                // indisponible alors que la connexion existe).
+                this.checkServerReachable().then(reachable => {
+                    this.showOfflineOverlay(reachable ? 'offline' : 'server');
+                });
                 this.startConnectivityMonitor();
             }
         });
     }
 
-    showOfflineOverlay() {
+    // kind: 'offline' (no Internet) or 'server' (server/login not responding) — v4.0.3
+    showOfflineOverlay(kind = 'offline') {
         if (!this.win || this.win.isDestroyed()) return;
         this.isOffline = true;
         const tr = getAllTranslations();
+        const titleKey = kind === 'server' ? 'server.title' : 'offline.title';
+        const messageKey = kind === 'server' ? 'server.message' : 'offline.message';
 
         this.win.webContents.executeJavaScript(`
             (() => {
@@ -1740,9 +1757,9 @@ class MailWindowController {
                          align-items:center;justify-content:center;font-family:Ubuntu,sans-serif;
                          color:#e0e0e0;text-align:center;padding:24px;box-sizing:border-box;">
                         <div style="font-size:72px;margin-bottom:24px;opacity:0.6;">&#x1F4F6;</div>
-                        <h1 style="font-size:24px;font-weight:300;margin-bottom:12px;">${tr['offline.title']}</h1>
+                        <h1 style="font-size:24px;font-weight:300;margin-bottom:12px;">${tr[titleKey]}</h1>
                         <p style="font-size:16px;opacity:0.7;margin-bottom:32px;line-height:1.5;">
-                            ${tr['offline.message']}
+                            ${tr[messageKey]}
                         </p>
                         <div style="width:24px;height:24px;border:2px solid rgba(255,255,255,0.2);
                              border-top-color:#0078d4;border-radius:50%;
@@ -1759,7 +1776,8 @@ class MailWindowController {
         `).catch(err => logger.error('Failed to show offline overlay:', err));
 
         // Notify via UBports
-        this.sendUbportsNotification(t('app.name'), t('notif.offline.title'));
+        const notifKey = kind === 'server' ? 'notif.serverUnreachable.title' : 'notif.offline.title';
+        this.sendUbportsNotification(t('app.name'), t(notifKey));
     }
 
     hideOfflineOverlay() {
@@ -1785,8 +1803,12 @@ class MailWindowController {
             }
 
             try {
-                const online = await this.win.webContents.executeJavaScript('navigator.onLine');
-                if (online) {
+                // v4.0.3: navigator.onLine is NOT a real network test — in
+                // Electron/Ubuntu Touch it often stays true even with no
+                // connectivity (it only reflects Chromium's interface state).
+                // Use a real request to the mail server instead.
+                const reachable = await this.checkServerReachable();
+                if (reachable) {
                     // hotfix #14: do NOT reload the page. A full reload causes
                     // a jarring flash (progress bar → page reload → Outlook splash
                     // envelope animation → back to app). Just hide the overlay —
@@ -1801,6 +1823,74 @@ class MailWindowController {
                 // Page might not be ready, keep polling
             }
         }, 3000);
+    }
+
+    // --- Server reachability test (v4.0.3) ---
+    // Real in-app network test: an actual HTTP request to the mail/login
+    // server. did-fail-load only fires during navigations and
+    // navigator.onLine does not reflect real connectivity, so without this
+    // the app never notices that the server (or the login) is down.
+
+    /**
+     * Teste réellement que le serveur mail/login répond (requête HTTP avec
+     * timeout). Retourne true si le serveur répond (any HTTP status), false sinon.
+     * @returns {Promise<boolean>}
+     */
+    async checkServerReachable() {
+        const target = this.mainMailServiceUrl || settings.get('urlMainWindow') || 'https://outlook.office.com/';
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
+        try {
+            const res = await net.fetch(target, {
+                method: 'HEAD',
+                signal: controller.signal,
+            });
+            // Any HTTP response (even 3xx/4xx) means the server is alive.
+            return res.status > 0;
+        } catch (err) {
+            logger.warn(`Server reachability check failed for ${target}: ${err.message}`);
+            return false;
+        } finally {
+            clearTimeout(timeout);
+        }
+    }
+
+    /**
+     * Moniteur périodique : teste le serveur toutes les 30s. Après 2 échecs
+     * consécutifs, affiche l'écran « serveur ne répond pas » (si le login/la
+     * page mail n'est pas disponible). Dès que le serveur répond à nouveau,
+     * masque l'écran et notifie.
+     */
+    startServerMonitor() {
+        if (this.serverMonitor) clearInterval(this.serverMonitor);
+        // Premier test rapide après le lancement (le splash couvre les 30s,
+        // ce test détecte un serveur down avant même la fin du chargement).
+        setTimeout(() => this.runServerCheck(), 5000);
+
+        this.serverMonitor = setInterval(() => this.runServerCheck(), 30000);
+        logger.info('Server reachability monitor started (30s)');
+    }
+
+    async runServerCheck() {
+        if (!this.win || this.win.isDestroyed()) return;
+        const reachable = await this.checkServerReachable();
+        if (!reachable) {
+            this.serverFailCount++;
+            logger.warn(`Server check failed (${this.serverFailCount}/2 consecutive)`);
+            if (this.serverFailCount >= 2 && !this.serverWasUnreachable) {
+                this.serverWasUnreachable = true;
+                logger.warn('Server unreachable — showing "server not responding" screen');
+                this.showOfflineOverlay('server');
+            }
+        } else {
+            if (this.serverWasUnreachable) {
+                logger.info('Server reachable again — hiding overlay');
+                this.serverWasUnreachable = false;
+                this.hideOfflineOverlay();
+                this.sendUbportsNotification(t('app.name'), t('notif.serverReachable.title'));
+            }
+            this.serverFailCount = 0;
+        }
     }
 
     async injectStyles(targetWin = null) {
