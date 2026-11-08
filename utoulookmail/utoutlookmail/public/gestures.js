@@ -116,7 +116,16 @@
     };
     const isField = el => el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
     let lastField = null; // v4.0.1: champ ciblé même si le focus a brièvement bougé
+    // v4.0.5: remonte le bouton ⌫ au-dessus du clavier virtuel (Maliit/Wayland est un
+    // overlay : visualViewport.height < innerHeight quand le clavier est ouvert) et ne
+    // l'affiche que sur la page de login, uniquement quand un champ de saisie a le focus.
+    const positionBsButton = (b) => {
+        const vv = window.visualViewport;
+        const kb = vv ? Math.max(0, window.innerHeight - vv.height - (vv.offsetTop || 0)) : 0;
+        b.style.bottom = (kb + 14) + 'px';
+    };
     const ensureBsButton = () => {
+        if (!LOGIN_HOSTS_RE.test(location.hostname)) return;
         let b = document.getElementById('utoutlook-bs');
         const ae = document.activeElement;
         const inField = isField(ae) || isField(lastField);
@@ -126,6 +135,11 @@
             b.textContent = '\u232b';
             b.setAttribute('aria-label', 'Backspace');
             b.style.cssText = 'position:fixed;right:14px;bottom:14px;width:56px;height:56px;border-radius:50%;border:none;background:#E95420;color:#fff;font-size:26px;z-index:2147483647;cursor:pointer;';
+            positionBsButton(b);
+            if (window.visualViewport) {
+                window.visualViewport.addEventListener('resize', () => { const x = document.getElementById('utoutlook-bs'); if (x) positionBsButton(x); });
+                window.visualViewport.addEventListener('scroll', () => { const x = document.getElementById('utoutlook-bs'); if (x) positionBsButton(x); });
+            }
             // v4.0.1: empêcher le bouton de prendre le focus au clic — sinon
             // activeElement devient le bouton, le handler ne retrouve plus le champ
             // (bouton « ne marche pas ») et focusout fait disparaître le bouton.
@@ -144,6 +158,8 @@
             (document.body || document.documentElement).appendChild(b);
         } else if (!inField && b) {
             b.remove();
+        } else if (inField && b) {
+            positionBsButton(b); // repositionne si le clavier s'est ouvert entre deux passages
         }
     };
     prefillLogin();
@@ -402,6 +418,7 @@
         document.querySelectorAll(LIST_SELECTORS).forEach(observeListContainer);
         // Cacher les indicateurs existants
         hideLoadingIndicators(document.body);
+        hideMessageListBottomBar(); // v4.0.6
         console.log('[gestures] Loading indicator observer started');
     }
 
@@ -412,6 +429,29 @@
     }
 
     // Réappliquer périodiquement (sécurité anti-régression SPA).
+    // v4.0.6: Outlook mobile ajoute une barre d'onglets en bas du volet
+    // « Liste des messages » (Prioritaire/Autres) qui mange ~92 px en bas de
+    // fenêtre — la liste s'arrête au-dessus et l'espace est perdu. On la cache :
+    // la zone de scroll reprend alors toute la hauteur disponible.
+    function hideMessageListBottomBar() {
+        const lists = document.querySelectorAll('[data-app-section="MessageList"], [role="complementary"][aria-label*="messages" i]');
+        lists.forEach(list => {
+            let pane = list;
+            while (pane && pane.getAttribute('role') !== 'complementary') pane = pane.parentElement;
+            if (!pane) return;
+            for (const c of pane.children) {
+                if (c.getAttribute('role') === 'alert') continue;
+                if (c.hasAttribute('data-utoutlook-hidden')) continue;
+                const r = c.getBoundingClientRect();
+                // enfant direct du volet, collé au bas de la fenêtre, dans la moitié basse
+                if (r.height > 30 && r.bottom >= window.innerHeight - 4 && r.top > window.innerHeight / 2) {
+                    c.style.cssText += HIDE_STYLE;
+                    c.setAttribute('data-utoutlook-hidden', 'true');
+                }
+            }
+        });
+    }
+
     // v3.3.24: ne scanner QUE les conteneurs de liste, pas tout document.body —
     // sur le gros DOM d'Outlook, ~35 querySelectorAll sur tout le body toutes les
     // 3s coûtaient cher en CPU sur téléphone.
@@ -421,6 +461,7 @@
             hideLoadingIndicators(container);
         });
         updateEmptyState(); // v3.3.25
+        hideMessageListBottomBar(); // v4.0.6
     }, 3000);
 
     // --- Swipe from left edge to go back (browser history) ---
