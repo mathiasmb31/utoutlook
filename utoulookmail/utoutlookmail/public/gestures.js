@@ -443,8 +443,8 @@
                 if (c.getAttribute('role') === 'alert') continue;
                 if (c.hasAttribute('data-utoutlook-hidden')) continue;
                 const r = c.getBoundingClientRect();
-                // enfant direct du volet, collé au bas de la fenêtre, dans la moitié basse
-                if (r.height > 30 && r.bottom >= window.innerHeight - 4 && r.top > window.innerHeight / 2) {
+                // enfant direct du volet, collé au bas de la fenêtre (marge indicateur ~14 px), moitié basse
+                if (r.height > 30 && r.bottom >= window.innerHeight - 30 && r.top > window.innerHeight / 2) {
                     c.style.cssText += HIDE_STYLE;
                     c.setAttribute('data-utoutlook-hidden', 'true');
                 }
