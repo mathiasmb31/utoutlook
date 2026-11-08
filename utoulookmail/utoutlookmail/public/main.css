@@ -778,3 +778,20 @@ body [class*="fui-"]:not([class*="icon" i]):not([class*="FontIcon" i]) {
 [role="dialog"] input, [role="dialog"] textarea {
   border-radius: 8px !important;
 }
+
+/* ============================================================
+   v4.0.7: barre d'onglets mobile en bas du volet « Liste des messages »
+   (Prioritaire/Autres) — div anonyme, dernier enfant visible du volet.
+   Cachée en CSS (et pas seulement en JS) pour être appliquée instantanément
+   à chaque re-render du DOM par Outlook, sinon la liste rapetisse 1-2 s
+   après le chargement. La zone de scroll reprend alors toute la hauteur.
+   ============================================================ */
+[role="complementary"][aria-label*="messages" i]:has([class*="customScrollBar"]) > div:not([class]):not([role="alert"]) {
+  display: none !important;
+  visibility: hidden !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+}
