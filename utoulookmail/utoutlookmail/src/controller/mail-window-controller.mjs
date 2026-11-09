@@ -859,7 +859,7 @@ class MailWindowController {
 
         this.splashWindow = new BrowserWindow({
             width: Math.min(400, width),
-            height: Math.min(500, height),
+            height: Math.min(520, height),
             frame: false,
             transparent: false,
             resizable: false,
@@ -870,10 +870,13 @@ class MailWindowController {
             alwaysOnTop: true,
             skipTaskbar: true,
             show: true,
-            backgroundColor: '#0078d4',
+            backgroundColor: '#0f0f1a',
             webPreferences: {
                 contextIsolation: true,
                 sandbox: true,
+                // v4.0.10: preload dédié splash — expose UNIQUEMENT first-install
+                // (bouton « ceinture et bretelles » si l'app ne démarre pas)
+                preload: path.resolve(__dirnameNew, 'splash-preload.js'),
             },
         });
 
@@ -882,6 +885,7 @@ class MailWindowController {
         const splashParams = new URLSearchParams({
             loading: t('splash.loading'),
             appName: t('app.name'),
+            firstInstall: t('login.firstInstall'),
         });
         this.splashWindow.loadFile(splashPath, {search: splashParams.toString()});
 
@@ -1363,8 +1367,13 @@ class MailWindowController {
         // Confirmation uses a NATIVE dialog: window.confirm() is not implemented in
         // Electron and always returns false, which made the in-page confirm inert.
         ipcMain.handle("first-install", async (event) => {
-            if (!this.win || this.win.isDestroyed() || event.sender !== this.win.webContents) return false;
-            const {response} = await dialog.showMessageBox(this.win, {
+            // v4.0.10: accepte aussi la splash window comme sender (bouton
+            // first-install sur le splash, ceinture et bretelles)
+            const fromMain = this.win && !this.win.isDestroyed() && event.sender === this.win.webContents;
+            const fromSplash = this.splashWindow && !this.splashWindow.isDestroyed() && event.sender === this.splashWindow.webContents;
+            if (!fromMain && !fromSplash) return false;
+            const parentWin = fromSplash ? this.splashWindow : this.win;
+            const {response} = await dialog.showMessageBox(parentWin, {
                 type: 'warning',
                 title: t('app.name'),
                 message: t('login.firstInstallConfirm'),
@@ -1388,7 +1397,12 @@ class MailWindowController {
             } catch (e) {
                 logger.warn('First-install clear failed:', e.message);
             }
-            this.win.loadURL('https://outlook.office.com/mail/');
+            // v4.0.10: si appelé depuis le splash, fermer le splash (qui affichera
+            // la fenêtre principale via closeSplashWindow) puis recharger
+            if (fromSplash) this.closeSplashWindow();
+            if (this.win && !this.win.isDestroyed()) {
+                this.win.loadURL('https://outlook.office.com/mail/');
+            }
             return true;
         });
     }
