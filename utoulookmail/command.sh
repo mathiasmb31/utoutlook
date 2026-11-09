@@ -227,10 +227,12 @@ source "${WD}/utils/common.sh"
 
 # v4.0.15: log persistant du wrapper (Lomiri lance sans stdout visible) —
 # indispensable pour diagnostiquer les quits intempestifs au 2e lancement.
+# ATTENTION: uniquement des builtins shell (echo/printf/exec >>) — les binaires
+# externes (date, tee, process substitution /dev/fd) sont bloqués par AppArmor.
 _WRAPPER_LOG="${UTOUTLOOK_CONFIG_DIR}/wrapper.log"
 mkdir -p "${UTOUTLOOK_CONFIG_DIR}" 2>/dev/null || true
-echo "=== wrapper start $$ at $(date '+%H:%M:%S') ===" >> "$_WRAPPER_LOG"
-exec > >(tee -a "$_WRAPPER_LOG") 2>&1
+printf '=== wrapper start pid=%s sec=%s ===\n' "$$" "${EPOCHSECONDS:-0}" >> "$_WRAPPER_LOG"
+exec >> "$_WRAPPER_LOG" 2>&1
 
 # D-Bus session bus — required by the notify binary (QDBusConnection::sessionBus).
 # Lomiri normally sets these, but be defensive: if they are missing, the notify
