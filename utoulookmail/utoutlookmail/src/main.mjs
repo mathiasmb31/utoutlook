@@ -143,12 +143,23 @@ const heartbeatInterval = setInterval(() => {
     if (fs.existsSync(CLOSE_FLAG_FILE)) {
         try {
             const mtime = fs.statSync(CLOSE_FLAG_FILE).mtimeMs;
+            const content = fs.readFileSync(CLOSE_FLAG_FILE, 'utf8').trim();
             fs.unlinkSync(CLOSE_FLAG_FILE);
-            if (mtime > PROCESS_START) {
-                logger.info('Close flag received (fresh) — exiting');
+            // v4.0.14: the close flag now embeds the wrapper PID
+            // ("closed:<pid>"). Only honor it if it matches OUR wrapper
+            // (UTOUTLOOK_WRAPPER_PID env passed by command.sh) — a flag written
+            // by a dying OLD wrapper (different PID) must not kill this process.
+            const flagPid = content.startsWith('closed:') ? content.slice(7) : null;
+            const ourWrapper = process.env.UTOUTLOOK_WRAPPER_PID || null;
+            if (mtime > PROCESS_START && flagPid && ourWrapper && flagPid === ourWrapper) {
+                logger.info('Close flag received from OUR wrapper (fresh) — exiting');
+                app.exit(0);
+            } else if (mtime > PROCESS_START && !flagPid && !ourWrapper) {
+                // Legacy flag without PID and no env — keep old behavior
+                logger.info('Close flag received (fresh, legacy) — exiting');
                 app.exit(0);
             } else {
-                logger.info('Stale close flag ignored (written before process start)');
+                logger.info(`Close flag ignored (pid=${flagPid} our=${ourWrapper})`);
             }
         } catch (e) { /* ignore */ }
     }

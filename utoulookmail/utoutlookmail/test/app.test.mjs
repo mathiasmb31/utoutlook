@@ -1224,7 +1224,7 @@ test('command.sh/common.sh: cross-version upgrade safety — fresh close flag + 
     // old process/service can only be stopped via a FRESH close flag (its
     // heartbeat honors flags written after its own boot).
     const killFn = common.slice(common.indexOf('utoutlook_kill_app()'));
-    assert.ok(killFn.includes('echo "closed" > "${UTOUTLOOK_EXITCOMMAND}"'),
+    assert.ok(killFn.includes('echo "closed:${UTOUTLOOK_WRAPPER_PID:-unknown}" > "${UTOUTLOOK_EXITCOMMAND}"'),
         'utoutlook_kill_app must write a fresh close flag so the old (cross-label) process quits gracefully (v3.3.10)');
 
     // The old wrapper must exit when a newer wrapper owns wrapper.pid
@@ -1650,7 +1650,7 @@ test('v3.3.30: démarrage rapide + wrapper périmé silencieux (pas de kill du n
     // close-flag write + 3s sleep (cleanup calls it 3x per start = 9s lost)
     const killApp = common.slice(common.indexOf('utoutlook_kill_app()'), common.indexOf('utoutlook_cleanup_locks()'));
     const checkPos = killApp.indexOf('pkill" -0 prospect-mail');
-    const flagPos = killApp.indexOf('echo "closed" > "${UTOUTLOOK_EXITCOMMAND}"');
+    const flagPos = killApp.indexOf('echo "closed:${UTOUTLOOK_WRAPPER_PID:-unknown}" > "${UTOUTLOOK_EXITCOMMAND}"');
     assert.ok(checkPos !== -1 && flagPos !== -1 && checkPos < flagPos,
         'kill_app must check pkill -0 prospect-mail BEFORE writing the close flag / sleeping (v3.3.30)');
     // kill_stale_wrappers: SIGKILL only, never SIGTERM (a TERM runs the EXIT trap
