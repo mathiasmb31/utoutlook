@@ -306,10 +306,12 @@ utoutlook_flag_fresh() {
 utoutlook_exitclient_ours() {
 	local f="$1"
 	[ -f "$f" ] || return 1
-	[ "${CLIENT_PID:-0}" -gt 0 ] || return 1
+	# v4.0.17: compare against the WRAPPER pid ($$, stable) — the flag now
+	# contains quitclient:<wrapper_pid>, not the client pid (which changes on
+	# every relaunch and broke the comparison after a swipe-close + relaunch).
 	local content
 	content=$("${UTOUTLOOK_BIN}/cat" "$f" 2>/dev/null | "${UTOUTLOOK_BIN}/tr" -d '[:space:]')
-	[ "$content" = "quitclient:${CLIENT_PID}" ]
+	[ "$content" = "quitclient:$$" ]
 }
 
 # ============================================================

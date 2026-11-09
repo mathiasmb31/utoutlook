@@ -37,9 +37,12 @@ export const SOCKET_PATH = path.join(CONFIG_DIR, 'utoutlook.sock');
 // clean quit apart from a crash — an async writeFile raced app.exit(0) and
 // never landed, so the wrapper relaunched the app after a swipe-close.
 export function markCleanExit() {
-    // v4.0.13: embed our PID so the wrapper can tell OUR clean quit apart from
-    // a flag written by a dying older process (which survives a click upgrade).
-    try { fs.writeFileSync(EXIT_CLIENT_FILE, `quitclient:${process.pid}`); } catch (e) { /* ignore */ }
+    // v4.0.17: embed the WRAPPER pid (UTOUTLOOK_WRAPPER_PID env, stable for the
+    // whole wrapper lifetime) rather than our own process pid — the wrapper may
+    // relaunch us several times and CLIENT_PID changes, but the wrapper pid does
+    // not, so the flag always identifies "a clean quit of a process I launched".
+    const wid = process.env.UTOUTLOOK_WRAPPER_PID || String(process.pid);
+    try { fs.writeFileSync(EXIT_CLIENT_FILE, `quitclient:${wid}`); } catch (e) { /* ignore */ }
 }
 
 // --- Asset paths (relative to the app root) ---
