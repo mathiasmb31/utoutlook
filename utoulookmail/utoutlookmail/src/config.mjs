@@ -37,7 +37,9 @@ export const SOCKET_PATH = path.join(CONFIG_DIR, 'utoutlook.sock');
 // clean quit apart from a crash — an async writeFile raced app.exit(0) and
 // never landed, so the wrapper relaunched the app after a swipe-close.
 export function markCleanExit() {
-    try { fs.writeFileSync(EXIT_CLIENT_FILE, 'quitclient'); } catch (e) { /* ignore */ }
+    // v4.0.13: embed our PID so the wrapper can tell OUR clean quit apart from
+    // a flag written by a dying older process (which survives a click upgrade).
+    try { fs.writeFileSync(EXIT_CLIENT_FILE, `quitclient:${process.pid}`); } catch (e) { /* ignore */ }
 }
 
 // --- Asset paths (relative to the app root) ---

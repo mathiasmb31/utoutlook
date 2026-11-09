@@ -1630,9 +1630,9 @@ test('v3.3.28: clean quit writes exitclient synchronously so the wrapper does NO
     // wrapper: on heartbeat stagnation, a FRESH clean-quit flag means exit, not
     // relaunch (v4.0.10: freshness guard so a stale flag from a pre-3.0 version
     // cannot kill the new instance — upgrade bug "stuck on splash")
-    const stag = cmd.slice(cmd.indexOf('stagnantCount} -ge 2'), cmd.indexOf('stagnantCount} -ge 2') + 900);
-    assert.ok(stag.includes('utoutlook_flag_fresh "${exitclient}"') && stag.includes('exit 0'),
-        'command.sh must exit (not relaunch) when a FRESH exitclient exists at heartbeat stagnation (v3.3.28 + v4.0.10)');
+    const stag = cmd.slice(cmd.indexOf('stagnantCount} -ge 2'), cmd.indexOf('stagnantCount} -ge 2') + 1400);
+    assert.ok(stag.includes('utoutlook_flag_fresh "${exitclient}"') && stag.includes('utoutlook_exitclient_ours') && stag.includes('exit 0'),
+        'command.sh must exit (not relaunch) when a FRESH exitclient written by OUR client exists at heartbeat stagnation (v3.3.28 + v4.0.10 + v4.0.13)');
     // wrapper: stale lifecycle flags must be cleared in cleanup() AFTER the
     // old app is killed (not while the client is alive — the 'close' event
     // writes exitclient right before the process dies)
