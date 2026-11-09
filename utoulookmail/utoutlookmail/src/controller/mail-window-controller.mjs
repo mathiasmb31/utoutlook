@@ -909,8 +909,14 @@ class MailWindowController {
         // Show the main window when the splash closes — the user should see
         // the app content (mail interface, login page, or offline overlay)
         // immediately after the splash disappears, never a blank screen.
-        if (this.win && !this.win.isDestroyed() && !this.initialMinimization.domReady) {
+        // v4.0.10 (fix upgrade from < 3.0): ALWAYS show on the first splash
+        // close. A startMinimized=true persisted by a v2.x settings.json used
+        // to keep the window hidden here → app running but invisible, user
+        // stuck on the splash / transparent screen. (settings.mjs now also
+        // forces startMinimized=false at startup; this is defense in depth.)
+        if (this.win && !this.win.isDestroyed()) {
             logger.info('closeSplashWindow: showing main window');
+            this.initialMinimization.domReady = false;
             this.handleDisplayChange(); // v3.3.82: fenêtre plein écran dès le départ en portrait
             this.win.show();
             // v3.3.31: grab the X11 focus too — a visible-but-unfocused window
@@ -918,7 +924,7 @@ class MailWindowController {
             // tapped (password field stays empty).
             this.win.focus();
         } else {
-            logger.warn(`closeSplashWindow: NOT showing main window (win=${!!this.win}, destroyed=${this.win?.isDestroyed()}, minimized=${this.initialMinimization.domReady})`);
+            logger.warn(`closeSplashWindow: NOT showing main window (win=${!!this.win}, destroyed=${this.win?.isDestroyed()})`);
         }
     }
 
@@ -1465,6 +1471,19 @@ class MailWindowController {
             // -3 (ERR_ABORTED) is normal for SPA redirects — skip it
             if (errorCode === -3) return;
             logger.warn(`Load failed [${errorCode}] ${errorDescription}: ${validatedURL} (mainFrame=${isMainFrame})`);
+            // v4.0.10: a main-frame failure (network down, server unreachable,
+            // renderer error page) will never match isMailInterfaceUrl/isLoginPageUrl
+            // in did-finish-load — close the splash here so the user sees the
+            // offline overlay instead of a spinner stuck forever.
+            if (isMainFrame) this.closeSplashWindow();
+        });
+
+        // v4.0.10: if the renderer process dies (OOM on the phone, GPU crash),
+        // did-finish-load never fires — close the splash so the user is not
+        // left staring at the spinner.
+        this.win.webContents.on('render-process-gone', (_event, details) => {
+            logger.error(`Renderer process gone: ${JSON.stringify(details)} — closing splash`);
+            this.closeSplashWindow();
         });
 
         // Insert styles and observer on DOM ready.

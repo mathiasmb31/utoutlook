@@ -269,6 +269,33 @@ utoutlook_kill_stale_wrappers() {
 }
 
 # ============================================================
+# Freshness check for lifecycle flag files.
+# Usage: utoutlook_flag_fresh <flagfile>
+# Returns 0 only if the flag EXISTS and was written AFTER the current
+# wrapper started (marker file UTOUTLOOK_WRAPPER_MARKER, created by
+# command.sh at init). Uses the bash builtin [ -nt ] (stat syscall) —
+# no external binary, safe under AppArmor confinement.
+#
+# Why (v4.0.10, fix upgrade from < 3.0): v2.x wrote `exitclient` routinely
+# (its heartbeat wrote it whenever no window was visible for >10s, and
+# hideOnClose=true was the v2 default → a swipe-close left the flag on
+# disk). A stale flag made the new wrapper `exit 0` or relaunch the app
+# through a close flag, killing the fresh instance right after launch
+# → user stuck on the splash screen. Same guard as the close-flag mtime
+# check on the Electron side (v3.3.5).
+# ============================================================
+utoutlook_flag_fresh() {
+	local f="$1"
+	[ -f "$f" ] || return 1
+	if [ -n "${UTOUTLOOK_WRAPPER_MARKER}" ] && [ -f "${UTOUTLOOK_WRAPPER_MARKER}" ]; then
+		[ "$f" -nt "${UTOUTLOOK_WRAPPER_MARKER}" ]
+	else
+		# No marker (could not be created) — keep the historical behavior
+		return 0
+	fi
+}
+
+# ============================================================
 # Remove IPC flag files (exitclient, killedmail, close)
 # ============================================================
 utoutlook_cleanup_flags() {

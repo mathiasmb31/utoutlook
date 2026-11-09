@@ -31,6 +31,13 @@ function cleanup() {
 	# clean quit. Never clear them while the client is alive: the 'close'
 	# event writes exitclient right before the process dies.
 	"${WD}"/bin/rm -f "${UTOUTLOOK_EXITCLIENT}" "${UTOUTLOOK_KILLEDCLIENT}" 2>/dev/null || true
+	# v4.0.10: refresh the freshness marker AFTER the old process is dead and
+	# the flags are removed — anything written from now on belongs to the new
+	# generation; anything older (e.g. a flag the dying pre-3.0 process wrote
+	# during its shutdown) is stale and ignored by utoutlook_flag_fresh().
+	if [ -n "${UTOUTLOOK_WRAPPER_MARKER}" ]; then
+		: > "${UTOUTLOOK_WRAPPER_MARKER}" 2>/dev/null || true
+	fi
 }
 
 function launch_prospect() {
@@ -116,8 +123,13 @@ function verify_prospect_life() {
 			# flag (window closed by swipe / SIGTERM; written synchronously
 			# before exit), this is a DELIBERATE quit: exit the wrapper
 			# instead of relaunching the app the user just closed.
-			if [ -f ${exitclient} ]; then
-				echo "exitclient flag present — app quit cleanly, wrapper exits"
+			# v4.0.10: only honor the flag if FRESH (written after this wrapper
+			# started) — v2.x left stale exitclient flags on disk and the old v2
+			# process (survives a click upgrade, AppArmor blocks cross-label
+			# pkill) can rewrite one while shutting down; a stale flag made the
+			# wrapper exit or relaunch-kill the fresh instance (splash stuck).
+			if utoutlook_flag_fresh "${exitclient}"; then
+				echo "exitclient flag present (fresh) — app quit cleanly, wrapper exits"
 				exit 0
 			fi
 			echo ${follow}
@@ -146,11 +158,15 @@ function verify_prospect_life() {
 		echo "client is alive"
 	else
 
-		if [ -f ${killedclient} ] && [! -f ${exitclient} ]; then
+		# v4.0.10: freshness guards on both flags — a stale killedmail left by a
+		# pre-3.0 version must not trigger a relaunch (which kills the fresh
+		# instance via the close flag), and a stale exitclient must not make the
+		# wrapper exit while the app is actually starting.
+		if utoutlook_flag_fresh "${killedclient}" && ! utoutlook_flag_fresh "${exitclient}"; then
 			sleep_int 1
 			launch_prospect
 		fi
-		if [ -f ${exitclient} ]; then
+		if utoutlook_flag_fresh "${exitclient}"; then
 			exit 0
 		fi
 	fi
@@ -221,6 +237,12 @@ export launchtry=1
 oldfollow="0"
 startupGrace=0
 stagnantCount=0
+# v4.0.10: freshness marker for lifecycle flags (exitclient/killedmail) —
+# created ONCE here; utoutlook_flag_fresh() only honors flags written after
+# this moment, so stale flags persisted by a pre-3.0 version (or rewritten
+# by a surviving old process during the upgrade) are ignored.
+export UTOUTLOOK_WRAPPER_MARKER="${UTOUTLOOK_CONFIG_DIR}/.wrapper-start"
+: > "${UTOUTLOOK_WRAPPER_MARKER}" 2>/dev/null || true
 "${WD}"/bin/rm -f ${exitclient}
 "${WD}"/bin/rm -f ${killedclient}
 "${WD}"/bin/rm -f /home/phablet/.config/utoutlook.mathias/close
