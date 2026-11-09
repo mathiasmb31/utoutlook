@@ -21,6 +21,9 @@ function cleanup() {
 	# first launch ("app exits immediately on first start, then relaunches").
 	mkdir -p "${UTOUTLOOK_DATA_DIR}" 2>/dev/null || true
 	echo $$ > "${UTOUTLOOK_DATA_DIR}/wrapper.pid" 2>/dev/null || true
+	# v4.0.11: our client is being killed — reset PID so the exitclient guard
+	# does not mistake a flag written by the dying process for a clean quit.
+	CLIENT_PID=0
 	utoutlook_kill_app
 	utoutlook_kill_stale_wrappers
 	utoutlook_cleanup_locks
@@ -62,6 +65,10 @@ function launch_prospect() {
 	# v3.3.45: native Wayland client (Lomiri session) — Maliit OSK goes through
 	# the Wayland text-input protocol, password fields included (as in 3.2.x).
 	"${WD}"/bin/App/prospect-mail "$dpioptions" "$sandboxoptions" "$gpuoptions" &
+	# v4.0.11: capture client PID — kill -0 (builtin, AppArmor-safe) tells us
+	# whether OUR client is alive; used to ignore exitclient flags written by
+	# a dying older process during upgrade.
+	CLIENT_PID=$!
 	i+=1
 }
 
@@ -128,7 +135,11 @@ function verify_prospect_life() {
 			# process (survives a click upgrade, AppArmor blocks cross-label
 			# pkill) can rewrite one while shutting down; a stale flag made the
 			# wrapper exit or relaunch-kill the fresh instance (splash stuck).
-			if utoutlook_flag_fresh "${exitclient}"; then
+			# v4.0.11: additionally require that NO prospect-mail process is
+			# running — a dying old process can write exitclient AFTER cleanup
+			# refreshed the marker, making it look fresh; if a process is alive,
+			# the flag cannot be a clean quit of THIS generation.
+			if utoutlook_flag_fresh "${exitclient}" && { [ "${CLIENT_PID}" -eq 0 ] || ! kill -0 "${CLIENT_PID}" 2>/dev/null; }; then
 				echo "exitclient flag present (fresh) — app quit cleanly, wrapper exits"
 				exit 0
 			fi
@@ -166,7 +177,9 @@ function verify_prospect_life() {
 			sleep_int 1
 			launch_prospect
 		fi
-		if utoutlook_flag_fresh "${exitclient}"; then
+		# v4.0.11: same guard — only exit on a fresh exitclient if OUR client
+		# process is dead (dying old process can rewrite the flag after cleanup).
+		if utoutlook_flag_fresh "${exitclient}" && { [ "${CLIENT_PID}" -eq 0 ] || ! kill -0 "${CLIENT_PID}" 2>/dev/null; }; then
 			exit 0
 		fi
 	fi
@@ -237,6 +250,8 @@ export launchtry=1
 oldfollow="0"
 startupGrace=0
 stagnantCount=0
+# v4.0.11: PID of the prospect-mail process launched by THIS wrapper (0 = none)
+CLIENT_PID=0
 # v4.0.10: freshness marker for lifecycle flags (exitclient/killedmail) —
 # created ONCE here; utoutlook_flag_fresh() only honors flags written after
 # this moment, so stale flags persisted by a pre-3.0 version (or rewritten
