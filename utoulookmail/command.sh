@@ -213,7 +213,8 @@ function close_command() {
 	# Send quit command via Unix socket (primary method)
 	utoutlook_send_socket_cmd '{"cmd":"quit"}'
 	# Fallback: write close flag file (picked up by heartbeat)
-	echo "closed" >"${UTOUTLOOK_EXITCOMMAND}"
+	# v4.0.14: embed wrapper PID so the app only honors OUR close flag
+	echo "closed:${UTOUTLOOK_WRAPPER_PID}" >"${UTOUTLOOK_EXITCOMMAND}"
 	utoutlook_notify "$(utoutlook_t 'shell.goodbye')"
 	exit 0
 }
@@ -239,6 +240,10 @@ export killedclient="${UTOUTLOOK_KILLEDCLIENT}"
 export filelifefollow="${UTOUTLOOK_FILELIFE}"
 export exitcommand="${UTOUTLOOK_EXITCOMMAND}"
 export socketpath="${UTOUTLOOK_SOCKET}"
+# v4.0.14: PID of THIS wrapper, passed to prospect-mail via env so the app can
+# tell a close flag written by ITS wrapper apart from one written by a dying
+# older wrapper (race: old wrapper writes "closed" after the new one cleaned up).
+export UTOUTLOOK_WRAPPER_PID=$$
 
 ###init
 declare -i i=0

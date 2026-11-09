@@ -197,7 +197,8 @@ utoutlook_kill_app() {
 	# le nouveau wrapper ne peut pas tuer l'ancien process/service — le flag
 	# fichier, lui, passe. Le nouveau process Electron supprime ce flag au boot
 	# et ignore ceux écrits avant son démarrage (mtime guard, v3.3.5).
-	echo "closed" > "${UTOUTLOOK_EXITCOMMAND}" 2>/dev/null || true
+	# v4.0.14: embed wrapper PID (if known) so the app only honors OUR close flag
+	echo "closed:${UTOUTLOOK_WRAPPER_PID:-unknown}" > "${UTOUTLOOK_EXITCOMMAND}" 2>/dev/null || true
 	# ~3s pour laisser l'ancien process sortir proprement
 	"${UTOUTLOOK_BIN}/sleep" 3 2>/dev/null || /bin/sleep 3 2>/dev/null || true
 
