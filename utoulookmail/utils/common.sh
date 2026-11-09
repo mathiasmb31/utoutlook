@@ -296,6 +296,22 @@ utoutlook_flag_fresh() {
 }
 
 # ============================================================
+# v4.0.13: exitclient flag written by OUR client process?
+# The flag now contains "quitclient:<pid>" — compare with CLIENT_PID.
+# A flag written by a dying OLDER process (survives a click upgrade) has
+# a different PID and must NOT make this wrapper exit.
+# Usage: utoutlook_exitclient_ours <flagfile>
+# ============================================================
+utoutlook_exitclient_ours() {
+	local f="$1"
+	[ -f "$f" ] || return 1
+	[ "${CLIENT_PID:-0}" -gt 0 ] || return 1
+	local content
+	content=$("${UTOUTLOOK_BIN}/cat" "$f" 2>/dev/null | "${UTOUTLOOK_BIN}/tr" -d '[:space:]')
+	[ "$content" = "quitclient:${CLIENT_PID}" ]
+}
+
+# ============================================================
 # Remove IPC flag files (exitclient, killedmail, close)
 # ============================================================
 utoutlook_cleanup_flags() {

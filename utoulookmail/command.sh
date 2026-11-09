@@ -135,12 +135,11 @@ function verify_prospect_life() {
 			# process (survives a click upgrade, AppArmor blocks cross-label
 			# pkill) can rewrite one while shutting down; a stale flag made the
 			# wrapper exit or relaunch-kill the fresh instance (splash stuck).
-			# v4.0.11: additionally require that NO prospect-mail process is
-			# running — a dying old process can write exitclient AFTER cleanup
-			# refreshed the marker, making it look fresh; if a process is alive,
-			# the flag cannot be a clean quit of THIS generation.
-			if utoutlook_flag_fresh "${exitclient}" && { [ "${CLIENT_PID}" -eq 0 ] || ! kill -0 "${CLIENT_PID}" 2>/dev/null; }; then
-				echo "exitclient flag present (fresh) — app quit cleanly, wrapper exits"
+			# v4.0.13: only honor exitclient if it was written by OUR client
+			# process (flag content = "quitclient:$CLIENT_PID") — a dying old
+			# process can write the flag after cleanup refreshed the marker.
+			if utoutlook_flag_fresh "${exitclient}" && utoutlook_exitclient_ours "${exitclient}"; then
+				echo "exitclient flag present (ours, fresh) — app quit cleanly, wrapper exits"
 				exit 0
 			fi
 			echo ${follow}
@@ -177,9 +176,8 @@ function verify_prospect_life() {
 			sleep_int 1
 			launch_prospect
 		fi
-		# v4.0.11: same guard — only exit on a fresh exitclient if OUR client
-		# process is dead (dying old process can rewrite the flag after cleanup).
-		if utoutlook_flag_fresh "${exitclient}" && { [ "${CLIENT_PID}" -eq 0 ] || ! kill -0 "${CLIENT_PID}" 2>/dev/null; }; then
+		# v4.0.13: same — only exit on a fresh exitclient written by OUR client.
+		if utoutlook_flag_fresh "${exitclient}" && utoutlook_exitclient_ours "${exitclient}"; then
 			exit 0
 		fi
 	fi
