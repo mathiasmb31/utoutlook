@@ -45,6 +45,24 @@
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
+  /* v4.0.10: bouton first-install (ceinture et bretelles si l'app ne démarre pas) */
+  .first-install-btn {
+    margin-top: 24px;
+    padding: 8px 20px;
+    font-size: 13px;
+    font-family: inherit;
+    color: #888899;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 20px;
+    cursor: pointer;
+    display: none;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .first-install-btn:hover, .first-install-btn:focus {
+    color: #E95420;
+    border-color: #E95420;
+  }
   @keyframes spin {
     to { transform: rotate(360deg); }
   }
@@ -55,13 +73,27 @@
   <div class="app-name" id="app-name">UToutlook Mail</div>
   <div class="app-sub" id="app-sub"></div>
   <div class="spinner"></div>
+  <button class="first-install-btn" id="first-install-btn"></button>
   <script>
     (function() {
       const params = new URLSearchParams(window.location.search);
       const loading = params.get('loading');
       const appName = params.get('appName');
+      const firstInstall = params.get('firstInstall');
       if (loading) document.getElementById('app-sub').textContent = loading;
       if (appName) document.getElementById('app-name').textContent = appName;
+      // v4.0.10: bouton first-install (wipe config si l'app ne démarre pas)
+      const btn = document.getElementById('first-install-btn');
+      if (firstInstall) {
+        btn.textContent = firstInstall;
+        btn.style.display = 'block';
+        btn.addEventListener('click', async () => {
+          if (window.splashAPI && window.splashAPI.firstInstall) {
+            btn.disabled = true;
+            await window.splashAPI.firstInstall();
+          }
+        });
+      }
     })();
   </script>
 </body>
