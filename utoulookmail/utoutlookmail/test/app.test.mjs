@@ -111,6 +111,14 @@ test('settings: hideOnClose defaults to true', {skip: !settingsAvailable && 'req
     assert.strictEqual(settings.get('hideOnClose'), true);
 });
 
+test('settings: startMinimized forced to false at load (v4.0.10, stale pre-3.0 settings.json)', {skip: !settingsAvailable && 'requires Electron runtime'}, async () => {
+    const {settings} = await import('../src/settings.mjs');
+    // v4.0.10: a settings.json persisted by v2.x could carry startMinimized=true,
+    // leaving the app invisible after the splash (upgrade bug) — the module
+    // forces it back to false at load time.
+    assert.strictEqual(settings.get('startMinimized'), false);
+});
+
 test('settings: customBrowserPath defaults to undefined', {skip: !settingsAvailable && 'requires Electron runtime'}, async () => {
     const {settings} = await import('../src/settings.mjs');
     const val = settings.get('customBrowserPath');
@@ -1619,10 +1627,12 @@ test('v3.3.28: clean quit writes exitclient synchronously so the wrapper does NO
         'cleanupAndExit must skip markCleanExit on restart (v3.3.28)');
 
     const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
-    // wrapper: on heartbeat stagnation, a clean-quit flag means exit, not relaunch
-    const stag = cmd.slice(cmd.indexOf('stagnantCount} -ge 2'), cmd.indexOf('stagnantCount} -ge 2') + 700);
-    assert.ok(stag.includes('[ -f ${exitclient} ]') && stag.includes('exit 0'),
-        'command.sh must exit (not relaunch) when exitclient exists at heartbeat stagnation (v3.3.28)');
+    // wrapper: on heartbeat stagnation, a FRESH clean-quit flag means exit, not
+    // relaunch (v4.0.10: freshness guard so a stale flag from a pre-3.0 version
+    // cannot kill the new instance — upgrade bug "stuck on splash")
+    const stag = cmd.slice(cmd.indexOf('stagnantCount} -ge 2'), cmd.indexOf('stagnantCount} -ge 2') + 900);
+    assert.ok(stag.includes('utoutlook_flag_fresh "${exitclient}"') && stag.includes('exit 0'),
+        'command.sh must exit (not relaunch) when a FRESH exitclient exists at heartbeat stagnation (v3.3.28 + v4.0.10)');
     // wrapper: stale lifecycle flags must be cleared in cleanup() AFTER the
     // old app is killed (not while the client is alive — the 'close' event
     // writes exitclient right before the process dies)
@@ -1661,6 +1671,41 @@ test('v3.3.30: démarrage rapide + wrapper périmé silencieux (pas de kill du n
     const kswPos = cu.indexOf('utoutlook_kill_stale_wrappers');
     assert.ok(pidPos !== -1 && kswPos !== -1 && pidPos < kswPos,
         'cleanup must write wrapper.pid BEFORE kill_stale_wrappers (v3.3.30)');
+});
+
+test('v4.0.10: upgrade depuis une version < 3.0 — plus de démarrage bloqué sur le splash', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    const common = fs.readFileSync(path.resolve(__dirname, '../../utils/common.sh'), 'utf-8');
+
+    // wrapper: a freshness marker is created once at init and refreshed in
+    // cleanup() after the old app is killed
+    assert.ok(cmd.includes('UTOUTLOOK_WRAPPER_MARKER') && cmd.includes(': > "${UTOUTLOOK_WRAPPER_MARKER}"'),
+        'command.sh must create the wrapper-start freshness marker at init (v4.0.10)');
+    const cu = cmd.slice(cmd.indexOf('function cleanup()'), cmd.indexOf('function launch_prospect'));
+    assert.ok(cu.includes('UTOUTLOOK_WRAPPER_MARKER'),
+        'cleanup() must refresh the freshness marker after clearing lifecycle flags (v4.0.10)');
+    // common.sh: helper using the bash builtin [ -nt ] (no external binary — AppArmor)
+    assert.ok(common.includes('utoutlook_flag_fresh()') && common.includes('-nt "${UTOUTLOOK_WRAPPER_MARKER}"'),
+        'common.sh must provide utoutlook_flag_fresh() based on [ -nt ] (v4.0.10)');
+    // wrapper: killedclient relaunch and exitclient exit are freshness-guarded
+    const alive = cmd.slice(cmd.indexOf('utoutlook_flag_fresh "${killedclient}"'), cmd.indexOf('utoutlook_flag_fresh "${killedclient}"') + 400);
+    assert.ok(alive.includes('utoutlook_flag_fresh "${exitclient}"'),
+        'killedclient/exitclient branches must be freshness-guarded (v4.0.10)');
+
+    // settings: a startMinimized=true persisted by a pre-3.0 settings.json is forced off
+    const settingsSrc = fs.readFileSync(path.resolve(__dirname, '../src/settings.mjs'), 'utf-8');
+    assert.ok(settingsSrc.includes("settings.set('startMinimized', false)"),
+        'settings.mjs must force startMinimized=false at load (v4.0.10, stale pre-3.0 value)');
+
+    // splash: first close ALWAYS shows the main window (no startMinimized veto),
+    // and closes on main-frame did-fail-load + render-process-gone
+    const ctrl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    const closeSplash = ctrl.slice(ctrl.indexOf('closeSplashWindow() {'), ctrl.indexOf('closeSplashWindow() {') + 1600);
+    assert.ok(!closeSplash.includes('!this.initialMinimization.domReady'),
+        'closeSplashWindow must always show the main window on first close (v4.0.10)');
+    assert.ok(ctrl.includes("'render-process-gone'") && ctrl.includes('isMainFrame) this.closeSplashWindow()'),
+        'splash must close on main-frame did-fail-load and render-process-gone (v4.0.10)');
 });
 
 test('v3.3.45: retour au Wayland natif (Lomiri) — plus de forçage X11, le clavier Maliit passe par text-input (champs password inclus, comme en 3.2.x)', async () => {
