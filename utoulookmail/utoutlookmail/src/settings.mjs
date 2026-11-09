@@ -148,6 +148,18 @@ for (const key of ['showWindowFrame', 'hideOnClose', 'hideOnMinimize']) {
     }
 }
 
+// v4.0.10 (fix upgrade from < 3.0): a settings.json persisted by v2.x could carry
+// startMinimized=true. MailWindowController then never shows the main window when
+// the splash closes → the app runs invisible ("stuck on the splash screen" /
+// transparent screen, OpenStore review on 4.0.9 after upgrading from 2.1.1).
+// startMinimized only makes sense for an autostart context, which does not exist
+// on Ubuntu Touch — force it off at every startup (runtime toggles still work
+// until the next restart).
+if (settings.get('startMinimized') !== false) {
+    logger.warn(`Forcing startMinimized=false (stale value from a pre-3.0 settings.json; was ${settings.get('startMinimized')})`);
+    settings.set('startMinimized', false);
+}
+
 // Validate accentColor (hex color)
 {
     const color = settings.get('accentColor');
