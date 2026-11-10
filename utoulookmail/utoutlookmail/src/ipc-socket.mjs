@@ -115,6 +115,11 @@ function handleCommand(msg, handlers, socket) {
             if (handlers.onQuit) handlers.onQuit();
             return {ok: true};
 
+        case 'show':
+            // v4.0.27: re-show the main window (launcher tap while app already running)
+            if (handlers.onShow) handlers.onShow();
+            return {ok: true};
+
         case 'zoom':
             if (handlers.onZoom) handlers.onZoom(msg.factor);
             return {ok: true};

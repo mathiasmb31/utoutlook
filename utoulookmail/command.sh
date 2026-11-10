@@ -254,6 +254,25 @@ export socketpath="${UTOUTLOOK_SOCKET}"
 # older wrapper (race: old wrapper writes "closed" after the new one cleaned up).
 export UTOUTLOOK_WRAPPER_PID=$$
 
+# v4.0.27: single-wrapper lock via flock (kernel-managed, race-free — unlike
+# the pidfile which AppArmor-limited pgrep could not enforce cross-instance).
+# Only ONE wrapper may run: if the lock is held, exit immediately. This stops
+# multiple wrappers from relaunching the app into each other (infinite splash).
+_WRAPPER_LOCK="${UTOUTLOOK_CONFIG_DIR}/wrapper.lock"
+exec 9>"${_WRAPPER_LOCK}" 2>/dev/null || true
+# v4.0.28: try to take the lock with a short timeout — if the previous wrapper
+# is dying (releasing the lock), we take over and start normally. If the lock
+# is still held after 5s, another wrapper is alive: ask it to re-show the app
+# (launcher tap while app hidden after swipe-close), then exit.
+# While waiting, show a "please wait" notification so the user knows the tap
+# was received (i18n 8 langues).
+utoutlook_notify "$(utoutlook_t 'shell.pleaseWait')"
+if ! flock -w 5 9 2>/dev/null; then
+	echo "another wrapper holds the lock — asking it to show the app (pid $$)"
+	utoutlook_send_socket_cmd '{"cmd":"show"}'
+	exit 0
+fi
+
 ###init
 declare -i i=0
 test_net
