@@ -1094,10 +1094,10 @@ test('settings: window behaves like a native UT app — no X11 frame, close quit
     // hidden window = nothing appeared ("app does not start", 1 in 2-3 launches).
     assert.ok(/showWindowFrame:\s*false/.test(content),
         'showWindowFrame default must be false on UT (v3.3.4)');
-    assert.ok(/hideOnClose:\s*false/.test(content),
-        'hideOnClose default must be false so closing quits the app (v3.3.4)');
-    assert.ok(/hideOnMinimize:\s*false/.test(content),
-        'hideOnMinimize default must be false on UT (v3.3.4)');
+    assert.ok(/hideOnClose:\s*true/.test(content),
+        'hideOnClose default must be true on UT so swipe-close only hides (v4.0.23)');
+    assert.ok(/hideOnMinimize:\s*true/.test(content),
+        'hideOnMinimize default must be true on UT (v4.0.23)');
 });
 
 test('main.mjs: single-instance lock + force-show if main window never appears (v3.3.4)', async () => {
@@ -1147,18 +1147,20 @@ test('command.sh + common.sh: orphan wrappers killed, double stagnation, sleep f
         'sleep_int must fall back to /bin/sleep if the bundled binary is missing (v3.3.5)');
 });
 
-test('settings: persisted hideOnClose=true from old versions is forced to false on UT (v3.3.6)', async () => {
+test('settings: persisted window flags forced to native UT behavior (v4.0.23)', async () => {
     const fs = await import('node:fs');
     const sPath = path.resolve(__dirname, '../src/settings.mjs');
     const content = fs.readFileSync(sPath, 'utf-8');
 
-    // Old installs have a settings.json with hideOnClose/showWindowFrame=true
-    // persisted — defaults alone don't override them, and hideOnClose=true
-    // leaves a hidden window + live process → relaunch shows nothing.
-    assert.ok(/\['showWindowFrame', 'hideOnClose', 'hideOnMinimize'\]/.test(content),
-        'settings.mjs must force showWindowFrame/hideOnClose/hideOnMinimize=false (v3.3.6)');
-    assert.ok(content.includes('settings.get(key) !== false') && content.includes('settings.set(key, false)'),
-        'settings.mjs must overwrite persisted true values with false (v3.3.6)');
+    // v4.0.23: showWindowFrame=false + startMinimized=false are still forced, but
+    // hideOnClose/hideOnMinimize now default true so a swipe-close only hides the
+    // window (process stays alive for notifications; relaunch is instant).
+    assert.ok(content.includes("settings.get('showWindowFrame') !== false"),
+        'settings.mjs must force showWindowFrame=false (v4.0.23)');
+    assert.ok(content.includes("settings.get('startMinimized') !== false"),
+        'settings.mjs must force startMinimized=false (v4.0.10/v4.0.23)');
+    assert.ok(!/for \(const key of \['showWindowFrame', 'hideOnClose', 'hideOnMinimize'\]\)/.test(content),
+        'settings.mjs must NOT force hideOnClose/hideOnMinimize=false anymore (v4.0.23)');
 });
 
 test('command.sh/common.sh: wrapper pidfile kills orphaned wrappers without pgrep (v3.3.7)', async () => {
