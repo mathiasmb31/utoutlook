@@ -655,6 +655,13 @@ const T = {
         it: 'In attesa della chiusura di UToutlook…', pt: 'A aguardar o fecho do UToutlook…',
         zh: '等待 UToutlook 关闭…', ar: 'في انتظار إغلاق UToutlook…',
     },
+    // v4.0.28: shown while the wrapper waits for the single-wrapper lock
+    'shell.pleaseWait': {
+        fr: 'Merci de patienter…', en: 'Please wait…',
+        es: 'Espera un momento…', de: 'Bitte warten…',
+        it: 'Attendere prego…', pt: 'Aguarde um momento…',
+        zh: '请稍候…', ar: 'الرجاء الانتظار…',
+    },
 };
 
 // --- Current language ---

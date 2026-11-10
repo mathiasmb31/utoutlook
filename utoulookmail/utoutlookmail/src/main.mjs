@@ -270,6 +270,12 @@ class ProspectMail {
                 logger.info("Socket: quit command received");
                 this.cleanupAndExit();
             },
+            onShow: () => {
+                // v4.0.27: launcher tap while the app is already running (hidden
+                // after swipe-close) — re-show the main window.
+                logger.info("Socket: show command received");
+                if (this.mailController) this.mailController.show();
+            },
             onZoom: (action) => {
                 if (this.mailController) {
                     this.mailController.handleZoomCommand(action);
