@@ -117,6 +117,28 @@ utoutlook_t() {
 				ar) echo "اكتمل إعادة التعيين... شغّل UToutlook Mail" ;;
 				*)  echo "Réinitialisation effectuée... lancez UToutlook Mail" ;;
 			esac ;;
+		"shell.waitingClose")
+			case "${lang}" in
+				en) echo "Waiting for UToutlook to close…" ;;
+				es) echo "Esperando a que UToutlook cierre…" ;;
+				de) echo "Warte auf Schließen von UToutlook…" ;;
+				it) echo "In attesa della chiusura di UToutlook…" ;;
+				pt) echo "A aguardar o fecho do UToutlook…" ;;
+				zh) echo "等待 UToutlook 关闭…" ;;
+				ar) echo "في انتظار إغلاق UToutlook…" ;;
+				*)  echo "En attente de fermeture d’UToutlook…" ;;
+			esac ;;
+		"shell.pleaseWait")
+			case "${lang}" in
+				en) echo "Please wait…" ;;
+				es) echo "Espera un momento…" ;;
+				de) echo "Bitte warten…" ;;
+				it) echo "Attendere prego…" ;;
+				pt) echo "Aguarde um momento…" ;;
+				zh) echo "请稍候…" ;;
+				ar) echo "الرجاء الانتظار…" ;;
+				*)  echo "Merci de patienter…" ;;
+			esac ;;
 		# --- QML screens (v3.3.65: passed to qmlscene via /tmp JS file) ---
 		"qml.noNetwork")
 			case "${lang}" in
