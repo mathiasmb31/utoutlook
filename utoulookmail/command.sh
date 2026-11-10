@@ -215,12 +215,18 @@ function close_command() {
 	if [ -n "${curpid}" ] && [ "${curpid}" != "$$" ]; then
 		exit 0
 	fi
+	# v4.0.37: mark "closing" immediately — any relaunch while we are shutting
+	# down is refused with a "please wait" message (the bug happened when the
+	# user tapped the icon before the goodbye notification was sent).
+	echo "closing" > "${UTOUTLOOK_CLOSING}" 2>/dev/null || true
 	# Send quit command via Unix socket (primary method)
 	utoutlook_send_socket_cmd '{"cmd":"quit"}'
 	# Fallback: write close flag file (picked up by heartbeat)
 	# v4.0.14: embed wrapper PID so the app only honors OUR close flag
 	echo "closed:${UTOUTLOOK_WRAPPER_PID}" >"${UTOUTLOOK_EXITCOMMAND}"
 	utoutlook_notify "$(utoutlook_t 'shell.goodbye')"
+	# v4.0.37: closing is done — remove the flag so the next launch is accepted
+	"${WD}"/bin/rm -f "${UTOUTLOOK_CLOSING}" 2>/dev/null || true
 	exit 0
 }
 
@@ -313,7 +319,7 @@ while [ ${_i} -lt 10 ]; do
 		break
 	fi
 done
-"${WD}"/bin/rm -f ${exitclient} ${killedclient} "${UTOUTLOOK_EXITCOMMAND}" 2>/dev/null || true
+"${WD}"/bin/rm -f ${exitclient} ${killedclient} "${UTOUTLOOK_EXITCOMMAND}" "${UTOUTLOOK_CLOSING}" 2>/dev/null || true
 cleanup
 "${WD}"/utils/mkdir
 "${WD}"/bin/rm -f "/home/phablet/.cache/utoutlook.mathias/quit"
@@ -331,6 +337,25 @@ if utoutlook_socket_ping; then
 		exit 0
 	fi
 	echo "previous instance died after show — starting fresh (pid $$)"
+fi
+# v4.0.37: refuse to launch while a previous instance is still closing (flag
+# set between SIGTERM and the goodbye notification, removed after). Wait up to
+# 15s for the flag to disappear; if it never does (ghost), remove it and launch.
+# No date/stat — only test -f and shell builtins (AppArmor-safe).
+if [ -f "${UTOUTLOOK_CLOSING}" ]; then
+	utoutlook_notify "$(utoutlook_t 'shell.pleaseWait')"
+	echo "app is closing — waiting for goodbye before launching (pid $$)"
+	_i=0
+	while [ ${_i} -lt 5 ] && [ -f "${UTOUTLOOK_CLOSING}" ]; do
+		sleep_int 3
+		_i=$((_i + 1))
+	done
+	if [ -f "${UTOUTLOOK_CLOSING}" ]; then
+		echo "closing flag stuck >15s (ghost) — removing and launching (pid $$)"
+		"${WD}"/bin/rm -f "${UTOUTLOOK_CLOSING}" 2>/dev/null || true
+	else
+		echo "closing finished — launching (pid $$)"
+	fi
 fi
 echo "################################################"
 export GDK_SCALE=2
