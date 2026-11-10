@@ -1155,10 +1155,8 @@ test('settings: persisted window flags forced to native UT behavior (v4.0.23)', 
     // v4.0.23: showWindowFrame=false + startMinimized=false are still forced, but
     // hideOnClose/hideOnMinimize now default true so a swipe-close only hides the
     // window (process stays alive for notifications; relaunch is instant).
-    assert.ok(content.includes("settings.get('showWindowFrame') !== false"),
-        'settings.mjs must force showWindowFrame=false (v4.0.23)');
-    assert.ok(content.includes("settings.get('startMinimized') !== false"),
-        'settings.mjs must force startMinimized=false (v4.0.10/v4.0.23)');
+    assert.ok(content.includes("'showWindowFrame', false") && content.includes("'hideOnClose', true") && content.includes("'startMinimized', false"),
+        'settings.mjs must force showWindowFrame=false, hideOnClose=true, startMinimized=false (v4.0.24)');
     assert.ok(!/for \(const key of \['showWindowFrame', 'hideOnClose', 'hideOnMinimize'\]\)/.test(content),
         'settings.mjs must NOT force hideOnClose/hideOnMinimize=false anymore (v4.0.23)');
 });
