@@ -1115,18 +1115,19 @@ test('main.mjs: single-instance lock + force-show if main window never appears (
         'heartbeat must force show() if the main window never appeared after 60s (v3.3.4)');
 });
 
-test('main.mjs: stale close flag from a previous instance cannot kill the new process (v3.3.5)', async () => {
+test('main.mjs: close flag file is NEVER honored — deleted on sight (v4.0.22)', async () => {
     const fs = await import('node:fs');
     const mPath = path.resolve(__dirname, '../src/main.mjs');
     const content = fs.readFileSync(mPath, 'utf-8');
 
-    // An orphaned old wrapper wrote "tried too more" into the close flag while
-    // the new process was starting → heartbeat read it → app.exit(0) 2s after
-    // launch (intermittent startup crash, race-dependent).
-    assert.ok(content.includes('PROCESS_START'),
-        'main.mjs must record the process start time (v3.3.5)');
-    assert.ok(content.includes('mtimeMs') && content.includes('mtime > PROCESS_START'),
-        'close flag must only be honored if written after process start (v3.3.5)');
+    // v4.0.22: the close flag caused repeated "slow splash then exit on relaunch"
+    // races — it is now simply deleted, the wrapper stops the app via socket quit.
+    assert.ok(content.includes('NO LONGER honored'),
+        'main.mjs must document that the close flag is no longer honored (v4.0.22)');
+    assert.ok(content.includes('unlinkSync(CLOSE_FLAG_FILE)'),
+        'main.mjs must delete the close flag without honoring it (v4.0.22)');
+    assert.ok(!content.includes('app.exit(0);\n            } else'),
+        'main.mjs must not exit on close flag anymore (v4.0.22)');
 });
 
 test('command.sh + common.sh: orphan wrappers killed, double stagnation, sleep fallback (v3.3.5)', async () => {
