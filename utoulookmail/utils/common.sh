@@ -178,6 +178,26 @@ utoutlook_write_qml_i18n() {
 }
 
 # ============================================================
+# Ping the Electron app via Unix socket (returns 0 if alive and answering)
+# Usage: utoutlook_socket_ping
+# ============================================================
+utoutlook_socket_ping() {
+	python3 -c "
+import socket, sys
+try:
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(2)
+    s.connect('${UTOUTLOOK_SOCKET}')
+    s.sendall(b'{\"cmd\":\"ping\"}\n')
+    data = s.recv(1024)
+    s.close()
+    sys.exit(0 if b'pong' in data else 1)
+except Exception:
+    sys.exit(1)
+" 2>/dev/null
+}
+
+# ============================================================
 # Send a JSON command to the Electron app via Unix socket
 # Usage: utoutlook_send_socket_cmd '{"cmd":"quit"}'
 # ============================================================

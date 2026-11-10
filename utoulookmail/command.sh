@@ -320,9 +320,22 @@ exec 9>"${_WRAPPER_LOCK}" 2>/dev/null || true
 if ! flock -n 9 2>/dev/null; then
 	utoutlook_notify "$(utoutlook_t 'shell.pleaseWait')"
 	if ! flock -w 5 9 2>/dev/null; then
-		echo "another wrapper holds the lock — asking it to show the app (pid $$)"
-		utoutlook_send_socket_cmd '{"cmd":"show"}'
-		exit 0
+		# Lock still held after 5s. Check if the holder is alive (socket ping).
+		# If it does not answer, it is a ghost wrapper from a previous version
+		# (AppArmor blocks pgrep, so we could not kill it) — break the lock by
+		# recreating the lock file (new inode) and re-acquiring.
+		if utoutlook_socket_ping; then
+			echo "live wrapper holds the lock — asking it to show the app (pid $$)"
+			utoutlook_send_socket_cmd '{"cmd":"show"}'
+			exit 0
+		fi
+		echo "ghost lock holder (no ping) — breaking lock (pid $$)"
+		rm -f "${_WRAPPER_LOCK}" 2>/dev/null || true
+		exec 9>"${_WRAPPER_LOCK}" 2>/dev/null || true
+		if ! flock -n 9 2>/dev/null; then
+			echo "could not re-acquire broken lock — exiting (pid $$)"
+			exit 0
+		fi
 	fi
 fi
 echo "################################################"
