@@ -260,17 +260,17 @@ export UTOUTLOOK_WRAPPER_PID=$$
 # multiple wrappers from relaunching the app into each other (infinite splash).
 _WRAPPER_LOCK="${UTOUTLOOK_CONFIG_DIR}/wrapper.lock"
 exec 9>"${_WRAPPER_LOCK}" 2>/dev/null || true
-# v4.0.28: try to take the lock with a short timeout — if the previous wrapper
-# is dying (releasing the lock), we take over and start normally. If the lock
-# is still held after 5s, another wrapper is alive: ask it to re-show the app
-# (launcher tap while app hidden after swipe-close), then exit.
-# While waiting, show a "please wait" notification so the user knows the tap
-# was received (i18n 8 langues).
-utoutlook_notify "$(utoutlook_t 'shell.pleaseWait')"
-if ! flock -w 5 9 2>/dev/null; then
-	echo "another wrapper holds the lock — asking it to show the app (pid $$)"
-	utoutlook_send_socket_cmd '{"cmd":"show"}'
-	exit 0
+# v4.0.28: single-wrapper lock. Fast path: flock -n succeeds immediately on a
+# cold start (no notification shown). Slow path: lock is held → notify "please
+# wait" and wait up to 5s for the previous wrapper to die (then we take over);
+# if still held, another wrapper is alive → ask it to re-show the app and exit.
+if ! flock -n 9 2>/dev/null; then
+	utoutlook_notify "$(utoutlook_t 'shell.pleaseWait')"
+	if ! flock -w 5 9 2>/dev/null; then
+		echo "another wrapper holds the lock — asking it to show the app (pid $$)"
+		utoutlook_send_socket_cmd '{"cmd":"show"}'
+		exit 0
+	fi
 fi
 
 ###init
