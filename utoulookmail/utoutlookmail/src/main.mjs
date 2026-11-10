@@ -151,15 +151,19 @@ const heartbeatInterval = setInterval(() => {
             // by a dying OLD wrapper (different PID) must not kill this process.
             const flagPid = content.startsWith('closed:') ? content.slice(7) : null;
             const ourWrapper = process.env.UTOUTLOOK_WRAPPER_PID || null;
-            if (mtime > PROCESS_START && flagPid && ourWrapper && flagPid === ourWrapper) {
-                logger.info('Close flag received from OUR wrapper (fresh) — exiting');
+            // v4.0.20: NEVER honor a close flag before the window has been shown
+            // at least once — a stale/racy flag written by a dying old wrapper
+            // during startup must not kill the app before it ever appears
+            // ("slow splash then exit" on relaunch after swipe-close).
+            if (mtime > PROCESS_START && windowEverVisible && flagPid && ourWrapper && flagPid === ourWrapper) {
+                logger.info('Close flag received from OUR wrapper (fresh, window shown) — exiting');
                 app.exit(0);
-            } else if (mtime > PROCESS_START && !flagPid && !ourWrapper) {
+            } else if (mtime > PROCESS_START && windowEverVisible && !flagPid && !ourWrapper) {
                 // Legacy flag without PID and no env — keep old behavior
-                logger.info('Close flag received (fresh, legacy) — exiting');
+                logger.info('Close flag received (fresh, legacy, window shown) — exiting');
                 app.exit(0);
             } else {
-                logger.info(`Close flag ignored (pid=${flagPid} our=${ourWrapper})`);
+                logger.info(`Close flag ignored (pid=${flagPid} our=${ourWrapper} shown=${windowEverVisible})`);
             }
         } catch (e) { /* ignore */ }
     }
