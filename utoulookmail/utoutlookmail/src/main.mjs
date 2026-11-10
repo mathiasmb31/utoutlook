@@ -202,6 +202,8 @@ class ProspectMail {
         // by the shell wrapper (cleanup kills the old process + orphan wrappers).
         const gotLock = app.requestSingleInstanceLock();
         logger.info(`Single-instance lock: ${gotLock ? 'acquired' : 'unavailable (continuing anyway)'}`);
+        // v4.0.18: log wrapper PID env so we can verify the close-flag guard works
+        logger.info(`UTOUTLOOK_WRAPPER_PID=${process.env.UTOUTLOOK_WRAPPER_PID || '(unset)'} pid=${process.pid}`);
         app.on("second-instance", (_event, _argv, _cwd) => {
             logger.info('second-instance received — showing main window');
             const primary = this.mailController;
