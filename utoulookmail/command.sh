@@ -283,6 +283,10 @@ export UTOUTLOOK_WRAPPER_MARKER="${UTOUTLOOK_CONFIG_DIR}/.wrapper-start"
 # looks like a previous utoutlook instance, wait for them to die, then clear
 # every lifecycle flag so this launch starts from a clean slate.
 "${WD}"/bin/pkill -9 -f "bin/App/prospect-mail" 2>/dev/null || true
+# v4.0.34: ask any surviving old app (cross-label, pkill is blocked by
+# AppArmor) to quit cleanly via the shared Unix socket — same socket path for
+# all versions, so the quit command reaches even an old-version process.
+utoutlook_send_socket_cmd '{"cmd":"quit"}'
 # v4.0.30: kill stale wrappers too (except ourselves) so they release the flock
 for _p in $("${UTOUTLOOK_BIN}/pgrep" -f "bin/command.sh" 2>/dev/null); do
 	[ "${_p}" != "$$" ] && kill -9 "${_p}" 2>/dev/null || true
