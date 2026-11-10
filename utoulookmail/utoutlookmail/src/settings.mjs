@@ -138,17 +138,16 @@ for (const key of ['showWindowFrame', 'hideOnClose', 'hideOnMinimize', 'startMin
 }
 
 // v4.0.23: force native UT window behavior — showWindowFrame=false (no X11 cross)
-// but hideOnClose/hideOnMinimize=true so a swipe-close only hides the window and
+// AND hideOnClose/hideOnMinimize=true so a swipe-close only hides the window and
 // the process stays alive for notifications; relaunch is instant via second-instance.
-// Only startMinimized is forced false (a persisted startMinimized=true from a pre-3.0
-// version made the main window never appear — v4.0.10 splash-stuck bug).
-if (settings.get('showWindowFrame') !== false) {
-    logger.warn(`Forcing showWindowFrame=false (was ${settings.get('showWindowFrame')})`);
-    settings.set('showWindowFrame', false);
-}
-if (settings.get('startMinimized') !== false) {
-    logger.warn(`Forcing startMinimized=false (was ${settings.get('startMinimized')})`);
-    settings.set('startMinimized', false);
+// A persisted hideOnClose=false from an old version made the app DIE on every swipe
+// (stale lifecycle flags → next launch slow-then-exit). startMinimized is forced
+// false (a persisted true from pre-3.0 made the main window never appear).
+for (const [key, val] of [['showWindowFrame', false], ['hideOnClose', true], ['hideOnMinimize', true], ['startMinimized', false]]) {
+    if (settings.get(key) !== val) {
+        logger.warn(`Forcing ${key}=${val} (was ${settings.get(key)})`);
+        settings.set(key, val);
+    }
 }
 
 // v4.0.10 (fix upgrade from < 3.0): a settings.json persisted by v2.x could carry
