@@ -648,6 +648,13 @@ const T = {
         it: 'Ripristino completato... avvia UToutlook Mail', pt: 'Redefinição concluída... inicie o UToutlook Mail',
         zh: '重置完成...请启动 UToutlook Mail', ar: 'اكتمل إعادة التعيين... شغّل UToutlook Mail',
     },
+    // v4.0.25: shown while the wrapper waits for a dying old process to exit
+    'shell.waitingClose': {
+        fr: 'En attente de fermeture d’UToutlook…', en: 'Waiting for UToutlook to close…',
+        es: 'Esperando a que UToutlook cierre…', de: 'Warte auf Schließen von UToutlook…',
+        it: 'In attesa della chiusura di UToutlook…', pt: 'A aguardar o fecho do UToutlook…',
+        zh: '等待 UToutlook 关闭…', ar: 'في انتظار إغلاق UToutlook…',
+    },
 };
 
 // --- Current language ---

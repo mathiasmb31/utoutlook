@@ -283,7 +283,23 @@ export UTOUTLOOK_WRAPPER_MARKER="${UTOUTLOOK_CONFIG_DIR}/.wrapper-start"
 # looks like a previous utoutlook instance, wait for them to die, then clear
 # every lifecycle flag so this launch starts from a clean slate.
 "${WD}"/bin/pkill -9 -f "bin/App/prospect-mail" 2>/dev/null || true
-sleep_int 2
+# v4.0.25: wait actively (max ~10s) for ALL old prospect-mail processes to die
+# before launching — Lomiri SIGTERMs the process on swipe-close and a dying old
+# process can rewrite lifecycle flags while the new one starts (race → "slow
+# splash then exit" on relaunch). Retry loop instead of a fixed sleep.
+_i=0
+while [ ${_i} -lt 10 ]; do
+	if "${UTOUTLOOK_BIN}/pgrep" -f "bin/App/prospect-mail" > /dev/null 2>&1; then
+		# v4.0.25: notify the user once while we wait for the old process to die
+		if [ ${_i} -eq 0 ]; then
+			utoutlook_notify "$(utoutlook_t 'shell.waitingClose')"
+		fi
+		sleep_int 1
+		_i=$((_i + 1))
+	else
+		break
+	fi
+done
 "${WD}"/bin/rm -f ${exitclient} ${killedclient} "${UTOUTLOOK_EXITCOMMAND}" 2>/dev/null || true
 cleanup
 "${WD}"/utils/mkdir
