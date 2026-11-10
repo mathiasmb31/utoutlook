@@ -254,25 +254,6 @@ export socketpath="${UTOUTLOOK_SOCKET}"
 # older wrapper (race: old wrapper writes "closed" after the new one cleaned up).
 export UTOUTLOOK_WRAPPER_PID=$$
 
-# v4.0.27: single-wrapper lock via flock (kernel-managed, race-free — unlike
-# the pidfile which AppArmor-limited pgrep could not enforce cross-instance).
-# Only ONE wrapper may run: if the lock is held, exit immediately. This stops
-# multiple wrappers from relaunching the app into each other (infinite splash).
-_WRAPPER_LOCK="${UTOUTLOOK_CONFIG_DIR}/wrapper.lock"
-exec 9>"${_WRAPPER_LOCK}" 2>/dev/null || true
-# v4.0.28: single-wrapper lock. Fast path: flock -n succeeds immediately on a
-# cold start (no notification shown). Slow path: lock is held → notify "please
-# wait" and wait up to 5s for the previous wrapper to die (then we take over);
-# if still held, another wrapper is alive → ask it to re-show the app and exit.
-if ! flock -n 9 2>/dev/null; then
-	utoutlook_notify "$(utoutlook_t 'shell.pleaseWait')"
-	if ! flock -w 5 9 2>/dev/null; then
-		echo "another wrapper holds the lock — asking it to show the app (pid $$)"
-		utoutlook_send_socket_cmd '{"cmd":"show"}'
-		exit 0
-	fi
-fi
-
 ###init
 declare -i i=0
 test_net
@@ -302,6 +283,10 @@ export UTOUTLOOK_WRAPPER_MARKER="${UTOUTLOOK_CONFIG_DIR}/.wrapper-start"
 # looks like a previous utoutlook instance, wait for them to die, then clear
 # every lifecycle flag so this launch starts from a clean slate.
 "${WD}"/bin/pkill -9 -f "bin/App/prospect-mail" 2>/dev/null || true
+# v4.0.30: kill stale wrappers too (except ourselves) so they release the flock
+for _p in $("${UTOUTLOOK_BIN}/pgrep" -f "bin/command.sh" 2>/dev/null); do
+	[ "${_p}" != "$$" ] && kill -9 "${_p}" 2>/dev/null || true
+done
 # v4.0.25: wait actively (max ~10s) for ALL old prospect-mail processes to die
 # before launching — Lomiri SIGTERMs the process on swipe-close and a dying old
 # process can rewrite lifecycle flags while the new one starts (race → "slow
@@ -324,6 +309,22 @@ cleanup
 "${WD}"/utils/mkdir
 "${WD}"/bin/rm -f "/home/phablet/.cache/utoutlook.mathias/quit"
 "${WD}"/bin/rm -f "/home/phablet/.config/utoutlook.mathias/close"
+
+# v4.0.30: single-wrapper lock via flock, taken AFTER the aggressive cleanup so
+# that stale wrappers from a previous version (holding the lock but unresponsive)
+# are killed first. Fast path: flock -n succeeds immediately (no notification).
+# Slow path: lock held → notify "please wait", wait up to 5s for the holder to
+# die (then we take over); if still held, ask the live wrapper to re-show the app.
+_WRAPPER_LOCK="${UTOUTLOOK_CONFIG_DIR}/wrapper.lock"
+exec 9>"${_WRAPPER_LOCK}" 2>/dev/null || true
+if ! flock -n 9 2>/dev/null; then
+	utoutlook_notify "$(utoutlook_t 'shell.pleaseWait')"
+	if ! flock -w 5 9 2>/dev/null; then
+		echo "another wrapper holds the lock — asking it to show the app (pid $$)"
+		utoutlook_send_socket_cmd '{"cmd":"show"}'
+		exit 0
+	fi
+fi
 echo "################################################"
 export GDK_SCALE=2
 export GTK_IM_MODULE=Maliit
