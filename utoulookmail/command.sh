@@ -310,34 +310,15 @@ cleanup
 "${WD}"/bin/rm -f "/home/phablet/.cache/utoutlook.mathias/quit"
 "${WD}"/bin/rm -f "/home/phablet/.config/utoutlook.mathias/close"
 
-# v4.0.31: single-wrapper lock via mkdir (atomic, uses the click-embedded
-# mkdir binary — flock/pgrep are blocked by AppArmor in the confined click).
-# Taken AFTER the aggressive cleanup. Fast path: mkdir succeeds immediately.
-# Slow path: lock dir exists → notify "please wait", wait up to 5s for the
-# holder to die; if it answers the socket ping it is alive → ask it to show the
-# app and exit; if it is a ghost (no ping) → remove the lock dir and take it.
-_WRAPPER_LOCKDIR="${UTOUTLOOK_CONFIG_DIR}/wrapper.lock.d"
-if ! "${WD}"/utils/mkdir "${_WRAPPER_LOCKDIR}" 2>/dev/null; then
-	utoutlook_notify "$(utoutlook_t 'shell.pleaseWait')"
-	_i=0
-	while [ ${_i} -lt 5 ]; do
-		[ -d "${_WRAPPER_LOCKDIR}" ] || break
-		sleep_int 1
-		_i=$((_i + 1))
-	done
-	if [ -d "${_WRAPPER_LOCKDIR}" ]; then
-		if utoutlook_socket_ping; then
-			echo "live wrapper holds the lock — asking it to show the app (pid $$)"
-			utoutlook_send_socket_cmd '{"cmd":"show"}'
-			exit 0
-		fi
-		echo "ghost lock holder (no ping) — breaking lock (pid $$)"
-		"${WD}"/bin/rm -rf "${_WRAPPER_LOCKDIR}" 2>/dev/null || true
-		"${WD}"/utils/mkdir "${_WRAPPER_LOCKDIR}" 2>/dev/null || { echo "cannot take lock — exiting (pid $$)"; exit 0; }
-	fi
+# v4.0.33: no single-wrapper lock — the aggressive startup reset (kill old
+# processes + wait for them to die) already prevents relaunch loops, and a
+# shared lock dir caused races (one wrapper breaking another's lock). Instead,
+# if another instance is alive and answering, just ask it to show the app.
+if utoutlook_socket_ping; then
+	echo "app already running — asking it to show (pid $$)"
+	utoutlook_send_socket_cmd '{"cmd":"show"}'
+	exit 0
 fi
-# Write our PID into the lock dir for diagnostics
-echo "$$" > "${_WRAPPER_LOCKDIR}/pid" 2>/dev/null || true
 echo "################################################"
 export GDK_SCALE=2
 export GTK_IM_MODULE=Maliit
