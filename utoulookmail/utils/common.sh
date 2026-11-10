@@ -22,6 +22,10 @@ export UTOUTLOOK_EXITCLIENT="${UTOUTLOOK_CONFIG_DIR}/exitclient"
 export UTOUTLOOK_KILLEDCLIENT="${UTOUTLOOK_CONFIG_DIR}/killedmail"
 export UTOUTLOOK_FILELIFE="${UTOUTLOOK_CONFIG_DIR}/follow"
 export UTOUTLOOK_EXITCOMMAND="${UTOUTLOOK_CONFIG_DIR}/close"
+# v4.0.37: set while the wrapper is shutting down (between SIGTERM and the
+# goodbye notification). A fresh closing flag means "app is quitting, do not
+# relaunch yet" — new launches are refused with a "please wait" message.
+export UTOUTLOOK_CLOSING="${UTOUTLOOK_CONFIG_DIR}/closing"
 export UTOUTLOOK_SOCKET="${UTOUTLOOK_CONFIG_DIR}/utoutlook.sock"
 
 # --- Binary shortcuts (embedded in click, AppArmor-confined) ---
