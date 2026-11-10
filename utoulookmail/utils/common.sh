@@ -139,6 +139,17 @@ utoutlook_t() {
 				ar) echo "الرجاء الانتظار…" ;;
 				*)  echo "Merci de patienter…" ;;
 			esac ;;
+		"shell.pleaseRelaunch")
+			case "${lang}" in
+				en) echo "Please relaunch UToutlook Mail" ;;
+				es) echo "Relanza UToutlook Mail" ;;
+				de) echo "Bitte UToutlook Mail neu starten" ;;
+				it) echo "Riavvia UToutlook Mail" ;;
+				pt) echo "Reinicia o UToutlook Mail" ;;
+				zh) echo "请重新启动 UToutlook Mail" ;;
+				ar) echo "أعد تشغيل UToutlook Mail" ;;
+				*)  echo "Merci de relancer UToutlook Mail" ;;
+			esac ;;
 		# --- QML screens (v3.3.65: passed to qmlscene via /tmp JS file) ---
 		"qml.noNetwork")
 			case "${lang}" in

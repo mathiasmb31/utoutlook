@@ -889,14 +889,16 @@ class MailWindowController {
         });
         this.splashWindow.loadFile(splashPath, {search: splashParams.toString()});
 
-        // Safety timeout: close splash after 30s even if the mail interface
+        // Safety timeout: close splash after 15s even if the mail interface
         // URL is never detected (slow connection, login wall, error page).
-        // 15s was too short for Outlook on mobile — the splash would vanish
+        // 10s was too short for Outlook on mobile — the splash would vanish
         // before the page finished loading, revealing a half-rendered page.
         this.splashTimeout = setTimeout(() => {
-            logger.warn('Splash timeout (30s) — forcing splash close');
+            logger.warn('Splash timeout (15s) — forcing splash close');
+            // v4.0.36: tell the user to relaunch if the splash got stuck
+            try { this.sendUbportsNotification(t('app.name'), t('splash.timeout')); } catch (e) { /* ignore */ }
             this.closeSplashWindow();
-        }, 30000);
+        }, 15000);
     }
 
     closeSplashWindow() {

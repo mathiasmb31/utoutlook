@@ -451,6 +451,23 @@ const T = {
         fr: 'Chargement...', en: 'Loading...', es: 'Cargando...', de: 'Laden...',
         it: 'Caricamento...', pt: 'Carregando...', zh: '加载中...', ar: 'جارٍ التحميل...',
     },
+    // v4.0.36: shown when the splash times out (30s) without the page loading
+    'splash.timeout': {
+        fr: 'Le chargement prend trop longtemps — merci de relancer UToutlook Mail',
+        en: 'Loading is taking too long — please relaunch UToutlook Mail',
+        es: 'La carga tarda demasiado — relanza UToutlook Mail',
+        de: 'Laden dauert zu lange — bitte UToutlook Mail neu starten',
+        it: 'Il caricamento richiede troppo tempo — riavvia UToutlook Mail',
+        pt: 'O carregamento está a demorar demasiado — reinicia o UToutlook Mail',
+        zh: '加载时间过长 — 请重新启动 UToutlook Mail',
+        ar: 'التحميل يستغرق وقتاً طويلاً — يرجى إعادة تشغيل UToutlook Mail',
+    },
+    'splash.relaunch': {
+        fr: 'Merci de relancer UToutlook Mail', en: 'Please relaunch UToutlook Mail',
+        es: 'Relanza UToutlook Mail', de: 'Bitte UToutlook Mail neu starten',
+        it: 'Riavvia UToutlook Mail', pt: 'Reinicia o UToutlook Mail',
+        zh: '请重新启动 UToutlook Mail', ar: 'أعد تشغيل UToutlook Mail',
+    },
 
     // ===== Offline page =====
     'offline.title': {
