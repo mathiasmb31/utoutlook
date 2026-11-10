@@ -111,6 +111,11 @@ function verify_prospect_life() {
 		# mtime guard le protège, autant ne pas le poser).
 		echo "heartbeat never started — cleaning and relaunching (try ${launchtry})"
 		echo "******" && utoutlook_notify "$(utoutlook_t 'shell.cleaning')"
+		# v4.0.36: watchdog — on retry (launchtry>1) with no heartbeat, the splash
+		# is likely stuck: tell the user to relaunch manually.
+		if [ "${launchtry}" -gt 1 ]; then
+			utoutlook_notify "$(utoutlook_t 'shell.pleaseRelaunch')"
+		fi
 		stagnantCount=0
 		startupGrace=0
 		oldfollow=""
