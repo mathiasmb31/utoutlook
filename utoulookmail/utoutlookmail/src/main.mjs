@@ -137,35 +137,14 @@ const heartbeatInterval = setInterval(() => {
     });
 
     // Check for external close flag from the shell wrapper (fallback for socket).
-    // v3.3.5: only honor flags written AFTER this process started — a stale
-    // flag left by a previous instance's orphaned wrapper must not kill the
-    // new process (that was the intermittent startup crash).
+    // v4.0.22: the close flag file is NO LONGER honored at all — it was the
+    // source of repeated "slow splash then exit on relaunch" bugs (a flag
+    // written by a dying old wrapper during a race could kill the new process).
+    // The wrapper already stops the app cleanly via the Unix socket "quit"
+    // command (utoutlook_send_socket_cmd), which is race-free. Just delete any
+    // stale flag and move on.
     if (fs.existsSync(CLOSE_FLAG_FILE)) {
-        try {
-            const mtime = fs.statSync(CLOSE_FLAG_FILE).mtimeMs;
-            const content = fs.readFileSync(CLOSE_FLAG_FILE, 'utf8').trim();
-            fs.unlinkSync(CLOSE_FLAG_FILE);
-            // v4.0.14: the close flag now embeds the wrapper PID
-            // ("closed:<pid>"). Only honor it if it matches OUR wrapper
-            // (UTOUTLOOK_WRAPPER_PID env passed by command.sh) — a flag written
-            // by a dying OLD wrapper (different PID) must not kill this process.
-            const flagPid = content.startsWith('closed:') ? content.slice(7) : null;
-            const ourWrapper = process.env.UTOUTLOOK_WRAPPER_PID || null;
-            // v4.0.20: NEVER honor a close flag before the window has been shown
-            // at least once — a stale/racy flag written by a dying old wrapper
-            // during startup must not kill the app before it ever appears
-            // ("slow splash then exit" on relaunch after swipe-close).
-            if (mtime > PROCESS_START && windowEverVisible && flagPid && ourWrapper && flagPid === ourWrapper) {
-                logger.info('Close flag received from OUR wrapper (fresh, window shown) — exiting');
-                app.exit(0);
-            } else if (mtime > PROCESS_START && windowEverVisible && !flagPid && !ourWrapper) {
-                // Legacy flag without PID and no env — keep old behavior
-                logger.info('Close flag received (fresh, legacy, window shown) — exiting');
-                app.exit(0);
-            } else {
-                logger.info(`Close flag ignored (pid=${flagPid} our=${ourWrapper} shown=${windowEverVisible})`);
-            }
-        } catch (e) { /* ignore */ }
+        try { fs.unlinkSync(CLOSE_FLAG_FILE); } catch (e) { /* ignore */ }
     }
 }, 2000);
 
