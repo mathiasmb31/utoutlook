@@ -1,5 +1,35 @@
 #!/bin/bash
 
+# v4.0.18: Lomiri sends SIGTERM to the launched process group on swipe-close.
+# If this wrapper is in that group it dies mid-flight (trap EXIT writes a fresh
+# close flag) and the next launch inherits stale-but-fresh flags. Fix: fork a
+# lightweight parent that stays in Lomiri's group (so Lomiri sees the app
+# running) and forward the swipe as a CLEAN quit to the real wrapper, which runs
+# detached via setsid and owns the app lifecycle.
+if [ -z "${UTOUTLOOK_DAEMONIZED:-}" ]; then
+	# --- parent (attached to Lomiri) ---
+	_UTOUTLOOK_CONFIG_DIR="${HOME}/.config/utoutlook.mathias"
+	mkdir -p "${_UTOUTLOOK_CONFIG_DIR}" 2>/dev/null || true
+	export UTOUTLOOK_DAEMONIZED=1
+	setsid "$0" "$@" < /dev/null > /dev/null 2>&1 &
+	_CHILD=$!
+	echo "${_CHILD}" > "${_UTOUTLOOK_CONFIG_DIR}/daemon.pid" 2>/dev/null || true
+	_on_term() {
+		# Forward the swipe as a clean quit: tell the daemon wrapper to stop.
+		# The wrapper will then kill the app gracefully (exitclient flag) and exit.
+		if [ -f "${_UTOUTLOOK_CONFIG_DIR}/utoutlook.sock" ]; then
+			printf '{"cmd":"quit"}\n' | "${WD:-$(pwd)}/bin/nc" -U "${_UTOUTLOOK_CONFIG_DIR}/utoutlook.sock" 2>/dev/null || true
+		fi
+		# Fallback: close flag with the daemon wrapper's pid
+		[ -f "${_UTOUTLOOK_CONFIG_DIR}/daemon.pid" ] && echo "closed:$("${WD:-$(pwd)}/bin/cat" "${_UTOUTLOOK_CONFIG_DIR}/daemon.pid" 2>/dev/null | "${WD:-$(pwd)}/bin/tr" -d '[:space:]')" > "${_UTOUTLOOK_CONFIG_DIR}/close" 2>/dev/null || true
+		kill -TERM "${_CHILD}" 2>/dev/null || true
+	}
+	trap _on_term TERM INT
+	wait "${_CHILD}" 2>/dev/null
+	exit 0
+fi
+
+# --- real wrapper (detached via setsid) ---
 trap close_command EXIT
 
 function sleep_int() {
