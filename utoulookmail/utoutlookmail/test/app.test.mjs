@@ -997,17 +997,17 @@ test('mail-window-controller: progress bar is skipped while splash is open (hotf
         'did-start-loading must skip setProgressBar while splash is open (hotfix #15)');
 });
 
-test('mail-window-controller: splash timeout is 30s (not 15s) (hotfix #15)', async () => {
+test('mail-window-controller: splash timeout is 15s (v4.0.36)', async () => {
     const fs = await import('node:fs');
     const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
     const content = fs.readFileSync(ctrlPath, 'utf-8');
 
     const start = content.indexOf('splashTimeout = setTimeout');
-    const end = content.indexOf('}, 30000);', start) + 10;
+    const end = content.indexOf('}, 15000);', start) + 10;
     const body = content.slice(start, end);
 
-    assert.ok(body.includes('30000'),
-        'Splash safety timeout must be 30s (not 15s) for slow mobile connections (hotfix #15)');
+    assert.ok(body.includes('15000'),
+        'Splash safety timeout is 15s (v4.0.36) — normal close is 4-8s, so 15s only fires when stuck');
 });
 
 test('command.sh: exports D-Bus environment variables for notify binary (hotfix #15)', async () => {

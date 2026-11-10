@@ -253,7 +253,15 @@ class ProspectMail {
         });
 
         process.on("SIGTERM", () => {
-            this.cleanupAndExit();
+            // v4.0.36: on Ubuntu Touch, a swipe-close sends SIGTERM to the app
+            // process. Exiting here kills the process mid-flight and the next
+            // launcher tap races a dying process (intermittent "nothing happens").
+            // Instead: hide the window and stay alive (notifications keep
+            // flowing); the next tap re-shows via the socket show command.
+            logger.info('SIGTERM received — hiding window instead of exiting (UT swipe-close)');
+            if (this.mailController && this.mailController.win && !this.mailController.win.isDestroyed()) {
+                this.mailController.win.hide();
+            }
         });
 
         app.on("window-all-closed", () => {
