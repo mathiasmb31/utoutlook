@@ -310,34 +310,34 @@ cleanup
 "${WD}"/bin/rm -f "/home/phablet/.cache/utoutlook.mathias/quit"
 "${WD}"/bin/rm -f "/home/phablet/.config/utoutlook.mathias/close"
 
-# v4.0.30: single-wrapper lock via flock, taken AFTER the aggressive cleanup so
-# that stale wrappers from a previous version (holding the lock but unresponsive)
-# are killed first. Fast path: flock -n succeeds immediately (no notification).
-# Slow path: lock held → notify "please wait", wait up to 5s for the holder to
-# die (then we take over); if still held, ask the live wrapper to re-show the app.
-_WRAPPER_LOCK="${UTOUTLOOK_CONFIG_DIR}/wrapper.lock"
-exec 9>"${_WRAPPER_LOCK}" 2>/dev/null || true
-if ! flock -n 9 2>/dev/null; then
+# v4.0.31: single-wrapper lock via mkdir (atomic, uses the click-embedded
+# mkdir binary — flock/pgrep are blocked by AppArmor in the confined click).
+# Taken AFTER the aggressive cleanup. Fast path: mkdir succeeds immediately.
+# Slow path: lock dir exists → notify "please wait", wait up to 5s for the
+# holder to die; if it answers the socket ping it is alive → ask it to show the
+# app and exit; if it is a ghost (no ping) → remove the lock dir and take it.
+_WRAPPER_LOCKDIR="${UTOUTLOOK_CONFIG_DIR}/wrapper.lock.d"
+if ! "${WD}"/utils/mkdir "${_WRAPPER_LOCKDIR}" 2>/dev/null; then
 	utoutlook_notify "$(utoutlook_t 'shell.pleaseWait')"
-	if ! flock -w 5 9 2>/dev/null; then
-		# Lock still held after 5s. Check if the holder is alive (socket ping).
-		# If it does not answer, it is a ghost wrapper from a previous version
-		# (AppArmor blocks pgrep, so we could not kill it) — break the lock by
-		# recreating the lock file (new inode) and re-acquiring.
+	_i=0
+	while [ ${_i} -lt 5 ]; do
+		[ -d "${_WRAPPER_LOCKDIR}" ] || break
+		sleep_int 1
+		_i=$((_i + 1))
+	done
+	if [ -d "${_WRAPPER_LOCKDIR}" ]; then
 		if utoutlook_socket_ping; then
 			echo "live wrapper holds the lock — asking it to show the app (pid $$)"
 			utoutlook_send_socket_cmd '{"cmd":"show"}'
 			exit 0
 		fi
 		echo "ghost lock holder (no ping) — breaking lock (pid $$)"
-		rm -f "${_WRAPPER_LOCK}" 2>/dev/null || true
-		exec 9>"${_WRAPPER_LOCK}" 2>/dev/null || true
-		if ! flock -n 9 2>/dev/null; then
-			echo "could not re-acquire broken lock — exiting (pid $$)"
-			exit 0
-		fi
+		"${WD}"/bin/rm -rf "${_WRAPPER_LOCKDIR}" 2>/dev/null || true
+		"${WD}"/utils/mkdir "${_WRAPPER_LOCKDIR}" 2>/dev/null || { echo "cannot take lock — exiting (pid $$)"; exit 0; }
 	fi
 fi
+# Write our PID into the lock dir for diagnostics
+echo "$$" > "${_WRAPPER_LOCKDIR}/pid" 2>/dev/null || true
 echo "################################################"
 export GDK_SCALE=2
 export GTK_IM_MODULE=Maliit
