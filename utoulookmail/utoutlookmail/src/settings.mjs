@@ -57,15 +57,15 @@ const defaults = {
         "outlook.office.com/mail/safelink.html",
         "safelinks.protection.outlook.com",
     ],
-    // v3.3.4: on Ubuntu Touch the window must behave like a native app:
-    // full-screen (no X11 frame with a close cross) and closing the window
-    // quits the app. With showWindowFrame+hideOnClose=true, closing via the
-    // X11 cross only HID the window while the process kept running — the
-    // next tap on the launcher icon raised a hidden window, i.e. nothing
-    // appeared ("app does not start", ~1 launch in 2-3).
+    // v4.0.23: on Ubuntu Touch the window behaves like a native app: full-screen
+    // (no X11 frame) but hideOnClose=true — a swipe-close only HIDES the window
+    // while the process keeps running (notifications keep flowing) and the next
+    // launcher tap re-shows it instantly via the second-instance handler.
+    // Forcing hideOnClose=false (v3.3.6) made the app DIE on every swipe, leaving
+    // stale lifecycle flags that broke the next launch ("slow splash then exit").
     showWindowFrame: false,
-    hideOnClose: false,
-    hideOnMinimize: false,
+    hideOnClose: true,
+    hideOnMinimize: true,
     startMinimized: false,
     customBrowserPath: undefined,
     focusMode: false,
@@ -137,15 +137,18 @@ for (const key of ['showWindowFrame', 'hideOnClose', 'hideOnMinimize', 'startMin
     }
 }
 
-// v3.3.6: force native UT window behavior even if an old settings.json persisted
-// hideOnClose/hideOnMinimize/showWindowFrame=true. With those, closing via the X11
-// cross only HID the window while the process kept running; the next launcher tap
-// raised a hidden window → nothing appeared ("app does not start", intermittent).
-for (const key of ['showWindowFrame', 'hideOnClose', 'hideOnMinimize']) {
-    if (settings.get(key) !== false) {
-        logger.warn(`Forcing ${key}=false (native UT window behavior; was ${settings.get(key)})`);
-        settings.set(key, false);
-    }
+// v4.0.23: force native UT window behavior — showWindowFrame=false (no X11 cross)
+// but hideOnClose/hideOnMinimize=true so a swipe-close only hides the window and
+// the process stays alive for notifications; relaunch is instant via second-instance.
+// Only startMinimized is forced false (a persisted startMinimized=true from a pre-3.0
+// version made the main window never appear — v4.0.10 splash-stuck bug).
+if (settings.get('showWindowFrame') !== false) {
+    logger.warn(`Forcing showWindowFrame=false (was ${settings.get('showWindowFrame')})`);
+    settings.set('showWindowFrame', false);
+}
+if (settings.get('startMinimized') !== false) {
+    logger.warn(`Forcing startMinimized=false (was ${settings.get('startMinimized')})`);
+    settings.set('startMinimized', false);
 }
 
 // v4.0.10 (fix upgrade from < 3.0): a settings.json persisted by v2.x could carry
