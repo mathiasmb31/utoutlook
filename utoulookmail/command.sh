@@ -314,14 +314,18 @@ cleanup
 "${WD}"/bin/rm -f "/home/phablet/.cache/utoutlook.mathias/quit"
 "${WD}"/bin/rm -f "/home/phablet/.config/utoutlook.mathias/close"
 
-# v4.0.33: no single-wrapper lock — the aggressive startup reset (kill old
-# processes + wait for them to die) already prevents relaunch loops, and a
-# shared lock dir caused races (one wrapper breaking another's lock). Instead,
-# if another instance is alive and answering, just ask it to show the app.
+# v4.0.35: if another instance answers the socket, ask it to show the app —
+# but re-check after a short delay: if it died in between (SIGTERM from a
+# swipe-close racing us), fall through and start normally instead of exiting
+# into a void (intermittent "nothing happens" on relaunch).
 if utoutlook_socket_ping; then
 	echo "app already running — asking it to show (pid $$)"
 	utoutlook_send_socket_cmd '{"cmd":"show"}'
-	exit 0
+	sleep_int 2
+	if utoutlook_socket_ping; then
+		exit 0
+	fi
+	echo "previous instance died after show — starting fresh (pid $$)"
 fi
 echo "################################################"
 export GDK_SCALE=2
