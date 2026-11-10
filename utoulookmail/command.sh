@@ -277,6 +277,14 @@ export UTOUTLOOK_WRAPPER_MARKER="${UTOUTLOOK_CONFIG_DIR}/.wrapper-start"
 # réécrit son premier compteur, verify_prospect_life verra un fichier absent
 # (fenêtre de grâce) au lieu d'une valeur stale (fausse stagnation).
 "${WD}"/bin/rm -f ${filelifefollow}
+# v4.0.21: aggressive startup reset — after a swipe-close, old processes can
+# survive (AppArmor blocks cross-label kill) and old wrappers can rewrite flags
+# while dying, which made the NEXT launch slow-then-exit. Kill everything that
+# looks like a previous utoutlook instance, wait for them to die, then clear
+# every lifecycle flag so this launch starts from a clean slate.
+"${WD}"/bin/pkill -9 -f "bin/App/prospect-mail" 2>/dev/null || true
+sleep_int 2
+"${WD}"/bin/rm -f ${exitclient} ${killedclient} "${UTOUTLOOK_EXITCOMMAND}" 2>/dev/null || true
 cleanup
 "${WD}"/utils/mkdir
 "${WD}"/bin/rm -f "/home/phablet/.cache/utoutlook.mathias/quit"
