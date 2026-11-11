@@ -9,9 +9,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Tests for config.mjs — path constants
 // ============================================================
 
-test('config: CONFIG_DIR is under phablet home', async () => {
+test('config: CONFIG_DIR is under the user home', async () => {
     const {CONFIG_DIR} = await import('../src/config.mjs');
-    assert.ok(CONFIG_DIR.startsWith('/home/phablet/'));
+    const home = process.env.HOME || '/home/phablet';
+    assert.ok(CONFIG_DIR.startsWith(home + '/'));
     assert.ok(CONFIG_DIR.includes('utoutlook.mathias'));
 });
 
