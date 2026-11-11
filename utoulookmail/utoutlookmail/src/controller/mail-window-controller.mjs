@@ -965,6 +965,60 @@ class MailWindowController {
                url.includes('consent');
     }
 
+    // v4.0.37: masque la fenêtre pendant le resync d'une boucle 2FA pour éviter
+    // le clignotement des rechargements ; réaffichée quand une page mail charge
+    // (voir if (isMailPage)) ou en fallback après 20 s.
+    hideDuringResync() {
+        if (this.resyncHidden) return;
+        this.resyncHidden = true;
+        try { this.win.hide(); } catch (e) {}
+        setTimeout(() => {
+            if (this.resyncHidden && this.alive) {
+                try { this.win.show(); } catch (e) {}
+                this.resyncHidden = false;
+            }
+        }, 20000);
+    }
+
+    // v4.0.37: 2FA loop via in-page (SPA) navigations. On desktop the loop
+    // after Authenticator approval is a series of pushState on
+    // login.live.com/ppsecure/post.srf — did-finish-load never fires, so the
+    // full-load detector misses it. Count these too and break the loop the
+    // same way (aggressive cookie sync + reload last mail URL).
+    trackInPageAuthLoop(url) {
+        // v4.0.37: ne compter QUE ppsecure/post.srf — /authorize apparaît
+        // plusieurs fois dans un démarrage normal (faux positif sinon).
+        let isLoopPage = false;
+        try {
+            isLoopPage = new URL(url).pathname.includes('ppsecure/post.srf');
+        } catch (e) { return; }
+        if (!isLoopPage) return;
+        const now = Date.now();
+        this.authStartLoadTimes.push(now);
+        this.authStartLoadTimes = this.authStartLoadTimes.filter(t => now - t < 30000);
+        if (this.authStartLoadTimes.length >= 4 && this.lastMailUrl && !this.mfaLoopDetected) {
+            this.mfaLoopDetected = true;
+            logger.warn(`2FA SPA loop detected: ${this.authStartLoadTimes.length} auth-start in-page navigations in 30s — aggressive cookie sync`);
+            this.hideDuringResync();
+            this.loginPageLoadTimes = [];
+            this.authStartLoadTimes = [];
+            this.syncCookiesToLiveCom().then(async () => {
+                try { await session.fromPartition(this.sessionPartition).cookies.flushStore(); } catch (e) { /* ignore */ }
+                // v4.0.37: compte perso (outlook.fr/hotmail) — la session vit sur live.com,
+                        // office.com/cloud.microsoft rebondissent sur oauthRedirect.html.
+                        const lastUrl = this.lastMailUrl || this.mainMailServiceUrl || '';
+                        // v4.0.37: live.com uniquement pour un compte PERSO (knownEmail n'est renseigné
+                        // que pour outlook/hotmail/live/msn) ; compte pro = on garde lastUrl.
+                        const isPersonal = !!this.knownEmail;
+                        const target = (isPersonal && (lastUrl.includes('office.com') || lastUrl.includes('cloud.microsoft')))
+                            ? 'https://outlook.live.com/mail/' : lastUrl;
+                logger.info(`2FA SPA loop: reloading ${target} after aggressive cookie sync`);
+                this.win.loadURL(target);
+                this.mfaLoopDetected = false;
+            }).catch(() => {});
+        }
+    }
+
     createWindow() {
         this.win = new BrowserWindow({
             x: 100, y: 100,
@@ -1119,6 +1173,11 @@ class MailWindowController {
                 p.url.includes('outlook.cloud.microsoft/mail')
             );
             if (isMailPage) {
+                // v4.0.37: réaffiche la fenêtre masquée pendant un resync de boucle 2FA
+                if (this.resyncHidden) {
+                    this.resyncHidden = false;
+                    try { this.win.show(); } catch (e) {}
+                }
                 // v3.3.67: mémorise la dernière URL mail propre (sans ?code=#) —
                 // cible de reprise après une boucle 2FA (live.com pour les comptes perso)
                 this.lastMailUrl = url.split('?')[0].split('#')[0];
@@ -1167,7 +1226,10 @@ class MailWindowController {
             let isAuthStartPage = false;
             try {
                 const path = new URL(url).pathname;
-                isAuthStartPage = path.includes('/authorize') || path.includes('select_account');
+                // v4.0.37: en desktop la boucle 2FA passe par ppsecure/post.srf
+                // (rejeu du POST Microsoft) — sans ça le détecteur ne compte
+                // jamais ces rechargements et la boucle est infinie.
+                isAuthStartPage = path.includes('/authorize') || path.includes('select_account') || path.includes('ppsecure/post.srf');
             } catch (e) { /* URL invalide — ignore */ }
             if (isMfaPage) {
                 this.loginPageLoadTimes.push({url, time: now});
@@ -1189,6 +1251,7 @@ class MailWindowController {
                 if (recentMfaLoads >= 5 && this.lastMailUrl && !this.mfaLoopDetected) {
                     this.mfaLoopDetected = true;
                     logger.warn(`2FA loop detected: ${recentMfaLoads} auth-start page loads in 30s — aggressive cookie sync`);
+                    this.hideDuringResync();
                     this.loginPageLoadTimes = [];
                     this.authStartLoadTimes = [];
                     this.syncCookiesToLiveCom().then(async () => {
@@ -1200,7 +1263,14 @@ class MailWindowController {
                         // (outlook.live.com pour les comptes perso), PAS office.com
                         // en dur — office.com n'a pas la session perso et rebondit
                         // sur /authorize → nouvelle requête d'auth Authenticator.
-                        const target = this.lastMailUrl || this.mainMailServiceUrl;
+                        // v4.0.37: compte perso (outlook.fr/hotmail) — la session vit sur live.com,
+                        // office.com/cloud.microsoft rebondissent sur oauthRedirect.html.
+                        const lastUrl = this.lastMailUrl || this.mainMailServiceUrl || '';
+                        // v4.0.37: live.com uniquement pour un compte PERSO (knownEmail n'est renseigné
+                        // que pour outlook/hotmail/live/msn) ; compte pro = on garde lastUrl.
+                        const isPersonal = !!this.knownEmail;
+                        const target = (isPersonal && (lastUrl.includes('office.com') || lastUrl.includes('cloud.microsoft')))
+                            ? 'https://outlook.live.com/mail/' : lastUrl;
                         logger.info(`2FA loop: reloading ${target} after aggressive cookie sync`);
                         this.win.loadURL(target);
                         this.mfaLoopDetected = false;
@@ -1523,6 +1593,7 @@ class MailWindowController {
         this.win.webContents.on('did-navigate-in-page', (_event, url) => {
             if (!this.alive) return; // v3.3.22
             logger.info(`SPA navigation: ${url}`);
+            this.trackInPageAuthLoop(url); // v4.0.37: la boucle 2FA desktop passe par des pushState sur ppsecure/post.srf
             this.injectStyles().catch(() => {});
             this.addUnreadNumberObserver().catch(() => {});
             this.injectGestures();

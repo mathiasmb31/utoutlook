@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 import {fileURLToPath} from 'node:url';
 
 // ============================================================
@@ -7,7 +8,10 @@ import {fileURLToPath} from 'node:url';
 // All hardcoded paths in the app should reference these.
 // ============================================================
 
-const PHABLET_HOME = '/home/phablet';
+// v4.0.37: use the real home directory — /home/phablet on Ubuntu Touch,
+// $HOME/<user> on a desktop (clickable desktop / PC). Fallback keeps the
+// old behavior if HOME is unset.
+const PHABLET_HOME = process.env.HOME || os.homedir() || '/home/phablet';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // --- Ubuntu Touch click app directories ---

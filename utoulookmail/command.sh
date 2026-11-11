@@ -283,7 +283,7 @@ export UTOUTLOOK_WRAPPER_MARKER="${UTOUTLOOK_CONFIG_DIR}/.wrapper-start"
 : > "${UTOUTLOOK_WRAPPER_MARKER}" 2>/dev/null || true
 "${WD}"/bin/rm -f ${exitclient}
 "${WD}"/bin/rm -f ${killedclient}
-"${WD}"/bin/rm -f /home/phablet/.config/utoutlook.mathias/close
+"${WD}"/bin/rm -f ${HOME}/.config/utoutlook.mathias/close
 # Supprime le heartbeat de la session précédente : tant qu'Electron n'a pas
 # réécrit son premier compteur, verify_prospect_life verra un fichier absent
 # (fenêtre de grâce) au lieu d'une valeur stale (fausse stagnation).
@@ -322,8 +322,8 @@ done
 "${WD}"/bin/rm -f ${exitclient} ${killedclient} "${UTOUTLOOK_EXITCOMMAND}" "${UTOUTLOOK_CLOSING}" 2>/dev/null || true
 cleanup
 "${WD}"/utils/mkdir
-"${WD}"/bin/rm -f "/home/phablet/.cache/utoutlook.mathias/quit"
-"${WD}"/bin/rm -f "/home/phablet/.config/utoutlook.mathias/close"
+"${WD}"/bin/rm -f "${HOME}/.cache/utoutlook.mathias/quit"
+"${WD}"/bin/rm -f "${HOME}/.config/utoutlook.mathias/close"
 
 # v4.0.35: if another instance answers the socket, ask it to show the app —
 # but re-check after a short delay: if it died in between (SIGTERM from a
@@ -360,7 +360,7 @@ fi
 echo "################################################"
 export GDK_SCALE=2
 export GTK_IM_MODULE=Maliit
-export GTK_IM_MODULE_FILE=/home/phablet/.config/utoutlook.mathias/immodules.cache
+export GTK_IM_MODULE_FILE=${HOME}/.config/utoutlook.mathias/immodules.cache
 # v3.3.27: XMODIFIERS is what makes the Maliit virtual keyboard deliver keys to
 # X11/Chromium apps — without it the on-screen keyboard types nothing (GTK_IM_MODULE
 # alone only covers GTK apps).
@@ -370,14 +370,14 @@ export QT_IM_MODULE=maliit
 # Chromium then talks to Maliit through the Wayland text-input protocol.
 # XMODIFIERS/QT_IM_MODULE are kept for the X11/XWayland fallback path.
 export DCONF_PROFILE=/nonexistent
-export XDG_CONFIG_HOME=/home/phablet/.config/utoutlook.mathias/
-export XDG_DATA_HOME=/home/phablet/.config/utoutlook.mathias/
-export XDG_DESKTOP_DIR=/home/phablet/.config/utoutlook.mathias/
+export XDG_CONFIG_HOME=${HOME}/.config/utoutlook.mathias/
+export XDG_DATA_HOME=${HOME}/.config/utoutlook.mathias/
+export XDG_DESKTOP_DIR=${HOME}/.config/utoutlook.mathias/
 export LD_LIBRARY_PATH=$PWD/lib/aarch64-linux-gnu/
 
-echo "\"$PWD/lib/aarch64-linux-gnu/gtk-3.0/3.0.0/immodules/im-maliit.so\"" >/home/phablet/.config/utoutlook.mathias/immodules.cache
-echo "\"Maliit\" \"Maliit Input Method\" \"maliit\" \"\" \"en:ja:ko:zh:*\"" >>/home/phablet/.config/utoutlook.mathias/immodules.cache
-echo 'XDG_DESKTOP_DIR="/home/phablet/.cache/utoutlook.mathias/downloads/"' >/home/phablet/.config/utoutlook.mathias/user-dirs.dirs
+echo "\"$PWD/lib/aarch64-linux-gnu/gtk-3.0/3.0.0/immodules/im-maliit.so\"" >${HOME}/.config/utoutlook.mathias/immodules.cache
+echo "\"Maliit\" \"Maliit Input Method\" \"maliit\" \"\" \"en:ja:ko:zh:*\"" >>${HOME}/.config/utoutlook.mathias/immodules.cache
+echo "XDG_DESKTOP_DIR=\"${HOME}/.cache/utoutlook.mathias/downloads/\"" >${HOME}/.config/utoutlook.mathias/user-dirs.dirs
 
 echo "Going to launch"
 echo "GRID UNIT PX""$GRID_UNIT_PX"
@@ -391,7 +391,7 @@ if [ -f "${filelifefollow}" ]; then
 fi
 
 echo "------------------------------------------------------------------"
-echo $$ >>/home/phablet/.config/utoutlook.mathias/data/__prospect.pid
+echo $$ >>${HOME}/.config/utoutlook.mathias/data/__prospect.pid
 
 export PATH=$WD/bin:$PATH
 echo "$PATH"

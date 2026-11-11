@@ -6,8 +6,8 @@
 # ============================================================
 
 # --- Path constants ---
-export UTOUTLOOK_CONFIG_DIR="/home/phablet/.config/utoutlook.mathias"
-export UTOUTLOOK_CACHE_DIR="/home/phablet/.cache/utoutlook.mathias"
+export UTOUTLOOK_CONFIG_DIR="${HOME}/.config/utoutlook.mathias"
+export UTOUTLOOK_CACHE_DIR="${HOME}/.cache/utoutlook.mathias"
 export UTOUTLOOK_DATA_DIR="${UTOUTLOOK_CONFIG_DIR}/data"
 export UTOUTLOOK_PID_FILE="${UTOUTLOOK_DATA_DIR}/__prospect.pid"
 export UTOUTLOOK_LANG_FILE="${UTOUTLOOK_CONFIG_DIR}/lang"
