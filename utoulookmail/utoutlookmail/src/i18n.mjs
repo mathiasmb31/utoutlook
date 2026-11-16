@@ -54,6 +54,11 @@ const T = {
         fr: 'Chargement...', en: 'Loading...', es: 'Cargando...', de: 'Laden...',
         it: 'Caricamento...', pt: 'Carregando...', zh: '加载中...', ar: 'جارٍ التحميل...',
     },
+    // v4.0.40: voile blanc « veuillez patienter » pendant le resync d'une boucle 2FA
+    'resync.pleaseWait': {
+        fr: 'Veuillez patienter...', en: 'Please wait...', es: 'Espera...', de: 'Bitte warten...',
+        it: 'Attendi...', pt: 'Aguarde...', zh: '请稍候...', ar: 'الرجاء الانتظار...',
+    },
     'common.cancel': {
         fr: 'Annuler', en: 'Cancel', es: 'Cancelar', de: 'Abbrechen',
         it: 'Annulla', pt: 'Cancelar', zh: '取消', ar: 'إلغاء',

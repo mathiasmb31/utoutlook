@@ -966,22 +966,51 @@ class MailWindowController {
                url.includes('consent');
     }
 
-    // v4.0.37: masquait la fenêtre pendant le resync d'une boucle 2FA pour éviter
-    // le clignotement ; réaffichée quand une page mail charge ou après 20 s.
-    // v4.0.39: NE PLUS MASQUER — sur Ubuntu Touch (FP5, GPU Adreno/Zink fragile)
+    // v4.0.37: masquait la fenêtre pendant le resync d'une boucle 2FA.
+    // v4.0.39: ne plus masquer — sur Ubuntu Touch (FP5, GPU Adreno/Zink fragile)
     // le win.hide() provoquait la mort du process GPU (FATAL "GPU process isn't
     // usable") donc l'app « sortait » aussitôt après la validation du compte.
-    // Sur desktop (clickable amd64) le hide ne tuait pas le GPU, d'où la
-    // différence de comportement. On garde juste un flag pour le log.
+    // v4.0.40: au lieu de masquer, affiche un VOILE BLANC opaque avec un message
+    // i18n « Veuillez patienter... » en gros — bloque les taps (évite le double
+    // appui sur le bouton pendant le resync) sans toucher au GPU.
+    // Retiré quand une page mail charge (voir isMailPage) ou après 20 s (fallback).
     hideDuringResync() {
         if (this.resyncHidden) return;
         this.resyncHidden = true;
-        logger.info('resync 2FA en cours — fenêtre laissée visible (v4.0.39, pas de hide sur UT)');
+        logger.info('resync 2FA en cours — voile blanc « veuillez patienter » (v4.0.40)');
+        try {
+            const msg = JSON.stringify(t('resync.pleaseWait'));
+            this.win.webContents.executeJavaScript(`
+                (function () {
+                    if (document.getElementById('utoutlook-resync-overlay')) return;
+                    var d = document.createElement('div');
+                    d.id = 'utoutlook-resync-overlay';
+                    d.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#ffffff;' +
+                        'display:flex;align-items:center;justify-content:center;text-align:center;' +
+                        'font-family:sans-serif;font-size:8vw;font-weight:bold;color:#E95420;' +
+                        'padding:2em;cursor:wait;user-select:none;';
+                    d.textContent = ${msg};
+                    document.body.appendChild(d);
+                })();
+            `).catch(() => {});
+        } catch (e) { /* ignore */ }
         setTimeout(() => {
             if (this.resyncHidden && this.alive) {
                 this.resyncHidden = false;
+                this.removeResyncOverlay();
             }
         }, 20000);
+    }
+
+    removeResyncOverlay() {
+        try {
+            this.win.webContents.executeJavaScript(`
+                (function () {
+                    var d = document.getElementById('utoutlook-resync-overlay');
+                    if (d) d.remove();
+                })();
+            `).catch(() => {});
+        } catch (e) { /* ignore */ }
     }
 
     // v4.0.37: 2FA loop via in-page (SPA) navigations. On desktop the loop
@@ -1195,10 +1224,10 @@ class MailWindowController {
                 p.url.includes('outlook.cloud.microsoft/mail')
             );
             if (isMailPage) {
-                // v4.0.37: réaffiche la fenêtre masquée pendant un resync de boucle 2FA
+                // v4.0.40: retire le voile « veuillez patienter » pendant un resync de boucle 2FA
                 if (this.resyncHidden) {
                     this.resyncHidden = false;
-                    try { this.win.show(); } catch (e) {}
+                    this.removeResyncOverlay();
                 }
                 // v3.3.67: mémorise la dernière URL mail propre (sans ?code=#) —
                 // cible de reprise après une boucle 2FA (live.com pour les comptes perso)
