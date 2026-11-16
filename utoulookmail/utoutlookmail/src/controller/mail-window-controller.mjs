@@ -52,6 +52,7 @@ class MailWindowController {
         this.mfaLoopDetected = false; // v3.3.59: 2FA loop already handled
         this.lastMailUrl = null; // v3.3.67: dernière URL de boîte mail chargée (sans ?code=) — cible de reprise après boucle 2FA
         this.authStartLoadTimes = []; // v3.3.67: chargements des pages /authorize|select_account (détection boucle KMSI)
+        this.inPageAuthEvents = []; // v4.0.38: navigations in-page récentes {t, kind: 'post'|'authstart'} pour la détection de boucle 2FA SPA
         this.pageRangeErrors = []; // v3.3.74: timestamps des RangeError « Maximum call stack » de la page
         this.sessionClearedForLoop = false; // v3.3.74: clear session déjà tenté une fois
         this.currentZoomIndex = 2; // start at 1.0
@@ -986,22 +987,44 @@ class MailWindowController {
     // full-load detector misses it. Count these too and break the loop the
     // same way (aggressive cookie sync + reload last mail URL).
     trackInPageAuthLoop(url) {
-        // v4.0.37: ne compter QUE ppsecure/post.srf — /authorize apparaît
-        // plusieurs fois dans un démarrage normal (faux positif sinon).
-        let isLoopPage = false;
+        // v4.0.38: ppsecure/post.srf est AUSSI la page normale juste APRÈS une
+        // validation de compte réussie (le SPA rejoue le POST de login par
+        // pushState) — compter ces navigations seules provoquait un faux
+        // positif « boucle 2FA » aussitôt le compte validé, qui masquait la
+        // fenêtre (hideDuringResync) et tuait l'app (crash GPU sur le device).
+        // Une vraie boucle 2FA REBONDIT vers une page de démarrage d'auth
+        // (/authorize, select_account) APRÈS un post.srf : n'activer la reprise
+        // que quand ce rebond est observé dans la fenêtre de 30 s.
+        let kind = null;
         try {
-            isLoopPage = new URL(url).pathname.includes('ppsecure/post.srf');
+            const path = new URL(url).pathname;
+            if (path.includes('ppsecure/post.srf')) kind = 'post';
+            else if (path.includes('/authorize') || path.includes('select_account')) kind = 'authstart';
         } catch (e) { return; }
-        if (!isLoopPage) return;
+        const isMailPage = url.includes('outlook.live.com/mail') ||
+                           url.includes('outlook.office.com/mail') ||
+                           url.includes('outlook.office365.com/mail') ||
+                           url.includes('outlook.cloud.microsoft/mail') ||
+                           url.includes('outlook.com/mail');
+        if (isMailPage) {
+            // La boîte mail a été atteinte en in-page : login réussi, reset.
+            this.inPageAuthEvents = [];
+            return;
+        }
+        if (!kind) return;
         const now = Date.now();
-        this.authStartLoadTimes.push(now);
-        this.authStartLoadTimes = this.authStartLoadTimes.filter(t => now - t < 30000);
-        if (this.authStartLoadTimes.length >= 4 && this.lastMailUrl && !this.mfaLoopDetected) {
+        this.inPageAuthEvents.push({t: now, kind});
+        this.inPageAuthEvents = this.inPageAuthEvents.filter(e => now - e.t < 30000);
+        const firstPost = this.inPageAuthEvents.find(e => e.kind === 'post');
+        const bouncedBackToAuth = firstPost && this.inPageAuthEvents.some(e => e.kind === 'authstart' && e.t >= firstPost.t);
+        const postCount = this.inPageAuthEvents.filter(e => e.kind === 'post').length;
+        if (postCount >= 4 && bouncedBackToAuth && this.lastMailUrl && !this.mfaLoopDetected) {
             this.mfaLoopDetected = true;
-            logger.warn(`2FA SPA loop detected: ${this.authStartLoadTimes.length} auth-start in-page navigations in 30s — aggressive cookie sync`);
+            logger.warn(`2FA SPA loop detected: ${postCount} post.srf in-page navigations in 30s with bounce-back to auth page — aggressive cookie sync`);
             this.hideDuringResync();
             this.loginPageLoadTimes = [];
             this.authStartLoadTimes = [];
+            this.inPageAuthEvents = [];
             this.syncCookiesToLiveCom().then(async () => {
                 try { await session.fromPartition(this.sessionPartition).cookies.flushStore(); } catch (e) { /* ignore */ }
                 // v4.0.37: compte perso (outlook.fr/hotmail) — la session vit sur live.com,
