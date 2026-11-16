@@ -966,16 +966,19 @@ class MailWindowController {
                url.includes('consent');
     }
 
-    // v4.0.37: masque la fenêtre pendant le resync d'une boucle 2FA pour éviter
-    // le clignotement des rechargements ; réaffichée quand une page mail charge
-    // (voir if (isMailPage)) ou en fallback après 20 s.
+    // v4.0.37: masquait la fenêtre pendant le resync d'une boucle 2FA pour éviter
+    // le clignotement ; réaffichée quand une page mail charge ou après 20 s.
+    // v4.0.39: NE PLUS MASQUER — sur Ubuntu Touch (FP5, GPU Adreno/Zink fragile)
+    // le win.hide() provoquait la mort du process GPU (FATAL "GPU process isn't
+    // usable") donc l'app « sortait » aussitôt après la validation du compte.
+    // Sur desktop (clickable amd64) le hide ne tuait pas le GPU, d'où la
+    // différence de comportement. On garde juste un flag pour le log.
     hideDuringResync() {
         if (this.resyncHidden) return;
         this.resyncHidden = true;
-        try { this.win.hide(); } catch (e) {}
+        logger.info('resync 2FA en cours — fenêtre laissée visible (v4.0.39, pas de hide sur UT)');
         setTimeout(() => {
             if (this.resyncHidden && this.alive) {
-                try { this.win.show(); } catch (e) {}
                 this.resyncHidden = false;
             }
         }, 20000);
@@ -989,17 +992,16 @@ class MailWindowController {
     trackInPageAuthLoop(url) {
         // v4.0.38: ppsecure/post.srf est AUSSI la page normale juste APRÈS une
         // validation de compte réussie (le SPA rejoue le POST de login par
-        // pushState) — compter ces navigations seules provoquait un faux
-        // positif « boucle 2FA » aussitôt le compte validé, qui masquait la
-        // fenêtre (hideDuringResync) et tuait l'app (crash GPU sur le device).
-        // Une vraie boucle 2FA REBONDIT vers une page de démarrage d'auth
-        // (/authorize, select_account) APRÈS un post.srf : n'activer la reprise
-        // que quand ce rebond est observé dans la fenêtre de 30 s.
-        let kind = null;
+        // pushState). v4.0.39: on compte à nouveau post.srf seul (comme v4.0.37)
+        // car sur le téléphone la VRAIE boucle 2FA est une répétition pure de
+        // post.srf sans jamais atteindre la page mail — exiger un rebond vers
+        // /authorize désactivait la détection et la boucle revenait. Le faux
+        // positif d'avant venait du win.hide() (crash GPU sur UT), pas du
+        // comptage : hideDuringResync ne masque plus la fenêtre (v4.0.39).
+        // Reset propre si la page mail est atteinte en in-page (login réussi).
+        let isLoopPage = false;
         try {
-            const path = new URL(url).pathname;
-            if (path.includes('ppsecure/post.srf')) kind = 'post';
-            else if (path.includes('/authorize') || path.includes('select_account')) kind = 'authstart';
+            isLoopPage = new URL(url).pathname.includes('ppsecure/post.srf');
         } catch (e) { return; }
         const isMailPage = url.includes('outlook.live.com/mail') ||
                            url.includes('outlook.office.com/mail') ||
@@ -1007,18 +1009,15 @@ class MailWindowController {
                            url.includes('outlook.cloud.microsoft/mail') ||
                            url.includes('outlook.com/mail');
         if (isMailPage) {
-            // La boîte mail a été atteinte en in-page : login réussi, reset.
             this.inPageAuthEvents = [];
             return;
         }
-        if (!kind) return;
+        if (!isLoopPage) return;
         const now = Date.now();
-        this.inPageAuthEvents.push({t: now, kind});
+        this.inPageAuthEvents.push({t: now, kind: 'post'});
         this.inPageAuthEvents = this.inPageAuthEvents.filter(e => now - e.t < 30000);
-        const firstPost = this.inPageAuthEvents.find(e => e.kind === 'post');
-        const bouncedBackToAuth = firstPost && this.inPageAuthEvents.some(e => e.kind === 'authstart' && e.t >= firstPost.t);
-        const postCount = this.inPageAuthEvents.filter(e => e.kind === 'post').length;
-        if (postCount >= 4 && bouncedBackToAuth && this.lastMailUrl && !this.mfaLoopDetected) {
+        const postCount = this.inPageAuthEvents.length;
+        if (postCount >= 4 && this.lastMailUrl && !this.mfaLoopDetected) {
             this.mfaLoopDetected = true;
             logger.warn(`2FA SPA loop detected: ${postCount} post.srf in-page navigations in 30s with bounce-back to auth page — aggressive cookie sync`);
             this.hideDuringResync();
