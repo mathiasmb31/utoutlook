@@ -2256,10 +2256,16 @@ class MailWindowController {
                 document.dispatchEvent(new Event('resize'));
                 const list = document.querySelector('[class*="listView"], [class*="messageList"], [role="main"]');
                 if (list) { list.scrollTop = 0; list.scrollTop = 1; list.scrollTop = 0; forceReflow(); }
-                // v4.0.68: après un pivot, Outlook bascule en layout « étroit » et
-                // montre le menu de navigation à la place de la liste des messages.
-                // Si un bouton retour/fermer le menu est visible, cliquer dessus.
-                const back = document.querySelector('[aria-label*="back" i], [aria-label*="retour" i], [data-automation-id*="back" i], [class*="backArrow"], [class*="closeNav"]');
+                // v4.0.68/4.0.72: après un pivot, Outlook bascule en layout « étroit » et
+                // ouvre le volet de navigation à la place de la liste. En paysage
+                // (largeur > hauteur) on clique sur « Masquer le volet de navigation ».
+                const navPane = document.querySelector('[data-app-section="NavigationPane"]');
+                if (navPane && navPane.offsetParent && window.innerWidth > window.innerHeight) {
+                    const hideBtn = Array.from(document.querySelectorAll('button[aria-label], [role="button"][aria-label]'))
+                        .find(b => /masquer le volet|hide (the )?navigation|collapse/i.test(b.getAttribute('aria-label') || ''));
+                    if (hideBtn) hideBtn.click();
+                }
+                const back = document.querySelector('[aria-label*="back" i], [aria-label*="retour" i], [aria-label*="précédent" i], [data-automation-id*="back" i], [class*="backArrow"], [class*="closeNav"]');
                 if (back && back.offsetParent) { back.click(); }
             })()
         `).catch(() => {});
