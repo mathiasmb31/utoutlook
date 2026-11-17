@@ -301,10 +301,11 @@ class MailWindowController {
 
         // v4.0.43: détection proactive du jeton d'auth — dès qu'un cookie
         // MSAAUTH/ESTSAUTH/__Host-MSAAUTHP est posé sur un domaine Microsoft,
-        // on le flushe IMMÉDIATEMENT sur disque et on saute directement à la
-        // page mail (évite la boucle post.srf qui perdait le token avant flush).
+        // on le re-pose comme cookie PERSISTANT (avec expiration) pour forcer
+        // Chromium à l'écrire sur disque, on flushe, et on saute directement
+        // à la page mail (évite la boucle post.srf qui perdait le token).
         const ses = session.fromPartition(this.sessionPartition);
-        const AUTH_COOKIE_NAMES = /^(__Host-)?MSAAUTH|ESTSAUTH|stsservicecookie/i;
+        const AUTH_COOKIE_NAMES = /^(__Host-)?MSAAUTH(P)?$|ESTSAUTH(PERSIST)?$/i;
         ses.cookies.on('changed', (_event, cookie, _cause, removed) => {
             if (removed) return;
             const name = cookie.name || '';
@@ -312,20 +313,36 @@ class MailWindowController {
             if (!AUTH_COOKIE_NAMES.test(name)) return;
             if (!domain.includes('live.com') && !domain.includes('microsoft') &&
                 !domain.includes('office.com') && !domain.includes('outlook')) return;
+            // v4.0.43: re-poser le cookie comme persistant (1 an) pour forcer
+            // l'écriture sur disque — sinon c'est un cookie de session perdu au reload.
+            if (!cookie.expirationDate || cookie.expirationDate < (Date.now() / 1000) + 86400) {
+                const url = `https://${domain.replace(/^\./, '')}${cookie.path || '/'}`;
+                ses.cookies.set({
+                    url,
+                    name: name.replace(/^__Host-/i, ''),
+                    value: cookie.value,
+                    domain: cookie.domain,
+                    path: cookie.path || '/',
+                    secure: true,
+                    httpOnly: cookie.httpOnly,
+                    sameSite: 'no_restriction',
+                    expirationDate: Math.floor(Date.now() / 1000) + 365 * 86400, // 1 an
+                }).then(() => ses.cookies.flushStore())
+                  .then(() => logger.info(`v4.0.43: jeton ${name} rendu persistant + flushé (${domain})`))
+                  .catch(() => {});
+            }
             logger.info(`v4.0.43: auth cookie détecté (${name} sur ${domain}) — flush immédiat + saut page mail`);
-            // Flush immédiat pour persister le token
             ses.cookies.flushStore().catch(() => {});
             this.lastMailPageTime = Date.now(); // bloque les détecteurs de boucle
-            // Saut direct à la page mail (live.com pour compte perso, sinon mainMailServiceUrl)
+            // Saut direct à la page mail (cloud.microsoft = host actuel, live.com fallback)
             if (this.win && !this.win.isDestroyed() && !this.authTokenJumped) {
                 this.authTokenJumped = true;
                 const isPersonal = !!this.knownEmail;
                 const target = isPersonal
-                    ? 'https://outlook.live.com/mail/'
+                    ? 'https://outlook.cloud.microsoft/mail/'
                     : (this.mainMailServiceUrl || 'https://outlook.office.com/mail/');
                 logger.info(`v4.0.43: saut direct → ${target}`);
                 this.win.loadURL(target);
-                // Reset le flag après 30 s pour permettre un futur saut si re-login
                 setTimeout(() => { this.authTokenJumped = false; }, 30000);
             }
         });
