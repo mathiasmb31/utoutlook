@@ -2273,7 +2273,11 @@ class MailWindowController {
             if (!this.win || this.win.isDestroyed()) return;
             try {
                 const d = screen.getPrimaryDisplay();
-                const key = `${d.rotation}|${d.size.width}x${d.size.height}|${d.workArea.width}x${d.workArea.height}`;
+                // v4.0.67: inclure la TAILLE RÉELLE de la fenêtre — sur UT/Wayland
+                // le pivot redimensionne la surface (compositor) sans changer les
+                // métriques de l'écran : seule la taille de la fenêtre bouge.
+                const wb = this.win.getBounds();
+                const key = `${d.rotation}|${d.size.width}x${d.size.height}|win ${wb.width}x${wb.height}`;
                 if (key !== this.lastDisplayKey) {
                     const first = this.lastDisplayKey === '';
                     this.lastDisplayKey = key;
