@@ -41,7 +41,7 @@ if [ ! -f "$LIVRAISON/CHANGELOG.md" ]; then
 
 (changes depuis la dernière release)
 
-Built and tested by Mathias — coded with Vibe (Mistral AI assistant).
+Built and tested by Mathias — code written by Vibe, reviewed and controlled by Mathias.
 EOF
   echo "CHANGELOG.md généré (à compléter)"
 fi
@@ -52,7 +52,7 @@ UToutlook Mail $VERSION — Installation
 1. Transférer ${APP}_${VERSION}_arm64.click sur le téléphone
 2. adb install ou clickable install
 
-Built and tested by Mathias — coded with Vibe (Mistral AI assistant).
+Built and tested by Mathias — code written by Vibe, reviewed and controlled by Mathias.
 EOF
   echo "README.txt généré (à compléter)"
 fi
@@ -81,7 +81,7 @@ fi
   echo ""
   git log "$RANGE" --format="- %s" 2>/dev/null | sed 's/ — Tests [0-9/]*\. Version [0-9.]*\.//; s/Tests [0-9/]*\. Version [0-9.]*\.//' | head -40
   echo ""
-  echo "Built and tested by Mathias — coded with Vibe (Mistral AI assistant)."
+  echo "Built and tested by Mathias — code written by Vibe, reviewed and controlled by Mathias."
 } > "$KIT/whatsnew.txt"
 echo "whatsnew.txt généré depuis $LAST_PUBLISHED ($RANGE)"
 
