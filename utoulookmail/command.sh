@@ -78,6 +78,9 @@ function launch_prospect() {
 	# whether OUR client is alive; used to ignore exitclient flags written by
 	# a dying older process during upgrade.
 	CLIENT_PID=$!
+	# v4.0.65: enregistrer le VRAI pid du fils (kill_prospect_pids/prospect_alive
+	# l'utilisent — le pidfile ne contenait que des pids de wrapper avant)
+	echo "${CLIENT_PID}" >> "${UTOUTLOOK_PID_FILE}" 2>/dev/null || true
 	i+=1
 }
 
@@ -354,8 +357,14 @@ kill_prospect_pids
 # all versions, so the quit command reaches even an old-version process.
 utoutlook_send_socket_cmd '{"cmd":"quit"}'
 # v4.0.30: kill stale wrappers too (except ourselves) so they release the flock
-for _p in $("${UTOUTLOOK_BIN}/pgrep" -f "bin/command.sh" 2>/dev/null); do
-	[ "${_p}" != "$$" ] && kill -9 "${_p}" 2>/dev/null || true
+# v4.0.65: pgrep -f est aveugle sous AppArmor → scan /proc/*/cmdline (lecture
+# des process même label autorisée ; les autres labels échouent silencieusement)
+for _d in /proc/[0-9]*; do
+	_p=${_d#/proc/}
+	[ "${_p}" = "$$" ] && continue
+	if "${WD}"/bin/grep -qa 'bin/command\.sh' "${_d}/cmdline" 2>/dev/null; then
+		kill -9 "${_p}" 2>/dev/null || true
+	fi
 done
 # v4.0.25: wait actively (max ~10s) for ALL old prospect-mail processes to die
 # before launching — Lomiri SIGTERMs the process on swipe-close and a dying old
