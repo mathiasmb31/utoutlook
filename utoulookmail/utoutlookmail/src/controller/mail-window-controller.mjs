@@ -309,57 +309,68 @@ class MailWindowController {
         const AUTH_COOKIE_NAMES = /^(__Host-)?MSAAUTH(P)?$|ESTSAUTH(PERSIST)?$/i;
         try { fs.mkdirSync(DATA_DIR, {recursive: true}); } catch (e) { /* ignore */ }
 
-        // Restaurer le token sauvegardé au démarrage (avant le 1er loadURL)
+        // Restaurer les tokens sauvegardés au démarrage (avant le 1er loadURL)
         this.restoreAuthToken = async () => {
             try {
                 if (!fs.existsSync(AUTH_TOKEN_FILE)) return;
-                const saved = JSON.parse(fs.readFileSync(AUTH_TOKEN_FILE, 'utf8'));
-                if (!saved.name || !saved.value) return;
-                // v4.0.45: poser le token sur TOUS les domaines Microsoft clés
-                // (pas seulement celui sauvegardé) pour que cloud.microsoft,
-                // live.com, microsoftonline.com le reconnaissent tous.
+                let saved = JSON.parse(fs.readFileSync(AUTH_TOKEN_FILE, 'utf8'));
+                // v4.0.46: format = tableau de cookies (rétrocompat: objet unique)
+                if (!Array.isArray(saved)) saved = [saved];
+                if (saved.length === 0 || !saved[0].name) return;
                 const domains = ['.live.com', 'login.live.com', '.microsoftonline.com',
                                  'login.microsoftonline.com', '.cloud.microsoft',
                                  '.office.com', 'outlook.live.com', 'outlook.cloud.microsoft',
-                                 '.microsoft.com', saved.domain].filter(Boolean);
+                                 '.microsoft.com'];
                 let restored = 0;
-                for (const domain of new Set(domains)) {
-                    try {
-                        const host = domain.replace(/^\./, '');
-                        await ses.cookies.set({
-                            url: `https://${host}${saved.path || '/'}`,
-                            name: saved.name,
-                            value: saved.value,
-                            domain,
-                            path: saved.path || '/',
-                            secure: true,
-                            httpOnly: saved.httpOnly || false,
-                            sameSite: 'no_restriction',
-                            expirationDate: saved.expirationDate || (Math.floor(Date.now() / 1000) + 365 * 86400),
-                        });
-                        restored++;
-                    } catch (e) { /* domaine peut rejeter — ignorer */ }
+                for (const entry of saved) {
+                    if (!entry.name || !entry.value) continue;
+                    for (const domain of new Set([...domains, entry.domain].filter(Boolean))) {
+                        try {
+                            const host = domain.replace(/^\./, '');
+                            await ses.cookies.set({
+                                url: `https://${host}${entry.path || '/'}`,
+                                name: entry.name,
+                                value: entry.value,
+                                domain,
+                                path: entry.path || '/',
+                                secure: true,
+                                httpOnly: entry.httpOnly || false,
+                                sameSite: 'no_restriction',
+                                expirationDate: entry.expirationDate || (Math.floor(Date.now() / 1000) + 365 * 86400),
+                            });
+                            restored++;
+                        } catch (e) { /* domaine peut rejeter — ignorer */ }
+                    }
                 }
-                logger.info(`v4.0.45: token restauré depuis auth-token.json (${saved.name} sur ${restored} domaines)`);
+                logger.info(`v4.0.46: ${saved.length} tokens restaurés depuis auth-token.json (${restored} cookies posés)`);
                 await ses.cookies.flushStore().catch(() => {});
-                // Propager aussi via le sync existant
                 await this.syncCookiesToLiveCom().catch(() => {});
-            } catch (e) { logger.warn('v4.0.45: restore token failed:', e.message); }
+            } catch (e) { logger.warn('v4.0.46: restore token failed:', e.message); }
         };
 
         ses.cookies.on('changed', (_event, cookie, _cause, removed) => {
             if (removed) return;
             const name = cookie.name || '';
             const domain = (cookie.domain || '').toLowerCase();
-            if (!AUTH_COOKIE_NAMES.test(name)) return;
+            // v4.0.46: sauvegarder TOUS les cookies de session Microsoft (pas seulement
+            // MSAAUTH) — la session complète = MSAAUTH + ESTSAUTH + esctx + fptctx + PPLState + etc.
+            const isAuthCookie = AUTH_COOKIE_NAMES.test(name) ||
+                /^(esctx|fptctx|PPLState|ChainedAuthProbe|MSPAuth|MSPProf|NAP|ANON|WLSSC|MSPOK|OParams|uaid|ClientId|brcap|buid|fpc|msal\.cache)/i.test(name);
+            if (!isAuthCookie) return;
             if (!domain.includes('live.com') && !domain.includes('microsoft') &&
                 !domain.includes('office.com') && !domain.includes('outlook')) return;
-            logger.info(`v4.0.45: auth cookie détecté (${name} sur ${domain}) — sauvegarde + flush`);
-            // Sauvegarder le token dans un fichier local (seulement le host-only login.live.com
-            // ou le domaine parent — évite de sauvegarder les copies sync)
-            if (domain === 'login.live.com' || domain === '.live.com' || domain === 'login.microsoftonline.com') {
+            // Sauvegarder dans un fichier JSON (liste de cookies) — seulement depuis login.live.com
+            // (évite de sauvegarder les copies sync sur autres domaines)
+            if (domain === 'login.live.com' || domain === '.live.com') {
                 try {
-                    fs.writeFileSync(AUTH_TOKEN_FILE, JSON.stringify({
+                    let tokens = [];
+                    if (fs.existsSync(AUTH_TOKEN_FILE)) {
+                        try { tokens = JSON.parse(fs.readFileSync(AUTH_TOKEN_FILE, 'utf8')); } catch (e) { tokens = []; }
+                    }
+                    if (!Array.isArray(tokens)) tokens = [];
+                    // Mettre à jour ou ajouter ce cookie
+                    const idx = tokens.findIndex(t => t.name === name.replace(/^__Host-/i, ''));
+                    const entry = {
                         name: name.replace(/^__Host-/i, ''),
                         value: cookie.value,
                         domain: cookie.domain,
@@ -367,20 +378,24 @@ class MailWindowController {
                         httpOnly: cookie.httpOnly || false,
                         expirationDate: cookie.expirationDate || (Math.floor(Date.now() / 1000) + 365 * 86400),
                         savedAt: new Date().toISOString(),
-                    }));
-                    logger.info(`v4.0.45: token sauvegardé dans ${AUTH_TOKEN_FILE}`);
-                } catch (e) { logger.warn('v4.0.45: sauvegarde token failed:', e.message); }
+                    };
+                    if (idx >= 0) tokens[idx] = entry; else tokens.push(entry);
+                    fs.writeFileSync(AUTH_TOKEN_FILE, JSON.stringify(tokens));
+                } catch (e) { logger.warn('v4.0.46: sauvegarde token failed:', e.message); }
+            }
+            if (AUTH_COOKIE_NAMES.test(name)) {
+                logger.info(`v4.0.46: auth cookie détecté (${name} sur ${domain}) — flush immédiat`);
             }
             ses.cookies.flushStore().catch(() => {});
             this.lastMailPageTime = Date.now();
-            // Saut direct à la page mail
-            if (this.win && !this.win.isDestroyed() && !this.authTokenJumped) {
+            // Saut direct à la page mail quand MSAAUTH/ESTSAUTH est posé
+            if (AUTH_COOKIE_NAMES.test(name) && this.win && !this.win.isDestroyed() && !this.authTokenJumped) {
                 this.authTokenJumped = true;
                 const isPersonal = !!this.knownEmail;
                 const target = isPersonal
                     ? 'https://outlook.cloud.microsoft/mail/'
                     : (this.mainMailServiceUrl || 'https://outlook.office.com/mail/');
-                logger.info(`v4.0.45: saut direct → ${target}`);
+                logger.info(`v4.0.46: saut direct → ${target}`);
                 this.win.loadURL(target);
                 setTimeout(() => { this.authTokenJumped = false; }, 30000);
             }
