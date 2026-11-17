@@ -2529,6 +2529,9 @@ class MailWindowController {
                     const now = Date.now();
                     if (this.mailListReady && (!this.lastRotationReload || now - this.lastRotationReload > 20000)) {
                         this.showRotationToast();
+                        // v4.0.87: notification système (persiste après la fermeture
+                        // de l'app, contrairement au toast qui disparaît en 1,5 s)
+                        this.sendUbportsNotification(t('overlay.rotationNotifyTitle'), t('overlay.rotation'));
                         this.lastRotationReload = now;
                         setTimeout(() => {
                             if (this.win && !this.win.isDestroyed()) {
