@@ -52,6 +52,7 @@ class MailWindowController {
         this.mfaLoopDetected = false; // v3.3.59: 2FA loop already handled
         this.lastMailUrl = null; // v3.3.67: dernière URL de boîte mail chargée (sans ?code=) — cible de reprise après boucle 2FA
         this.lastMailPageTime = 0; // v4.0.41: timestamp de la dernière page mail atteinte — protège contre les rechargements agressifs qui perdent le token
+        this.authTokenJumped = false; // v4.0.43: saut direct page mail après détection du jeton (évite de le déclencher en boucle)
         this.authStartLoadTimes = []; // v3.3.67: chargements des pages /authorize|select_account (détection boucle KMSI)
         this.inPageAuthEvents = []; // v4.0.38: navigations in-page récentes {t, kind: 'post'|'authstart'} pour la détection de boucle 2FA SPA
         this.pageRangeErrors = []; // v3.3.74: timestamps des RangeError « Maximum call stack » de la page
@@ -297,6 +298,38 @@ class MailWindowController {
             this.flushSessionCookies();
         }, 15000);
         logger.info('Cookie flush interval started (15s)');
+
+        // v4.0.43: détection proactive du jeton d'auth — dès qu'un cookie
+        // MSAAUTH/ESTSAUTH/__Host-MSAAUTHP est posé sur un domaine Microsoft,
+        // on le flushe IMMÉDIATEMENT sur disque et on saute directement à la
+        // page mail (évite la boucle post.srf qui perdait le token avant flush).
+        const ses = session.fromPartition(this.sessionPartition);
+        const AUTH_COOKIE_NAMES = /^(__Host-)?MSAAUTH|ESTSAUTH|stsservicecookie/i;
+        ses.cookies.on('changed', (_event, cookie, _cause, removed) => {
+            if (removed) return;
+            const name = cookie.name || '';
+            const domain = (cookie.domain || '').toLowerCase();
+            if (!AUTH_COOKIE_NAMES.test(name)) return;
+            if (!domain.includes('live.com') && !domain.includes('microsoft') &&
+                !domain.includes('office.com') && !domain.includes('outlook')) return;
+            logger.info(`v4.0.43: auth cookie détecté (${name} sur ${domain}) — flush immédiat + saut page mail`);
+            // Flush immédiat pour persister le token
+            ses.cookies.flushStore().catch(() => {});
+            this.lastMailPageTime = Date.now(); // bloque les détecteurs de boucle
+            // Saut direct à la page mail (live.com pour compte perso, sinon mainMailServiceUrl)
+            if (this.win && !this.win.isDestroyed() && !this.authTokenJumped) {
+                this.authTokenJumped = true;
+                const isPersonal = !!this.knownEmail;
+                const target = isPersonal
+                    ? 'https://outlook.live.com/mail/'
+                    : (this.mainMailServiceUrl || 'https://outlook.office.com/mail/');
+                logger.info(`v4.0.43: saut direct → ${target}`);
+                this.win.loadURL(target);
+                // Reset le flag après 30 s pour permettre un futur saut si re-login
+                setTimeout(() => { this.authTokenJumped = false; }, 30000);
+            }
+        });
+        logger.info('v4.0.43: watcher de jeton d\'auth actif (cookies.on changed)');
     }
 
     /**
