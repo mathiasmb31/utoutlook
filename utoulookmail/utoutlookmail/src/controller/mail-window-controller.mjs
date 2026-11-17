@@ -15,6 +15,7 @@ import {
     NOTIF_FLAG_FILE,
     ICON_PATH,
     markCleanExit,
+    ROTATION_RELAUNCH_FILE,
 } from '../config.mjs';
 import {logger} from '../logger.mjs';
 
@@ -2588,6 +2589,8 @@ class MailWindowController {
                                     'if (document.activeElement && document.activeElement.blur) document.activeElement.blur()'
                                 ).catch(() => {});
                                 global.skipCleanExitFlag = true; // pas de exitclient -> le wrapper relance
+                                // v4.0.91: flag pour que le wrapper affiche l'écran « relance en cours »
+                                try { fs.writeFileSync(ROTATION_RELAUNCH_FILE, String(Date.now())); } catch (e) {}
                                 app.exit(0);
                             }
                         }, 2000); // v4.0.90: 2 s (au lieu de 800 ms) pour laisser le wrapper nettoyer avant la relance
