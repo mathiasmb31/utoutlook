@@ -578,8 +578,11 @@
             if (currentScale > 0.7) {
                 // NE PAS faire window.location.reload() — cela déclenche
                 // le splash screen d'Outlook web (enveloppe bleue plein
-                // écran qui tourne). La barre bleue est purement visuelle.
-                console.log('[gestures] Pull-to-refresh detected (visual only, no reload)');
+                // écran qui tourne). À la place on clique sur le VRAI bouton
+                // refresh d'Outlook (sync de la boîte) s'il est présent.
+                console.log('[gestures] Pull-to-refresh → clic bouton refresh Outlook');
+                const btn = document.querySelector('[aria-label*="refresh" i], [aria-label*="actualiser" i], [aria-label*="synchroniser" i], [data-automation-id*="refresh" i], [data-automation-id*="sync" i], [class*="refreshButton"]');
+                if (btn && btn.offsetParent) btn.click();
                 pullIndicator.style.transform = 'scaleX(1)';
                 setTimeout(() => {
                     if (pullIndicator) pullIndicator.style.transform = 'scaleX(0)';
