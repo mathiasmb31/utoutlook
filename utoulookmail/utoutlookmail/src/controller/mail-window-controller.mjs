@@ -1537,6 +1537,9 @@ class MailWindowController {
         this.win.webContents.on('did-finish-load', () => {
             if (!this.alive) return; // v3.3.22: window closed mid-load
             this.loginPage++;
+            // v4.0.79: après un (re)chargement, fermer le volet de navigation s'il
+            // recouvre la liste (arrive après le reload post-rotation)
+            setTimeout(() => this.closeNavIfCovering(), 2000);
             const url = this.win.webContents.getURL();
             logger.info(`Page loaded #${this.loginPage}: ${url}`);
 
@@ -2326,7 +2329,7 @@ class MailWindowController {
                 const navCoversList = navPane && navPane.offsetParent && (!msgList || !msgList.offsetParent);
                 if (navCoversList || (navPane && navPane.offsetParent && window.innerWidth > window.innerHeight)) {
                     const hideBtn = Array.from(document.querySelectorAll('button[aria-label], [role="button"][aria-label]'))
-                        .find(b => /masquer le volet|hide (the )?navigation|collapse/i.test(b.getAttribute('aria-label') || ''));
+                        .find(b => /masquer le volet de navigation|^hide the navigation pane$/i.test((b.getAttribute('aria-label') || '').trim()));
                     if (hideBtn) hideBtn.click();
                 }
                 const back = document.querySelector('[aria-label*="back" i], [aria-label*="retour" i], [aria-label*="précédent" i], [data-automation-id*="back" i], [class*="backArrow"], [class*="closeNav"]');
@@ -2382,6 +2385,28 @@ class MailWindowController {
                 el.style.opacity = '1';
                 clearTimeout(el.__t);
                 el.__t = setTimeout(() => { el.style.opacity = '0'; }, 1500);
+            })()
+        `).catch(() => {});
+    }
+
+    /**
+     * v4.0.79: fermer le volet de navigation s'il recouvre la liste des messages
+     * (typique après un reload en layout étroit / paysage). Sélecteurs vérifiés
+     * sur le DOM réel : data-app-section="NavigationPane" + bouton
+     * « Masquer le volet de navigation ».
+     */
+    closeNavIfCovering() {
+        if (!this.win || this.win.isDestroyed()) return;
+        this.win.webContents.executeJavaScript(`
+            (() => {
+                const navPane = document.querySelector('[data-app-section="NavigationPane"]');
+                const msgList = document.querySelector('[data-app-section="MessageList"]');
+                if (!navPane || !navPane.offsetParent) return;
+                const covers = !msgList || !msgList.offsetParent || window.innerWidth > window.innerHeight;
+                if (!covers) return;
+                const hideBtn = Array.from(document.querySelectorAll('button[aria-label], [role="button"][aria-label]'))
+                    .find(b => /masquer le volet de navigation|^hide the navigation pane$/i.test((b.getAttribute('aria-label') || '').trim()));
+                if (hideBtn) hideBtn.click();
             })()
         `).catch(() => {});
     }
