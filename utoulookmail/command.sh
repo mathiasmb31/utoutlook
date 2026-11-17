@@ -370,21 +370,28 @@ fi
 # v4.0.37: refuse to launch while a previous instance is still closing (flag
 # set between SIGTERM and the goodbye notification, removed after). Wait up to
 # 15s for the flag to disappear; if it never does (ghost), remove it and launch.
-# No date/stat — only test -f and shell builtins (AppArmor-safe).
+# v4.0.61: a closing flag OLDER than this wrapper's start marker is a ghost
+# (previous wrapper was SIGKILLed before finishing the goodbye) — do NOT wait
+# 15s on it, remove it and launch immediately. Only a FRESH flag (previous
+# instance still closing right now) triggers the short wait.
 if [ -f "${UTOUTLOOK_CLOSING}" ]; then
-	utoutlook_notify "$(utoutlook_t 'shell.pleaseWait')"
-	echo "app is closing — waiting for goodbye before launching (pid $$)"
-	_i=0
-	while [ ${_i} -lt 5 ] && [ -f "${UTOUTLOOK_CLOSING}" ]; do
-		sleep_int 3
-		_i=$((_i + 1))
-	done
-	if [ -f "${UTOUTLOOK_CLOSING}" ]; then
-		echo "closing flag stuck >15s (ghost) — removing and launching (pid $$)"
-		"${WD}"/bin/rm -f "${UTOUTLOOK_CLOSING}" 2>/dev/null || true
+	if utoutlook_flag_fresh "${UTOUTLOOK_CLOSING}"; then
+		utoutlook_notify "$(utoutlook_t 'shell.pleaseWait')"
+		echo "app is closing — waiting for goodbye before launching (pid $$)"
+		_i=0
+		while [ ${_i} -lt 5 ] && [ -f "${UTOUTLOOK_CLOSING}" ]; do
+			sleep_int 3
+			_i=$((_i + 1))
+		done
+		if [ -f "${UTOUTLOOK_CLOSING}" ]; then
+			echo "closing flag stuck >15s (ghost) — removing and launching (pid $$)"
+		else
+			echo "closing finished — launching (pid $$)"
+		fi
 	else
-		echo "closing finished — launching (pid $$)"
+		echo "stale closing flag (previous wrapper died before goodbye) — removing and launching (pid $$)"
 	fi
+	"${WD}"/bin/rm -f "${UTOUTLOOK_CLOSING}" 2>/dev/null || true
 fi
 echo "################################################"
 export GDK_SCALE=2
