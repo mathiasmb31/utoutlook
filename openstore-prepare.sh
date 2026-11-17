@@ -75,7 +75,7 @@ else
 fi
 
 # Ligne one-shot (session de débogage) — à VIDER pour les versions suivantes :
-DEBUG_SESSION_NOTE="Sign-in and 2FA work reliably again on the phone: no more login loop after quitting/relaunching, no more \"header too long\" error after the Authenticator approval, and closing the app no longer leaves hidden processes running. A complicated debugging session went into fixing these — thanks for testing each build on the phone."
+DEBUG_SESSION_NOTE="Sign-in and 2FA work reliably again on the phone: no more login loop after quitting/relaunching, no more \"header too long\" error after the Authenticator approval, no more empty message list after rotating the screen, and closing the app no longer leaves hidden processes running. A very difficult debugging session went into fixing these — thanks for testing each build on the phone."
 
 {
   echo "Version $VERSION — $(date +"%d %B %Y")"
