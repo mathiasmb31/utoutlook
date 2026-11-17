@@ -64,6 +64,11 @@ const T = {
         fr: "Changement d'orientation…", en: 'Orientation change…', es: 'Cambio de orientación…', de: 'Orientierungswechsel…',
         it: "Cambio di orientazione…", pt: 'Mudança de orientação…', zh: '方向改变…', ar: 'تغيير الاتجاه…',
     },
+    // v4.0.78: avertissement avant le reload automatique d'une liste vide
+    'overlay.listEmptyReload': {
+        fr: 'Liste vide — rechargement de la page…', en: 'Empty list — reloading page…', es: 'Lista vacía — recargando…', de: 'Liste leer — Seite wird neu geladen…',
+        it: 'Elenco vuoto — ricaricamento…', pt: 'Lista vazia — recarregando…', zh: '列表为空 — 正在重新加载…', ar: 'القائمة فارغة — جارٍ إعادة التحميل…',
+    },
     'common.cancel': {
         fr: 'Annuler', en: 'Cancel', es: 'Cancelar', de: 'Abbrechen',
         it: 'Annulla', pt: 'Cancelar', zh: '取消', ar: 'إلغاء',
