@@ -1929,23 +1929,37 @@ class MailWindowController {
      */
     setupOrientationHandler() {
         if (!this.win || this.win.isDestroyed()) return;
+        // v4.0.63: après un pivot, la liste virtualisée d'Outlook garde une
+        // hauteur périmée et ses lignes ne sont plus rendues (liste cachée).
+        // Il faut un VRAI reflow : on force la re-mesure du conteneur
+        // (visibility toggle sur body), on remet scrollTop à 0, on dispatch
+        // resize sur window ET document, et on réinjecte les styles — deux
+        // fois (à 500 ms et 1500 ms) pour couvrir la fin de l'animation.
+        const repaint = (tag) => {
+            if (!this.win || this.win.isDestroyed()) return;
+            logger.info(`v4.0.63: resize/orientation (${tag}) — reflow forcé + réinjection styles`);
+            this.injectStyles().catch(() => {});
+            this.win.webContents.executeJavaScript(`
+                (() => {
+                    const forceReflow = () => {
+                        document.body.style.visibility = 'hidden';
+                        void document.body.offsetHeight; // force reflow
+                        document.body.style.visibility = '';
+                    };
+                    forceReflow();
+                    window.dispatchEvent(new Event('resize'));
+                    document.dispatchEvent(new Event('resize'));
+                    document.documentElement.classList.add('utoutlook-rotated');
+                    setTimeout(() => document.documentElement.classList.remove('utoutlook-rotated'), 300);
+                    const list = document.querySelector('[class*="listView"], [class*="messageList"], [role="main"]');
+                    if (list) { list.scrollTop = 0; list.scrollTop = 1; list.scrollTop = 0; forceReflow(); }
+                })()
+            `).catch(() => {});
+        };
         let timer = null;
         const onResize = () => {
             if (timer) clearTimeout(timer);
-            timer = setTimeout(() => {
-                if (!this.win || this.win.isDestroyed()) return;
-                logger.info('v4.0.61: resize/orientation — réinjection styles + repaint liste');
-                this.injectStyles().catch(() => {});
-                this.win.webContents.executeJavaScript(`
-                    (() => {
-                        window.dispatchEvent(new Event('resize'));
-                        document.documentElement.classList.add('utoutlook-rotated');
-                        setTimeout(() => document.documentElement.classList.remove('utoutlook-rotated'), 300);
-                        const list = document.querySelector('[class*="listView"], [class*="messageList"], [role="main"]');
-                        if (list) { list.scrollTop += 1; list.scrollTop -= 1; }
-                    })()
-                `).catch(() => {});
-            }, 400);
+            timer = setTimeout(() => { repaint('resize'); setTimeout(() => repaint('resize+1s'), 1000); }, 500);
         };
         this.win.webContents.on('resize', onResize);
         this.win.webContents.on('dom-ready', () => {
@@ -1953,7 +1967,13 @@ class MailWindowController {
                 if (!window.__utoutlookOrient) {
                     window.__utoutlookOrient = true;
                     let t = null;
-                    const fire = () => { clearTimeout(t); t = setTimeout(() => window.dispatchEvent(new Event('resize')), 300); };
+                    const fire = () => {
+                        clearTimeout(t);
+                        t = setTimeout(() => {
+                            window.dispatchEvent(new Event('resize'));
+                            setTimeout(() => window.dispatchEvent(new Event('resize')), 1000);
+                        }, 500);
+                    };
                     window.addEventListener('orientationchange', fire);
                     window.addEventListener('resize', fire);
                 }
