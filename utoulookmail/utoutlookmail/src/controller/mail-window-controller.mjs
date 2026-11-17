@@ -2469,14 +2469,23 @@ class MailWindowController {
         const primaryDisplay = screen.getPrimaryDisplay();
         const {width, height} = primaryDisplay.size;
         const isPortrait = height > width;
-        logger.info(`Display changed: ${width}x${height} (${isPortrait ? 'portrait' : 'landscape'})`);
+        // v4.0.80: sur UT/Wayland, screen.size ne change PAS au pivot (rotation
+        // faite par le compositor) — la fenêtre, elle, passe en 1350x576. Il faut
+        // donc respecter l'orientation COURANTE de la fenêtre, sinon on écrase
+        // une fenêtre landscape en géométrie portrait → liste rendue en 0 px de
+        // haut (lignes 0x0) et volet de nav qui ne couvre qu'une partie.
+        const wb = this.win.getBounds();
+        const winLandscape = wb.width > wb.height;
+        const bw = winLandscape ? height : width;
+        const bh = winLandscape ? width : height;
+        logger.info(`Display changed: ${width}x${height} (${isPortrait ? 'portrait' : 'landscape'}), fenêtre ${wb.width}x${wb.height} -> setBounds ${bw}x${bh}`);
         // v3.3.82: en portrait (téléphone), la fenêtre DOIT remplir tout l'écran —
         // sinon la liste des messages s'arrête avant le bas de l'écran (fenêtre
         // créée en 1400x900 fixe).
         // v4.0.64: idem en PAYSAGE — avant, seul le portrait redimensionnait la
         // fenêtre, donc après un pivot en landscape la fenêtre gardait ses
         // anciennes bornes et la liste des messages était coupée/invisible.
-        try { this.win.setBounds({x: 0, y: 0, width, height}); } catch (e) { logger.warn('setBounds failed:', e.message); }
+        try { this.win.setBounds({x: 0, y: 0, width: bw, height: bh}); } catch (e) { logger.warn('setBounds failed:', e.message); }
     }
 
     // --- Offline detection ---
