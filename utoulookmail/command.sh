@@ -1,6 +1,13 @@
 #!/bin/bash
 
-trap close_command EXIT
+# v4.0.58: SIGTERM/SIGINT/SIGKILL-proof — Lomiri tue le wrapper (process principal
+# du click) au swipe-close. Sans trap sur TERM/INT/HUP, le EXIT trap ne tourne pas
+# et le fils prospect-mail lancé en & reste ORPHELIN (vu: process 23 min après
+# fermeture). SIGKILL ne peut pas être trappé, d'où le kill actif du fils dans
+# close_command. Un flag évite la double exécution (signal → exit → EXIT trap).
+CLOSE_DONE=0
+trap 'if [ "${CLOSE_DONE}" -eq 0 ]; then CLOSE_DONE=1; close_command; fi' EXIT
+trap 'exit 0' TERM INT HUP
 
 function sleep_int() {
 	# Fallback si le binaire embarqué est absent (ex: pendant une mise à jour,
@@ -53,7 +60,9 @@ function launch_prospect() {
 		cleanup
 		echo "tried too more " >${exitcommand}
 		utoutlook_write_qml_i18n
-		qmlscene "${WD}"/qml/nonetwork.qml
+		qmlscene "${WD}"/qml/nonetwork.qml &
+		QML_PID=$!  # v4.0.58: pour que close_command puisse le tuer (pas d'orphelin)
+		wait ${QML_PID} 2>/dev/null || true  # le wrapper reste vivant tant que la page nonetwork est affichée
 		exit 0
 	fi
 	export APPDIR=${WD}/bin/App/
@@ -225,6 +234,24 @@ function close_command() {
 	# v4.0.14: embed wrapper PID so the app only honors OUR close flag
 	echo "closed:${UTOUTLOOK_WRAPPER_PID}" >"${UTOUTLOOK_EXITCOMMAND}"
 	utoutlook_notify "$(utoutlook_t 'shell.goodbye')"
+	# v4.0.58: tuer ACTIVEMENT notre fils prospect-mail — ne pas compter sur le
+	# socket/flag seuls : si l'app est pendue ou si le wrapper a reçu SIGKILL,
+	# personne ne le tue et il reste orphelin indéfiniment. kill sur notre propre
+	# fils = même label AppArmor, autorisé.
+	if [ -n "${CLIENT_PID}" ] && [ "${CLIENT_PID}" != "0" ] && kill -0 "${CLIENT_PID}" 2>/dev/null; then
+		kill -TERM "${CLIENT_PID}" 2>/dev/null || true
+		_w=0
+		while [ ${_w} -lt 5 ] && kill -0 "${CLIENT_PID}" 2>/dev/null; do
+			sleep_int 1
+			_w=$((_w + 1))
+		done
+		kill -9 "${CLIENT_PID}" 2>/dev/null || true
+	fi
+	# v4.0.58: idem pour un éventuel qmlscene nonetwork.qml lancé par ce wrapper
+	if [ -n "${QML_PID}" ] && kill -0 "${QML_PID}" 2>/dev/null; then
+		kill -9 "${QML_PID}" 2>/dev/null || true
+	fi
+	"${UTOUTLOOK_BIN}/pkill" -9 qmlscene 2>/dev/null || true
 	# v4.0.37: closing is done — remove the flag so the next launch is accepted
 	"${WD}"/bin/rm -f "${UTOUTLOOK_CLOSING}" 2>/dev/null || true
 	exit 0
@@ -275,6 +302,8 @@ startupGrace=0
 stagnantCount=0
 # v4.0.11: PID of the prospect-mail process launched by THIS wrapper (0 = none)
 CLIENT_PID=0
+# v4.0.58: PID of a qmlscene (nonetwork.qml) launched by THIS wrapper
+QML_PID=0
 # v4.0.10: freshness marker for lifecycle flags (exitclient/killedmail) —
 # created ONCE here; utoutlook_flag_fresh() only honors flags written after
 # this moment, so stale flags persisted by a pre-3.0 version (or rewritten
