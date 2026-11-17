@@ -1935,27 +1935,7 @@ class MailWindowController {
         // (visibility toggle sur body), on remet scrollTop à 0, on dispatch
         // resize sur window ET document, et on réinjecte les styles — deux
         // fois (à 500 ms et 1500 ms) pour couvrir la fin de l'animation.
-        const repaint = (tag) => {
-            if (!this.win || this.win.isDestroyed()) return;
-            logger.info(`v4.0.63: resize/orientation (${tag}) — reflow forcé + réinjection styles`);
-            this.injectStyles().catch(() => {});
-            this.win.webContents.executeJavaScript(`
-                (() => {
-                    const forceReflow = () => {
-                        document.body.style.visibility = 'hidden';
-                        void document.body.offsetHeight; // force reflow
-                        document.body.style.visibility = '';
-                    };
-                    forceReflow();
-                    window.dispatchEvent(new Event('resize'));
-                    document.dispatchEvent(new Event('resize'));
-                    document.documentElement.classList.add('utoutlook-rotated');
-                    setTimeout(() => document.documentElement.classList.remove('utoutlook-rotated'), 300);
-                    const list = document.querySelector('[class*="listView"], [class*="messageList"], [role="main"]');
-                    if (list) { list.scrollTop = 0; list.scrollTop = 1; list.scrollTop = 0; forceReflow(); }
-                })()
-            `).catch(() => {});
-        };
+        const repaint = (tag) => this.forceListRepaint(tag);
         let timer = null;
         const onResize = () => {
             if (timer) clearTimeout(timer);
@@ -2237,6 +2217,11 @@ class MailWindowController {
                 clearInterval(this.observerHealthCheck);
                 this.observerHealthCheck = null;
             }
+            // v4.0.66: stop rotation poller
+            if (this.rotationPoll) {
+                clearInterval(this.rotationPoll);
+                this.rotationPoll = null;
+            }
             // Flush cookies one last time before window destruction
             this.flushSessionCookies();
             if (!global.preventAutoCloseApp) {
@@ -2251,10 +2236,56 @@ class MailWindowController {
         });
     }
 
+    /**
+     * v4.0.66: reflow forcé de la liste des messages (reflow body, scrollTop=0,
+     * resize dispatché) — utilisé après un pivot d'écran.
+     */
+    forceListRepaint(tag) {
+        if (!this.win || this.win.isDestroyed()) return;
+        logger.info(`v4.0.66: repaint liste (${tag})`);
+        this.injectStyles().catch(() => {});
+        this.win.webContents.executeJavaScript(`
+            (() => {
+                const forceReflow = () => {
+                    document.body.style.visibility = 'hidden';
+                    void document.body.offsetHeight;
+                    document.body.style.visibility = '';
+                };
+                forceReflow();
+                window.dispatchEvent(new Event('resize'));
+                document.dispatchEvent(new Event('resize'));
+                const list = document.querySelector('[class*="listView"], [class*="messageList"], [role="main"]');
+                if (list) { list.scrollTop = 0; list.scrollTop = 1; list.scrollTop = 0; forceReflow(); }
+            })()
+        `).catch(() => {});
+    }
+
     setupScreenEvents() {
         screen.on('display-metrics-changed', () => { this.handleDisplayChange(); });
         screen.on('display-added', () => this.handleDisplayChange());
         screen.on('display-removed', () => this.handleDisplayChange());
+        // v4.0.66: sur UT, un pivot ne déclenche PAS display-metrics-changed ni
+        // webContents resize (vérifié dans les logs : 0 événement) — la rotation
+        // est faite au niveau compositor. On POLL la rotation de l'écran et on
+        // force setBounds + invalidate + repaint de la liste quand elle change.
+        this.lastDisplayKey = '';
+        this.rotationPoll = setInterval(() => {
+            if (!this.win || this.win.isDestroyed()) return;
+            try {
+                const d = screen.getPrimaryDisplay();
+                const key = `${d.rotation}|${d.size.width}x${d.size.height}|${d.workArea.width}x${d.workArea.height}`;
+                if (key !== this.lastDisplayKey) {
+                    const first = this.lastDisplayKey === '';
+                    this.lastDisplayKey = key;
+                    if (first) return; // ne rien faire au démarrage
+                    logger.info(`v4.0.66: rotation détectée (${key}) — setBounds + invalidate + repaint`);
+                    this.handleDisplayChange();
+                    try { this.win.webContents.invalidate(); } catch (e) {}
+                    this.forceListRepaint('rotation');
+                    setTimeout(() => this.forceListRepaint('rotation+1s'), 1000);
+                }
+            } catch (e) { /* ignore */ }
+        }, 2000);
     }
 
     handleDisplayChange() {
