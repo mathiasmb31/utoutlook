@@ -2430,6 +2430,18 @@ class MailWindowController {
                 const msgList = document.querySelector('[data-app-section="MessageList"]');
                 const navVisible = navPane && navPane.offsetParent;
                 const covers = navVisible && (!msgList || !msgList.offsetParent || window.innerWidth > window.innerHeight);
+                // v4.0.82: le masque CSS ne doit pas bloquer l'utilisateur — s'il
+                // clique sur le bouton du volet de navigation, on lève le masque.
+                if (!window.__utoutlookNavYield) {
+                    window.__utoutlookNavYield = true;
+                    document.addEventListener('click', (ev) => {
+                        const b = ev.target.closest && ev.target.closest('button[aria-label], [role="button"][aria-label]');
+                        const lbl = (b && b.getAttribute('aria-label')) || '';
+                        if (/volet de navigation|navigation pane|menu/i.test(lbl)) {
+                            document.documentElement.classList.remove('utoutlook-hide-nav');
+                        }
+                    }, true);
+                }
                 document.documentElement.classList.toggle('utoutlook-hide-nav', !!covers);
             })()
         `).catch(() => {});
