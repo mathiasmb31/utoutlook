@@ -20,6 +20,12 @@ int main(int argc, char *argv[])
             return 1;
         }
 
+        // v4.0.69: Mode clear: notify --clear  -> retire toutes les notifs persistantes de l'app
+        if (arg1 == "--clear") {
+            bool sent = notif.clearAll();
+            return sent ? 0 : 1;
+        }
+
         // Mode notification: notify <title> [body]
         QString title = arg1;
         QString body = (argc > 2) ? QString::fromLocal8Bit(argv[2]) : "";
