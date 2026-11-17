@@ -10,9 +10,8 @@ import "/tmp/utoutlook-qml-i18n.js" as QmlI18n
 ApplicationWindow {
     visible: true
     flags: Qt.FramelessWindowHint
+    visibility: Window.FullScreen
     color: "#0f0f1a"
-    width: Screen.width
-    height: Screen.height
 
     BusyIndicator {
         id: spinner
