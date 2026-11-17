@@ -715,6 +715,95 @@ class MailWindowController {
         });
     }
 
+    // --- Cookie header guard (v4.0.56) ---
+    // Microsoft rejette toute requête dont le header Cookie dépasse ~8 Ko avec
+    // « 431 Header field too long » (« bad request »). Pendant le flux de login,
+    // le jar accumule des centaines de cookies sur .live.com / .microsoftonline.com
+    // et ils sont TOUS renvoyés à chaque sous-domaine (outlook.live.com inclus) —
+    // le nettoyage au démarrage (v4.0.54) ne suffit pas, le jar se remplit à
+    // chaque login, notamment après la validation 2FA + « rester connecté ».
+    // Ce garde-fou réécrit le header Cookie à la volée (onBeforeSendHeaders) :
+    // pour les domaines Microsoft, si le header est trop gros, il est réduit aux
+    // seuls cookies d'auth essentiels. Le flux de login normal (< 6,5 Ko) n'est
+    // jamais touché.
+    setupCookieHeaderGuard() {
+        const ses = session.fromPartition(this.sessionPartition);
+        const CORE = /^(__Host-|__Secure-)?(MSAAUTH|MSAAUTHP|ESTSAUTH|ESTSAUTHPERSIST|esctx|fptctx2?|PPLState|msal\.cache|stsservicecookie)$/i;
+        const MAX_COOKIE_HEADER = 6500; // rester bien sous la limite serveur de 8 Ko
+        const isMsHost = (h) => h.includes('live.com') || h.includes('microsoft') ||
+            h.includes('office.com') || h.includes('office365.com') || h.includes('outlook') ||
+            h.includes('msauth.net') || h.includes('msocdn.com') || h.includes('msecnd.net') ||
+            h.includes('msftauth.net') || h.includes('sharepoint.com');
+        ses.webRequest.onBeforeSendHeaders((details, callback) => {
+            try {
+                const host = new URL(details.url).hostname;
+                if (!isMsHost(host)) return callback({});
+                const headers = details.requestHeaders || {};
+                let raw = headers['Cookie'] ?? headers['cookie'];
+                if (Array.isArray(raw)) raw = raw.join('; ');
+                if (!raw || raw.length <= MAX_COOKIE_HEADER) return callback({});
+                const kept = raw.split(';').map(s => s.trim()).filter(p => {
+                    const name = p.split('=')[0].trim();
+                    return CORE.test(name);
+                });
+                if (kept.length === 0) {
+                    const rest = { ...headers };
+                    delete rest['Cookie']; delete rest['cookie'];
+                    logger.warn(`v4.0.56: header Cookie (${raw.length} B) supprimé sur ${host} — aucun cookie d'auth, 431 évité`);
+                    return callback({ requestHeaders: rest });
+                }
+                const trimmed = kept.join('; ');
+                logger.warn(`v4.0.56: header Cookie ${raw.length} B → ${trimmed.length} B sur ${host} (431 évité)`);
+                const newHeaders = { ...headers };
+                if ('Cookie' in newHeaders) newHeaders['Cookie'] = trimmed;
+                if ('cookie' in newHeaders) newHeaders['cookie'] = trimmed;
+                callback({ requestHeaders: newHeaders });
+            } catch (e) {
+                callback({});
+            }
+        });
+        logger.info('v4.0.56: garde-fou header Cookie actif (anti-431)');
+    }
+
+    /**
+     * Nettoie les cookies non-essentiels des domaines Microsoft quand le jar
+     * devient trop gros (somme des name=value > seuil). Appelé quand la page
+     * mail est atteinte — après le login le jar est plein à ras bord et chaque
+     * navigation suivante risque le 431.
+     */
+    async cleanNonCoreCookies() {
+        try {
+            const ses = session.fromPartition(this.sessionPartition);
+            const all = await ses.cookies.get({});
+            const CORE = /^(__Host-|__Secure-)?(MSAAUTH|MSAAUTHP|ESTSAUTH|ESTSAUTHPERSIST|esctx|fptctx2?|PPLState|ChainedAuthProbe|MSPAuth|MSPProf|NAP|ANON|WLSSC|MSPOK|OParams|uaid|ClientId|brcap|buid|fpc|msal\.cache|stsservicecookie)/i;
+            let size = 0;
+            for (const c of all) {
+                const d = (c.domain || '').toLowerCase();
+                const isMs = d.includes('live.com') || d.includes('microsoft') || d.includes('office.com') ||
+                    d.includes('outlook') || d.includes('msocdn') || d.includes('msecnd') ||
+                    d.includes('msftauth') || d.includes('msauth');
+                if (isMs) size += (c.name || '').length + (c.value || '').length + 3;
+            }
+            if (size <= 6000) return; // jar encore raisonnable, ne rien toucher
+            let cleaned = 0;
+            for (const c of all) {
+                const d = (c.domain || '').toLowerCase();
+                const isMs = d.includes('live.com') || d.includes('microsoft') || d.includes('office.com') ||
+                    d.includes('outlook') || d.includes('msocdn') || d.includes('msecnd') ||
+                    d.includes('msftauth') || d.includes('msauth');
+                if (isMs && !CORE.test(c.name)) {
+                    const url = `${c.secure ? 'https' : 'http'}://${d.replace(/^\./, '')}${c.path || '/'}`;
+                    await ses.cookies.remove(url, c.name).catch(() => {});
+                    cleaned++;
+                }
+            }
+            if (cleaned > 0) {
+                await ses.cookies.flushStore().catch(() => {});
+                logger.info(`v4.0.56: jar trop gros (${size} B) — ${cleaned} cookies non-essentiels supprimés`);
+            }
+        } catch (e) { logger.warn('v4.0.56: cleanNonCoreCookies failed:', e.message); }
+    }
+
     // --- Dark mode (amélioré) ---
 
     /**
@@ -929,6 +1018,7 @@ class MailWindowController {
     init() {
         this.reloadSettings();
         this.setupCSP();
+        this.setupCookieHeaderGuard(); // v4.0.56: anti-431 — trim du header Cookie à la volée
         this.createSplashWindow();
         this.createWindow();
         this.startCookieFlush(); // v4.0.45: AVANT loadMainUrl — définit restoreAuthToken utilisé par loadMainUrl
@@ -1387,6 +1477,10 @@ class MailWindowController {
                 this.lastMailPageTime = now;
                 this.flushSessionCookies();
                 session.fromPartition(this.sessionPartition).cookies.flushStore().catch(() => {});
+                // v4.0.56: page mail atteinte — purger le jar des cookies non-essentiels
+                // accumulés pendant le login (sinon le prochain login repart avec un
+                // header Cookie trop gros → 431 après la 2FA)
+                this.cleanNonCoreCookies().catch(() => {});
             }
 
             if (isMailPage && mailLoads.length >= 5 && !this.redirectLoopDetected) {
