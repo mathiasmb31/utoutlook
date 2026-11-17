@@ -1560,7 +1560,13 @@ class MailWindowController {
             }
             // v4.0.85: la liste des messages est atteinte — autorise la relance
             // après rotation (le poller bloque le quit tant que ce flag est false).
-            if (this.isMailInterfaceUrl(url)) this.mailListReady = true;
+            if (this.isMailInterfaceUrl(url)) {
+                this.mailListReady = true;
+                // v4.0.88: réveille le clavier virtuel (Maliit) — après une relance
+                // rapide (rotation), la fenêtre peut perdre le focus et le clavier
+                // on-screen n'envoie plus aucune touche.
+                [500, 1500, 3000, 6000].forEach(ms => setTimeout(() => this.wakeVirtualKeyboard(), ms));
+            }
 
 
 
@@ -2377,6 +2383,27 @@ class MailWindowController {
                         this.win.webContents.reload();
                     }).catch(() => {});
                 }, 1200);
+            })()
+        `).catch(() => {});
+    }
+
+    /**
+     * v4.0.88: réveille le clavier virtuel Maliit après (re)lancement — focus
+     * fenêtre + cycle blur/focus dans le renderer pour réactiver le text-input.
+     */
+    wakeVirtualKeyboard() {
+        if (!this.win || this.win.isDestroyed()) return;
+        try { this.win.focus(); } catch (e) { /* ignore */ }
+        try { this.win.webContents.focus(); } catch (e) { /* ignore */ }
+        this.win.webContents.executeJavaScript(`
+            (() => {
+                try {
+                    const ae = document.activeElement;
+                    if (ae && ae.blur) ae.blur();
+                    if (document.body && document.body.focus) document.body.focus();
+                    document.dispatchEvent(new Event('pointerdown', {bubbles: true}));
+                    window.dispatchEvent(new Event('focus'));
+                } catch (e) {}
             })()
         `).catch(() => {});
     }
