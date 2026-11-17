@@ -327,17 +327,27 @@ class MailWindowController {
                     for (const domain of new Set([...domains, entry.domain].filter(Boolean))) {
                         try {
                             const host = domain.replace(/^\./, '');
-                            await ses.cookies.set({
+                            const isHostOnly = entry.hostOnly && domain === entry.domain;
+                            const cookieOpts = {
                                 url: `https://${host}${entry.path || '/'}`,
                                 name: entry.name,
                                 value: entry.value,
-                                domain,
                                 path: entry.path || '/',
                                 secure: true,
                                 httpOnly: entry.httpOnly || false,
                                 sameSite: 'no_restriction',
                                 expirationDate: entry.expirationDate || (Math.floor(Date.now() / 1000) + 365 * 86400),
-                            });
+                            };
+                            // v4.0.49: __Host- prefix exige PAS d'attribut domain (host-only)
+                            if (!isHostOnly && !entry.name.startsWith('__Host-')) {
+                                cookieOpts.domain = domain;
+                            } else if (entry.name.startsWith('__Host-')) {
+                                // __Host- : pas de domain attribute, juste l'URL host
+                                delete cookieOpts.domain;
+                            } else {
+                                cookieOpts.domain = domain;
+                            }
+                            await ses.cookies.set(cookieOpts);
                             restored++;
                         } catch (e) { /* domaine peut rejeter — ignorer */ }
                     }
@@ -369,11 +379,12 @@ class MailWindowController {
                     }
                     if (!Array.isArray(tokens)) tokens = [];
                     // Mettre à jour ou ajouter ce cookie
-                    const idx = tokens.findIndex(t => t.name === name.replace(/^__Host-/i, ''));
+                    const idx = tokens.findIndex(t => t.name === name);
                     const entry = {
-                        name: name.replace(/^__Host-/i, ''),
+                        name: name, // v4.0.49: garder le préfixe __Host- original — Microsoft exige __Host-MSAAUTH host-only
                         value: cookie.value,
                         domain: cookie.domain,
+                        hostOnly: !cookie.domain || !cookie.domain.startsWith('.'), // host-only si pas de domain explicite
                         path: cookie.path || '/',
                         httpOnly: cookie.httpOnly || false,
                         expirationDate: cookie.expirationDate || (Math.floor(Date.now() / 1000) + 365 * 86400),
