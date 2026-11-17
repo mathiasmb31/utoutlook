@@ -1929,6 +1929,7 @@ class MailWindowController {
      */
     setupOrientationHandler() {
         if (!this.win || this.win.isDestroyed()) return;
+        this.lastRotationReload = 0; // v4.0.75: garde-fou anti-boucle du reload de secours
         // v4.0.63: après un pivot, la liste virtualisée d'Outlook garde une
         // hauteur périmée et ses lignes ne sont plus rendues (liste cachée).
         // Il faut un VRAI reflow : on force la re-mesure du conteneur
@@ -2272,6 +2273,25 @@ class MailWindowController {
                 }
                 const back = document.querySelector('[aria-label*="back" i], [aria-label*="retour" i], [aria-label*="précédent" i], [data-automation-id*="back" i], [class*="backArrow"], [class*="closeNav"]');
                 if (back && back.offsetParent) { back.click(); }
+                // v4.0.75: dernier recours — si la liste n'est TOUJOURS pas visible
+                // après le repaint, recharger la page entière (le splash enveloppe
+                // d'Outlook est bref). Garde-fou: max 1 reload / 30 s.
+                setTimeout(() => {
+                    if (!this.win || this.win.isDestroyed()) return;
+                    this.win.webContents.executeJavaScript(`
+                        (() => {
+                            const ml = document.querySelector('[data-app-section="MessageList"]');
+                            return !(ml && ml.offsetParent && ml.querySelector('[role="listitem"], [class*="listItem"]'));
+                        })()
+                    `).then((listHidden) => {
+                        if (!listHidden) return;
+                        const now = Date.now();
+                        if (this.lastRotationReload && now - this.lastRotationReload < 30000) return;
+                        this.lastRotationReload = now;
+                        logger.warn('v4.0.75: liste toujours invisible après repaint — reload de la page');
+                        this.win.webContents.reload();
+                    }).catch(() => {});
+                }, 1200);
             })()
         `).catch(() => {});
     }
