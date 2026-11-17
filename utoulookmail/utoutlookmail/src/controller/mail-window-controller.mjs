@@ -2296,6 +2296,32 @@ class MailWindowController {
         `).catch(() => {});
     }
 
+    /**
+     * v4.0.76: toast « changement d'orientation » — l'utilisateur voit que
+     * l'app a détecté le pivot et agit (repaint/reload). Disparaît après 1,5 s.
+     */
+    showRotationToast() {
+        if (!this.win || this.win.isDestroyed()) return;
+        const msg = t('overlay.rotation');
+        this.win.webContents.executeJavaScript(`
+            (() => {
+                let el = document.getElementById('utoutlook-rotation-toast');
+                if (!el) {
+                    el = document.createElement('div');
+                    el.id = 'utoutlook-rotation-toast';
+                    el.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);' +
+                        'background:rgba(15,15,26,0.92);color:#E95420;padding:10px 18px;border-radius:20px;' +
+                        'font:14px sans-serif;z-index:999999;pointer-events:none;transition:opacity .3s;white-space:nowrap;';
+                    document.body.appendChild(el);
+                }
+                el.textContent = ${JSON.stringify(msg)};
+                el.style.opacity = '1';
+                clearTimeout(el.__t);
+                el.__t = setTimeout(() => { el.style.opacity = '0'; }, 1500);
+            })()
+        `).catch(() => {});
+    }
+
     setupScreenEvents() {
         screen.on('display-metrics-changed', () => { this.handleDisplayChange(); });
         screen.on('display-added', () => this.handleDisplayChange());
@@ -2318,9 +2344,10 @@ class MailWindowController {
                     const first = this.lastDisplayKey === '';
                     this.lastDisplayKey = key;
                     if (first) return; // ne rien faire au démarrage
-                    logger.info(`v4.0.66: rotation détectée (${key}) — setBounds + invalidate + repaint`);
+                    logger.info(`v4.0.76: rotation détectée (${key}) — setBounds + invalidate + repaint + toast`);
                     this.handleDisplayChange();
                     try { this.win.webContents.invalidate(); } catch (e) {}
+                    this.showRotationToast();
                     this.forceListRepaint('rotation');
                     setTimeout(() => this.forceListRepaint('rotation+1s'), 1000);
                 }
