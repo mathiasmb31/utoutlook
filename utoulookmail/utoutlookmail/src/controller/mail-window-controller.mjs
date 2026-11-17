@@ -2590,7 +2590,7 @@ class MailWindowController {
                                 global.skipCleanExitFlag = true; // pas de exitclient -> le wrapper relance
                                 app.exit(0);
                             }
-                        }, 800);
+                        }, 2000); // v4.0.90: 2 s (au lieu de 800 ms) pour laisser le wrapper nettoyer avant la relance
                     }
                 }
             } catch (e) { /* ignore */ }
