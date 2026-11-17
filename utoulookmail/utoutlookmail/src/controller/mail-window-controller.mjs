@@ -384,21 +384,15 @@ class MailWindowController {
                 } catch (e) { logger.warn('v4.0.46: sauvegarde token failed:', e.message); }
             }
             if (AUTH_COOKIE_NAMES.test(name)) {
-                logger.info(`v4.0.46: auth cookie détecté (${name} sur ${domain}) — flush immédiat`);
+                logger.info(`v4.0.47: auth cookie détecté (${name} sur ${domain}) — sauvegarde + flush`);
             }
             ses.cookies.flushStore().catch(() => {});
             this.lastMailPageTime = Date.now();
-            // Saut direct à la page mail quand MSAAUTH/ESTSAUTH est posé
-            if (AUTH_COOKIE_NAMES.test(name) && this.win && !this.win.isDestroyed() && !this.authTokenJumped) {
-                this.authTokenJumped = true;
-                const isPersonal = !!this.knownEmail;
-                const target = isPersonal
-                    ? 'https://outlook.cloud.microsoft/mail/'
-                    : (this.mainMailServiceUrl || 'https://outlook.office.com/mail/');
-                logger.info(`v4.0.46: saut direct → ${target}`);
-                this.win.loadURL(target);
-                setTimeout(() => { this.authTokenJumped = false; }, 30000);
-            }
+            // v4.0.47: PLUS de saut direct ici — un MSAAUTH intermédiaire est posé
+            // PENDANT le flux de login (avant 2FA), sauter à ce moment interrompt
+            // le login et crée une boucle infinie (mail → authorize → post.srf → …).
+            // On se contente de sauvegarder + flusher ; la page mail sera atteinte
+            // naturellement à la fin du flux, et did-finish-load flushera alors.
         });
         logger.info('v4.0.45: watcher de jeton d\'auth actif + sauvegarde fichier local');
     }
@@ -1288,7 +1282,18 @@ class MailWindowController {
         if (this.restoreAuthToken) await this.restoreAuthToken();
         await this.syncCookiesToLiveCom().catch(e => logger.warn('Initial cookie sync failed:', e.message));
 
-        this.win.loadURL(this.mainMailServiceUrl, {userAgent: customUserAgent});
+        // v4.0.48: si on a un token sauvegardé ET un compte perso connu, démarrer
+        // DIRECTEMENT sur outlook.live.com/mail/ — office.com force prompt=select_account
+        // même avec une session valide, ce qui renvoie systématiquement sur la page de login.
+        let startUrl = this.mainMailServiceUrl;
+        if (this.knownEmail && /@(outlook|hotmail|live|msn|passport)\./i.test(this.knownEmail)) {
+            const hasToken = fs.existsSync(path.join(DATA_DIR, 'auth-token.json'));
+            if (hasToken) {
+                startUrl = 'https://outlook.live.com/mail/';
+                logger.info('v4.0.48: token sauvegardé + compte perso — démarrage direct sur outlook.live.com/mail/');
+            }
+        }
+        this.win.loadURL(startUrl, {userAgent: customUserAgent});
 
         this.win.webContents.on('did-finish-load', () => {
             if (!this.alive) return; // v3.3.22: window closed mid-load
