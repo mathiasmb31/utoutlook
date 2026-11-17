@@ -650,60 +650,35 @@ class MailWindowController {
     setupCSP() {
         // Apply CSP to this account's session partition (not just defaultSession)
         const ses = session.fromPartition(this.sessionPartition);
+        // v4.0.51: domaines CDN Microsoft complts — c.s-microsoft.com (fonts),
+        // aspnetcdn/ajax (jQuery), gfx.ms. Sans eux la page de login craqute
+        // (Uncaught ReferenceError: jQuery is not defined) et retombe en boucle.
+        const MS_CDN = "https://*.s-microsoft.com https://*.aspnetcdn.com https://ajax.microsoft.com " +
+                       "https://*.gfx.ms https://res.public.onecdn.static.microsoft " +
+                       "https://*.cdn.office.net https://*.onecdn.static.microsoft https://*.msocdn.com " +
+                       "https://*.msecnd.net https://*.msftauth.net https://*.msauth.net " +
+                       "https://*.live.net https://*.bing.com https://*.github.com https://*.githubassets.com";
+        const MS_BASE = "https://outlook.com https://*.outlook.com https://outlook.office.com https://*.office.com " +
+                        "https://*.office365.com https://*.live.com https://*.microsoft.com " +
+                        "https://*.microsoftonline.com https://*.cloud.microsoft https://*.sharepoint.com";
         ses.webRequest.onHeadersReceived((details, callback) => {
             callback({
                 responseHeaders: {
                     ...details.responseHeaders,
                     'Content-Security-Policy': [
-                        "default-src 'self' https://outlook.com https://*.outlook.com " +
-                        "https://outlook.office.com https://*.office.com " +
-                        "https://*.office365.com https://*.live.com https://*.live.net " +
-                        "https://*.microsoft.com https://*.microsoftonline.com https://*.cloud.microsoft " +
-                        "https://*.msauth.net https://*.msocdn.com " +
-                        "https://*.sharepoint.com https://*.msecnd.net https://*.msftauth.net " +
-                        "https://*.cdn.office.net https://*.onecdn.static.microsoft " +
-                        "https://*.github.com https://*.githubassets.com https://*.bing.com; " +
+                        "default-src 'self' " + MS_BASE + " " + MS_CDN + "; " +
                         // script-src must include ALL domains that serve JS, not just
                         // default-src — otherwise Outlook boot JS from CDNs is blocked
                         // (olkerror.html?esrc=NoBootJs). blob: needed for web workers.
-                        "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: " +
-                        "https://outlook.com https://*.outlook.com " +
-                        "https://outlook.office.com https://*.office.com https://*.office365.com " +
-                        "https://*.live.com https://*.live.net " +
-                        "https://*.microsoft.com https://*.microsoftonline.com https://*.cloud.microsoft " +
-                        "https://*.msocdn.com https://*.msauth.net https://*.msecnd.net " +
-                        "https://*.msftauth.net https://*.cdn.office.net https://*.sharepoint.com " +
-                        "https://*.onecdn.static.microsoft " +
-                        "https://*.github.com https://*.githubassets.com https://*.bing.com; " +
-                        "style-src 'self' 'unsafe-inline' https://outlook.com https://*.outlook.com " +
-                        "https://outlook.office.com https://*.office.com " +
-                        "https://*.office365.com https://*.live.com https://*.live.net " +
-                        "https://*.microsoft.com https://*.microsoftonline.com https://*.cloud.microsoft " +
-                        "https://*.msocdn.com https://*.msauth.net " +
-                        "https://*.msftauth.net https://*.cdn.office.net https://*.onecdn.static.microsoft " +
-                        "https://*.github.com https://*.githubassets.com https://*.bing.com; " +
+                        "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: " + MS_BASE + " " + MS_CDN + "; " +
+                        "style-src 'self' 'unsafe-inline' " + MS_BASE + " " + MS_CDN + "; " +
                         "img-src 'self' data: https: blob:; " +
-                        "connect-src 'self' https://outlook.com https://*.outlook.com " +
-                        "https://outlook.office.com https://*.office.com wss://*.office.com " +
-                        "https://*.live.com https://*.live.net " +
-                        "https://*.office365.com https://*.sharepoint.com " +
-                        "https://*.microsoft.com https://*.microsoftonline.com https://*.cloud.microsoft https://*.msocdn.com " +
-                        "https://*.msauth.net https://*.msecnd.net https://*.msftauth.net " +
-                        "https://*.cdn.office.net https://*.onecdn.static.microsoft " +
-                        "https://*.github.com https://*.githubassets.com https://*.bing.com " +
-                        "wss://*.live.com wss://*.live.net wss://*.office365.com wss://*.cloud.microsoft; " +
-                        "font-src 'self' https://outlook.com https://*.outlook.com " +
-                        "https://outlook.office.com https://*.office.com " +
-                        "https://*.office365.com https://*.live.com https://*.live.net " +
-                        "https://*.microsoft.com https://*.microsoftonline.com https://*.cloud.microsoft " +
-                        "https://*.msocdn.com https://*.msauth.net " +
-                        "https://*.msftauth.net https://*.cdn.office.net https://*.onecdn.static.microsoft " +
-                        "https://*.github.com https://*.githubassets.com https://*.bing.com data:; " +
+                        "connect-src 'self' https: wss:; " +
+                        // v4.0.51: font-src permissif (https:) — Microsoft sert les fonts
+                        // depuis c.s-microsoft.com qui change souvent de sous-domaine
+                        "font-src 'self' data: https:; " +
                         "media-src 'self' https: blob:; " +
-                        "frame-src 'self' https://outlook.com https://*.outlook.com " +
-                        "https://outlook.office.com https://*.office.com " +
-                        "https://*.office365.com https://*.live.com https://*.live.net " +
-                        "https://*.microsoft.com https://*.microsoftonline.com https://*.cloud.microsoft https://*.sharepoint.com; " +
+                        "frame-src 'self' " + MS_BASE + " " + MS_CDN + "; " +
                         "worker-src 'self' blob:;"
                     ]
                 }
