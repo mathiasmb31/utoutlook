@@ -2,6 +2,43 @@
 # Prepare + (optionally) publish utoutlook to OpenStore
 set -e
 
+# Traduction automatique FR -> EN (API publiques sans clé, fallback MyMemory).
+# Lit du texte FR sur stdin, écrit l'anglais sur stdout. Exit 2 si échec.
+translate_en() {
+  python3 - <<'PYEOF'
+import json, sys, urllib.parse, urllib.request
+text = sys.stdin.read().strip()
+if not text:
+    sys.exit(0)
+lines = text.splitlines()
+def tr_google(chunk):
+    q = urllib.parse.quote(chunk)
+    url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=fr&tl=en&dt=t&q=" + q
+    with urllib.request.urlopen(url, timeout=20) as r:
+        d = json.load(r)
+    return ''.join((s[0] or '') for s in d[0])
+def tr_mymemory(chunk):
+    q = urllib.parse.quote(chunk)
+    url = "https://api.mymemory.translated.net/get?q=" + q + "&langpair=fr|en"
+    with urllib.request.urlopen(url, timeout=20) as r:
+        d = json.load(r)
+    return d['responseData']['translatedText']
+out = []
+CH = 8
+for i in range(0, len(lines), CH):
+    chunk = '\n'.join(lines[i:i+CH])
+    try:
+        out.append(tr_google(chunk))
+    except Exception:
+        try:
+            out.append(tr_mymemory(chunk))
+        except Exception:
+            sys.stderr.write("TRANSLATION_FAILED\n")
+            sys.exit(2)
+print('\n'.join(out))
+PYEOF
+}
+
 if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
   echo "Usage: ./openstore-prepare.sh <version> [--upload "OK"]"
   echo ""
@@ -39,7 +76,7 @@ if [ ! -f "$LIVRAISON/CHANGELOG.md" ]; then
   cat > "$LIVRAISON/CHANGELOG.md" <<EOF
 # UToutlook Mail $VERSION — Release notes
 
-(changes depuis la dernière release)
+(changes since the last release — keep this file in ENGLISH, it is published on the OpenStore)
 
 Built and tested by Mathias — code written by Vibe, reviewed and controlled by Mathias.
 EOF
@@ -49,8 +86,8 @@ if [ ! -f "$LIVRAISON/README.txt" ]; then
   cat > "$LIVRAISON/README.txt" <<EOF
 UToutlook Mail $VERSION — Installation
 
-1. Transférer ${APP}_${VERSION}_arm64.click sur le téléphone
-2. adb install ou clickable install
+1. Transfer ${APP}_${VERSION}_arm64.click to the phone
+2. adb install or clickable install
 
 Built and tested by Mathias — code written by Vibe, reviewed and controlled by Mathias.
 EOF
@@ -77,8 +114,16 @@ fi
 # Ligne one-shot (session de débogage) — à VIDER pour les versions suivantes :
 DEBUG_SESSION_NOTE="Sign-in and 2FA work reliably again on the phone: no more login loop after quitting/relaunching, no more \"header too long\" error after the Authenticator approval, no more empty message list after rotating the screen, and closing the app no longer leaves hidden processes running. A very difficult debugging session went into fixing these — thanks for testing each build on the phone."
 
+# Commits (français) -> traduction auto en anglais : le whatsnew du store DOIT être en anglais
+RAW_COMMITS=$(git log "$RANGE" --format="- %s" 2>/dev/null | sed 's/ — Tests [0-9/]*\. Version [0-9.]*\.//; s/Tests [0-9/]*\. Version [0-9.]*\.//' | head -60)
+if [ -n "$RAW_COMMITS" ]; then
+  TRANSLATED=$(printf '%s\n' "$RAW_COMMITS" | translate_en) || { echo "ERREUR: traduction auto FR->EN indisponible — whatsnew.txt NON généré, upload bloqué (contenu store doit être en anglais)"; exit 1; }
+else
+  TRANSLATED=""
+fi
+
 {
-  echo "Version $VERSION — $(date +"%d %B %Y")"
+  echo "Version $VERSION — $(LC_ALL=C date +"%d %B %Y")"
   echo ""
   if [ -n "$DEBUG_SESSION_NOTE" ]; then
     echo "$DEBUG_SESSION_NOTE" | fold -s -w 80
@@ -89,14 +134,21 @@ DEBUG_SESSION_NOTE="Sign-in and 2FA work reliably again on the phone: no more lo
   echo ""
   echo "Changes since $LAST_PUBLISHED:"
   echo ""
-  # un saut de ligne entre chaque commit pour un rendu lisible partout
-  git log "$RANGE" --format="- %s%n" 2>/dev/null | sed 's/ — Tests [0-9/]*\. Version [0-9.]*\.//; s/Tests [0-9/]*\. Version [0-9.]*\.//' | head -60
+  printf '%s\n' "$TRANSLATED"
   echo ""
   echo "Built and tested by Mathias — code written by Vibe, reviewed and controlled by Mathias."
 } > "$KIT/whatsnew.txt"
-echo "whatsnew.txt généré depuis $LAST_PUBLISHED ($RANGE)"
+echo "whatsnew.txt généré (traduit en anglais) depuis $LAST_PUBLISHED ($RANGE)"
 
-[ -f "$KIT/metadata.json" ] || echo '{"name":"UToutlook Mail","description":"Outlook pour Ubuntu Touch"}' > "$KIT/metadata.json"
+[ -f "$KIT/metadata.json" ] || echo '{"name":"UToutlook Mail","description":"Outlook mail client for Ubuntu Touch"}' > "$KIT/metadata.json"
+
+# Garde-fou filet de sécurité : tout ce qui part au store doit être 100 % anglais (aucun accent)
+for f in "$KIT/whatsnew.txt" "$KIT/metadata.json"; do
+  if [ -f "$f" ] && grep -qP '[\x{00C0}-\x{00FF}]' "$f"; then
+    echo "ERREUR: $f contient des caractères accentués — le contenu envoyé au store doit être EN ANGLAIS. Upload bloqué."
+    exit 1
+  fi
+done
 
 echo ""
 echo "=== RÉCAP À MONTRER À MATHIAS (obligatoire avant upload) ==="
