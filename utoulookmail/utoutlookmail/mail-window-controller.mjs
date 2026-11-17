@@ -1,0 +1,2306 @@
+import {app, BrowserWindow, dialog, ipcMain, Menu, shell, clipboard, Notification, nativeImage, nativeTheme, screen, session, powerMonitor, net} from 'electron';
+import {spawn} from 'child_process';
+import getClientFile from './client-injector.mjs';
+import path from 'node:path';
+import {settings} from "../settings.mjs";
+import {t, getAllTranslations} from "../i18n.mjs";
+import {fileURLToPath} from 'node:url';
+import fs from 'node:fs';
+import {
+    CONFIG_DIR,
+    CACHE_DIR,
+    DATA_DIR,
+    INIT_FLAG_FILE,
+    LOGIN_FLAG_FILE,
+    NOTIF_FLAG_FILE,
+    ICON_PATH,
+    markCleanExit,
+} from '../config.mjs';
+import {logger} from '../logger.mjs';
+
+const __filenameNew = fileURLToPath(import.meta.url);
+const __dirnameNew = path.dirname(__filenameNew);
+
+// Zoom levels for mobile (step through with zoomIn/zoomOut)
+const ZOOM_LEVELS = [0.75, 0.85, 1.0, 1.15, 1.3, 1.5];
+
+/**
+ * MailWindowController — Orchestre la fenêtre principale Electron affichant Outlook Web.
+ *
+ * Responsabilités :
+ * - Création et gestion de la BrowserWindow (taille, frame, preload)
+ * - Injection CSS mobile-first (main.css, no-frame.css, dark mode)
+ * - Détection des mails non lus via observer DOM injecté
+ * - Relais des notifications vers Ubuntu Touch (D-Bus Postal via binary `notify`)
+ * - Communication shell↔Electron (Unix socket + fichiers trigger dans CACHE_DIR)
+ * - Zoom, injection de texte, gestes tactiles
+ * - Splash screen, détection hors-ligne, CSP
+ */
+class MailWindowController {
+    constructor(accountConfig = null) {
+        // Per-instance state (was module-level — caused cross-account leaks)
+        this.mainMailServiceUrl = null;
+        this.deeplinkUrls = [];
+        this.safelinksUrls = [];
+        this.mailServicesUrls = [];
+        this.showWindowFrame = true;
+        this.loginPage = 0;
+        this.pageLoadTimes = []; // timestamps of recent page loads for loop detection
+        this.loginPageLoadTimes = []; // v3.3.59: timestamps of login page loads for 2FA loop detection
+        this.redirectLoopDetected = false;
+        this.loginHintIntercepts = 0; // count of login_hint redirects intercepted
+        this.loopDetectorRetries = 0; // count of loop detector activations (max 3)
+        this.mfaLoopDetected = false; // v3.3.59: 2FA loop already handled
+        this.lastMailUrl = null; // v3.3.67: dernière URL de boîte mail chargée (sans ?code=) — cible de reprise après boucle 2FA
+        this.lastMailPageTime = 0; // v4.0.41: timestamp de la dernière page mail atteinte — protège contre les rechargements agressifs qui perdent le token
+        this.authTokenJumped = false; // v4.0.43: saut direct page mail après détection du jeton (évite de le déclencher en boucle)
+        this.authStartLoadTimes = []; // v3.3.67: chargements des pages /authorize|select_account (détection boucle KMSI)
+        this.inPageAuthEvents = []; // v4.0.38: navigations in-page récentes {t, kind: 'post'|'authstart'} pour la détection de boucle 2FA SPA
+        this.pageRangeErrors = []; // v3.3.74: timestamps des RangeError « Maximum call stack » de la page
+        this.sessionClearedForLoop = false; // v3.3.74: clear session déjà tenté une fois
+        this.currentZoomIndex = 2; // start at 1.0
+        this.initialMinimization = { domReady: false };
+
+        // v3.3.21: CSS keys are per-window now (win.__utoutlookCssKeys), base CSS only.
+        this.lastNotifiedUnread = 0;
+        this.cacheWatcher = null;
+        this.triggerTimers = new Map(); // debounce timers for file triggers
+        this.splashWindow = null;
+        this.splashClosed = false; // true once splash has been dismissed (URL match or timeout)
+        this.cookieFlushInterval = null; // periodic cookie flush to disk
+        this.observerHealthCheck = null; // periodic observer connectivity check
+        this.serverMonitor = null; // v4.0.3: periodic real server reachability check
+        this.serverFailCount = 0; // v4.0.3: consecutive failed server checks
+        this.serverWasUnreachable = false; // v4.0.3: server overlay currently shown
+        this.observerWasActive = false; // true once observer connected at least once
+        // Multi-account: each account has its own config and session partition
+        this.accountConfig = accountConfig;
+        this.accountId = accountConfig?.id || 'default';
+        this.accountName = accountConfig?.name || 'Compte principal';
+        this.sessionPartition = accountConfig?.partition || 'persist:utoutlook-default';
+        this.unreadCount = 0;
+        this.init();
+        // Check both command-line flag and settings for initial minimization
+        const hasMinimizedFlag = global.cmdLine.indexOf("--minimized") !== -1;
+        const startMinimizedSetting = settings.get("startMinimized");
+        this.initialMinimization.domReady = hasMinimizedFlag || startMinimizedSetting;
+    }
+
+    /**
+     * Recharge les settings depuis le store et construit les patterns RegExp
+     * pour les URLs internes, externes et safelinks.
+     */
+    reloadSettings() {
+        this.showWindowFrame = settings.get("showWindowFrame");
+        // Use account-specific URL if configured, fall back to global setting
+        this.mainMailServiceUrl = this.accountConfig?.url || settings.get("urlMainWindow");
+        this.deeplinkUrls = settings.get("urlsInternal");
+        this.mailServicesUrls = settings.get("urlsExternal");
+        this.safelinksUrls = settings.get("safelinksUrls");
+        this.focusMode = settings.get("focusMode") || false;
+        this.accentColor = settings.get("accentColor") || '#0078d4';
+
+        logger.info("Loaded settings", {
+            mainMailServiceUrl: this.mainMailServiceUrl,
+            deeplinkUrls: this.deeplinkUrls,
+            mailServicesUrls: this.mailServicesUrls,
+            safelinksUrls: this.safelinksUrls,
+        });
+
+        const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        this.safelinksPattern = new RegExp(this.safelinksUrls.map(escapeRegex).join("|"));
+        this.deeplinkPattern = new RegExp(this.deeplinkUrls.map(escapeRegex).join("|"));
+        this.mailServicesPattern = new RegExp(this.mailServicesUrls.map(escapeRegex).join("|"));
+    }
+
+    /**
+     * Ouvre une URL dans le navigateur externe (ou custom browser si configuré).
+     * Bloque les protocoles non-HTTP(S).
+     * @param {string} url - L'URL à ouvrir
+     */
+    openExternalLink(url) {
+        try {
+            const parsed = new URL(url);
+            if (!['http:', 'https:'].includes(parsed.protocol)) {
+                logger.warn('Blocked non-HTTP(S) URL:', url);
+                return;
+            }
+        } catch (err) {
+            logger.error('Invalid URL:', url, err);
+            return;
+        }
+
+        const customBrowserPath = settings.get("customBrowserPath");
+        if (customBrowserPath) {
+            logger.info(`Opening URL in custom browser: ${customBrowserPath}`);
+            try {
+                const child = spawn(customBrowserPath, [url], {detached: true, stdio: "ignore"});
+                child.unref();
+                child.on('error', (err) => {
+                    logger.error('Failed to spawn custom browser:', err);
+                    shell.openExternal(url);
+                });
+            } catch (err) {
+                logger.error('Failed to spawn custom browser:', err);
+                shell.openExternal(url);
+            }
+        } else {
+            shell.openExternal(url);
+        }
+    }
+
+    // --- Socket command handlers ---
+
+    /**
+     * Applique une action de zoom sur la webContents.
+     * @param {'in'|'out'|'reset'|number} action - Direction ou facteur de zoom direct
+     */
+    handleZoomCommand(action) {
+        if (!this.win || this.win.isDestroyed()) return;
+        if (action === 'in') {
+            this.currentZoomIndex = Math.min(this.currentZoomIndex + 1, ZOOM_LEVELS.length - 1);
+        } else if (action === 'out') {
+            this.currentZoomIndex = Math.max(this.currentZoomIndex - 1, 0);
+        } else if (action === 'reset') {
+            this.currentZoomIndex = 2;
+        } else if (typeof action === 'number') {
+            this.win.webContents.setZoomFactor(action);
+            return;
+        }
+        this.win.webContents.setZoomFactor(ZOOM_LEVELS[this.currentZoomIndex]);
+        logger.info(`Zoom set to ${ZOOM_LEVELS[this.currentZoomIndex]}`);
+    }
+
+    // v3.3.25: reading font scale steps (message body text), independent of global zoom
+    static READING_FONT_STEPS = [0.9, 1.0, 1.1, 1.25, 1.4];
+
+    handleReadingFontCommand(action) {
+        const steps = MailWindowController.READING_FONT_STEPS;
+        let scale = settings.get('readingFontScale') || 1.0;
+        let idx = steps.indexOf(scale);
+        if (idx === -1) idx = 1;
+        if (action === 'in') idx = Math.min(idx + 1, steps.length - 1);
+        else if (action === 'out') idx = Math.max(idx - 1, 0);
+        else if (action === 'reset') idx = 1;
+        else if (typeof action === 'number') { scale = action; settings.set('readingFontScale', scale); this.injectStyles().catch(() => {}); logger.info(`Reading font scale set to ${scale}`); return; }
+        scale = steps[idx];
+        settings.set('readingFontScale', scale);
+        this.injectStyles().catch(() => {});
+        logger.info(`Reading font scale: ${scale}`);
+    }
+
+    /**
+     * Insère du texte dans le champ actif de la page (clavier virtuel).
+     * @param {string} text - Texte à insérer
+     */
+    insertText(text) {
+        if (!this.win || this.win.isDestroyed()) return;
+        // v3.3.48: en Wayland natif (WAYLAND_DISPLAY set, plus de forçage X11),
+        // webContents.insertText (chemin XIM/X11) ne dépose rien. Fallback :
+        // insérer dans le champ focusé via execCommand → vrai événement input.
+        if (process.env.WAYLAND_DISPLAY) {
+            this.win.webContents.executeJavaScript(
+                `(()=>{var ae=document.activeElement;` +
+                `if(ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.isContentEditable)){` +
+                `ae.focus();document.execCommand('insertText',false,${JSON.stringify(text)});` +
+                `return ae.value!==undefined?String(ae.value).length:-1;}return null;})()`
+            ).catch(() => {});
+            return;
+        }
+        this.win.webContents.insertText(text);
+    }
+
+    // --- File-based triggers (replaces auto_zoom.sh and daemon.sh) ---
+
+    /**
+     * Surveille le CACHE_DIR pour les fichiers trigger (zoomtodo_*, sendMsg*).
+     * Utilise un debounce de 100ms pour éviter les déclenchements multiples.
+     */
+    startCacheWatcher() {
+        fs.mkdirSync(CACHE_DIR, {recursive: true});
+        this.cacheWatcher = fs.watch(CACHE_DIR, (eventType, filename) => {
+            if (!filename) return;
+            // Debounce: rapid file events (create+rename+change) should trigger once
+            const prefix = filename.startsWith('zoomtodo_') ? 'zoom:' :
+                           filename.startsWith('sendMsg') ? 'text:' : null;
+            if (!prefix) return;
+
+            // Clear any pending timer for this trigger type
+            const timerKey = prefix;
+            if (this.triggerTimers.has(timerKey)) {
+                clearTimeout(this.triggerTimers.get(timerKey));
+            }
+
+            // Schedule the handler after a short quiet period
+            this.triggerTimers.set(timerKey, setTimeout(() => {
+                this.triggerTimers.delete(timerKey);
+                if (prefix === 'zoom:') {
+                    this.handleZoomFileTrigger(filename);
+                } else {
+                    this.handleTextFileTrigger(filename);
+                }
+            }, 100));
+        });
+        // v3.3.23: if CACHE_DIR is removed (app reset), fs.watch emits 'error' →
+        // uncaughtException. Log and recreate instead of crashing.
+        this.cacheWatcher.on('error', (err) => {
+            logger.warn('cacheWatcher error (CACHE_DIR removed?):', err.message);
+            try { fs.mkdirSync(CACHE_DIR, {recursive: true}); } catch (e) { /* ignore */ }
+        });
+        logger.info(`Watching ${CACHE_DIR} for zoom/text triggers`);
+    }
+
+    handleZoomFileTrigger(filename) {
+        // zoomtodo_N → zoom in N times
+        const match = filename.match(/zoomtodo_(\d+)/);
+        if (!match) return;
+        const count = parseInt(match[1], 10);
+        // Clean up all zoomtodo files
+        this.cleanupTriggerFiles('zoomtodo_');
+        for (let i = 0; i < count; i++) {
+            this.handleZoomCommand('in');
+        }
+    }
+
+    handleTextFileTrigger(filename) {
+        const filepath = path.join(CACHE_DIR, filename);
+        try {
+            const text = fs.readFileSync(filepath, 'utf-8');
+            // Extract text after the last underscore (cut.sh behavior)
+            const finalText = text.includes('_') ? text.substring(text.lastIndexOf('_') + 1) : text;
+            this.insertText(finalText);
+        } catch (err) {
+            logger.error('Failed to read text trigger file:', err);
+        }
+        // Clean up
+        try { fs.unlinkSync(filepath); } catch (e) { /* ignore */ }
+    }
+
+    cleanupTriggerFiles(prefix) {
+        try {
+            const files = fs.readdirSync(CACHE_DIR);
+            for (const f of files) {
+                if (f.startsWith(prefix)) {
+                    fs.unlinkSync(path.join(CACHE_DIR, f));
+                }
+            }
+        } catch (err) { /* ignore */ }
+    }
+
+    // --- Session persistence: periodic cookie flush ---
+
+    /**
+     * Flush cookies to disk periodically so session survives SIGKILL / OOM.
+     * Chromium flushes every ~30s by default, but on Ubuntu Touch the app is
+     * frequently killed without a clean shutdown. We flush every 15s to be safe.
+     */
+    startCookieFlush() {
+        this.cookieFlushInterval = setInterval(() => {
+            this.flushSessionCookies();
+        }, 15000);
+        logger.info('Cookie flush interval started (15s)');
+
+        // v4.0.45: sauvegarde proactive du jeton d'auth dans un fichier local
+        // (DATA_DIR/auth-token.json) dès qu'il est posé — réinjecté au démarrage
+        // si Chromium l'a perdu (cookie de session non persisté). Le fichier est
+        // local au téléphone (AppArmor confine l'app à son CONFIG_DIR).
+        const ses = session.fromPartition(this.sessionPartition);
+        const AUTH_TOKEN_FILE = path.join(DATA_DIR, 'auth-token.json');
+        const AUTH_COOKIE_NAMES = /^(__Host-)?MSAAUTH(P)?$|ESTSAUTH(PERSIST)?$/i;
+        try { fs.mkdirSync(DATA_DIR, {recursive: true}); } catch (e) { /* ignore */ }
+
+        // Restaurer le token sauvegardé au démarrage (avant le 1er loadURL)
+        this.restoreAuthToken = async () => {
+            try {
+                if (!fs.existsSync(AUTH_TOKEN_FILE)) return;
+                const saved = JSON.parse(fs.readFileSync(AUTH_TOKEN_FILE, 'utf8'));
+                if (!saved.name || !saved.value || !saved.domain) return;
+                const url = `https://${saved.domain.replace(/^\./, '')}${saved.path || '/'}`;
+                await ses.cookies.set({
+                    url,
+                    name: saved.name,
+                    value: saved.value,
+                    domain: saved.domain,
+                    path: saved.path || '/',
+                    secure: true,
+                    httpOnly: saved.httpOnly || false,
+                    sameSite: 'no_restriction',
+                    expirationDate: saved.expirationDate || (Math.floor(Date.now() / 1000) + 365 * 86400),
+                });
+                logger.info(`v4.0.45: token restauré depuis ${AUTH_TOKEN_FILE} (${saved.name} sur ${saved.domain})`);
+                // Propager aussi sur les autres domaines Microsoft
+                await this.syncCookiesToLiveCom().catch(() => {});
+                await ses.cookies.flushStore().catch(() => {});
+            } catch (e) { logger.warn('v4.0.45: restore token failed:', e.message); }
+        };
+
+        ses.cookies.on('changed', (_event, cookie, _cause, removed) => {
+            if (removed) return;
+            const name = cookie.name || '';
+            const domain = (cookie.domain || '').toLowerCase();
+            if (!AUTH_COOKIE_NAMES.test(name)) return;
+            if (!domain.includes('live.com') && !domain.includes('microsoft') &&
+                !domain.includes('office.com') && !domain.includes('outlook')) return;
+            logger.info(`v4.0.45: auth cookie détecté (${name} sur ${domain}) — sauvegarde + flush`);
+            // Sauvegarder le token dans un fichier local (seulement le host-only login.live.com
+            // ou le domaine parent — évite de sauvegarder les copies sync)
+            if (domain === 'login.live.com' || domain === '.live.com' || domain === 'login.microsoftonline.com') {
+                try {
+                    fs.writeFileSync(AUTH_TOKEN_FILE, JSON.stringify({
+                        name: name.replace(/^__Host-/i, ''),
+                        value: cookie.value,
+                        domain: cookie.domain,
+                        path: cookie.path || '/',
+                        httpOnly: cookie.httpOnly || false,
+                        expirationDate: cookie.expirationDate || (Math.floor(Date.now() / 1000) + 365 * 86400),
+                        savedAt: new Date().toISOString(),
+                    }));
+                    logger.info(`v4.0.45: token sauvegardé dans ${AUTH_TOKEN_FILE}`);
+                } catch (e) { logger.warn('v4.0.45: sauvegarde token failed:', e.message); }
+            }
+            ses.cookies.flushStore().catch(() => {});
+            this.lastMailPageTime = Date.now();
+            // Saut direct à la page mail
+            if (this.win && !this.win.isDestroyed() && !this.authTokenJumped) {
+                this.authTokenJumped = true;
+                const isPersonal = !!this.knownEmail;
+                const target = isPersonal
+                    ? 'https://outlook.cloud.microsoft/mail/'
+                    : (this.mainMailServiceUrl || 'https://outlook.office.com/mail/');
+                logger.info(`v4.0.45: saut direct → ${target}`);
+                this.win.loadURL(target);
+                setTimeout(() => { this.authTokenJumped = false; }, 30000);
+            }
+        });
+        logger.info('v4.0.45: watcher de jeton d\'auth actif + sauvegarde fichier local');
+    }
+
+    /**
+     * Flush this account's session cookies to disk immediately.
+     */
+    async flushSessionCookies() {
+        try {
+            const ses = session.fromPartition(this.sessionPartition);
+            await ses.cookies.flushStore();
+            logger.debug('Cookies flushed to disk');
+        } catch (err) {
+            logger.warn('Failed to flush cookies:', err.message);
+        }
+    }
+
+    /**
+     * Clear all cookies for Outlook/Microsoft domains in this session partition.
+     * Used to break redirect loops (mail → oauthRedirect → mail → …).
+     */
+    async clearOutlookSession() {
+        try {
+            const ses = session.fromPartition(this.sessionPartition);
+            const cookies = await ses.cookies.get({});
+            let cleared = 0;
+            for (const cookie of cookies) {
+                const domain = (cookie.domain || '').toLowerCase();
+                if (domain.includes('outlook') ||
+                    domain.includes('microsoft') ||
+                    domain.includes('live.com') ||
+                    domain.includes('office.com') ||
+                    domain.includes('office365') ||
+                    domain.includes('sharepoint') ||
+                    domain.includes('msauth') ||
+                    domain.includes('msocdn') ||
+                    domain.includes('msecnd') ||
+                    domain.includes('msftauth')) {
+                    const url = cookie.secure ? `https://${cookie.domain}${cookie.path}` : `http://${cookie.domain}${cookie.path}`;
+                    await ses.cookies.remove(url, cookie.name);
+                    cleared++;
+                }
+            }
+            await ses.cookies.flushStore();
+            logger.info(`Cleared ${cleared} Outlook/Microsoft cookies`);
+        } catch (err) {
+            logger.error('Failed to clear Outlook session:', err.message);
+        }
+    }
+
+    /**
+     * Copy session/auth cookies from office.com domains to live.com domains.
+     * Personal Microsoft accounts get redirected from outlook.office.com to
+     * outlook.live.com after login, but the session cookies set on .office.com
+     * are not sent to .live.com — causing an infinite loop with oauthRedirect.html.
+     * This copies the cookies so the session is valid on both domains.
+     */
+    async syncCookiesToLiveCom() {
+        try {
+            const ses = session.fromPartition(this.sessionPartition);
+            const cookies = await ses.cookies.get({});
+            let copied = 0;
+            for (const cookie of cookies) {
+                const domain = (cookie.domain || '').toLowerCase();
+                // v3.3.79: ne JAMAIS recopier stsservicecookie — sa présence sur
+                // login.microsoftonline.com déclenche le resume SSO silencieux
+                // « Trying to sign you in » dont la vue plante en boucle (RangeError)
+                if (cookie.name.toLowerCase() === 'stsservicecookie') continue;
+                // Map source domains to live.com equivalents.
+                // Also copy login.live.com cookies to outlook.live.com specifically,
+                // and office.com cookies to .live.com (parent domain) for sharing.
+                const targets = [];
+                if (domain === '.office.com' || domain === '.office365.com') {
+                    targets.push('.live.com');
+                } else if (domain === 'outlook.office.com' || domain === 'outlook.office365.com') {
+                    targets.push('outlook.live.com', '.live.com');
+                } else if (domain === '.microsoft.com' || domain === '.microsoftonline.com' ||
+                           domain === 'login.microsoftonline.com' || domain === 'outlook.microsoft.com') {
+                    // v3.3.15: also share to login.live.com — the SPA goes straight
+                    // to login.microsoftonline.com and never passes through
+                    // login.live.com, so the persistent auth cookie
+                    // (__Host-MSAAUTHP on login.live.com) was never presented there
+                    // → the pick-account page showed no account.
+                    targets.push('.live.com', 'outlook.live.com', 'login.live.com');
+                } else if (domain === '.msauth.net' || domain === '.msocdn.com' ||
+                           domain === '.msftauth.net' || domain === '.msecnd.net') {
+                    targets.push('.live.com', 'outlook.live.com', 'login.live.com');
+                } else if (domain === 'login.live.com') {
+                    // login.live.com cookies → outlook.live.com + login.microsoftonline.com
+                    // (the authorize endpoint only receives its own-domain cookies)
+                    targets.push('outlook.live.com', 'login.microsoftonline.com', '.microsoftonline.com');
+                }
+                // v3.3.11: Outlook now serves mail from outlook.cloud.microsoft.
+                // Session/auth cookies must also exist on .cloud.microsoft, or
+                // Microsoft does not recognize the session there and falls back
+                // to the "we found an account you can use" page (select_account).
+                if (domain.includes('microsoft') || domain.includes('office') ||
+                    domain.includes('live.com') || domain.includes('msauth') ||
+                    domain.includes('msocdn') || domain.includes('msecnd') ||
+                    domain.includes('msftauth')) {
+                    // v3.3.15: the authorize page lives on login.microsoftonline.com
+                    // and only receives its own-domain cookies — share there too,
+                    // otherwise the pick-account page shows no known account.
+                    targets.push('.cloud.microsoft', 'outlook.cloud.microsoft',
+                                 'login.microsoftonline.com', '.microsoftonline.com');
+                }
+                for (const newDomain of targets) {
+                    const host = newDomain.replace(/^\./, '');
+                    const url = `https://${host}${cookie.path || '/'}`;
+                    // v3.3.13: __Host-/__Secure- prefixed cookies CANNOT be set
+                    // with a domain attribute — Chromium rejects them
+                    // ("invalid __Host- or __Secure- prefix"), so session cookies
+                    // like __Host-MSAAUTH were silently NOT copied and the login
+                    // page lost the account ("compte que vous pouvez utiliser ici"
+                    // with no user shown). Strip the prefix for the copy: the
+                    // target domain then reads the unprefixed name.
+                    const copyName = cookie.name.replace(/^__(?:Host|Secure)-/i, '');
+                    try {
+                        await ses.cookies.set({
+                            url,
+                            name: copyName,
+                            value: cookie.value,
+                            domain: newDomain,
+                            path: cookie.path || '/',
+                            secure: true,           // required for SameSite=None
+                            httpOnly: cookie.httpOnly,
+                            expirationDate: cookie.expirationDate,
+                            // Force SameSite=None so cookies are sent cross-site
+                            // (office.com ↔ live.com are different sites)
+                            sameSite: 'no_restriction',
+                        });
+                        copied++;
+                    } catch (e) {
+                        // v3.3.22: HttpOnly overwrite refusals are expected for tracking
+                        // cookies (MSFPC/NAP/MCN…) — debug level, not warn (log spam).
+                        logger.debug(`Cookie copy failed: ${cookie.name} → ${newDomain}: ${e.message}`);
+                    }
+                }
+            }
+            await ses.cookies.flushStore();
+            logger.info(`Synced ${copied} cookies → live.com / cloud.microsoft (SameSite=None)`);
+            // Debug: log cookie names for troubleshooting
+            if (copied > 0) {
+                const liveCookies = await ses.cookies.get({ domain: '.live.com' });
+                const names = liveCookies.map(c => c.name).join(', ');
+                logger.info(`live.com cookies (${liveCookies.length}): ${names.substring(0, 500)}`);
+            }
+        } catch (err) {
+            logger.error('Failed to sync cookies to live.com:', err.message);
+        }
+    }
+
+    // --- Observer health check ---
+
+    /**
+     * Periodically check if the unread observer is still connected.
+     * If the page navigated or the observer was lost, re-inject it.
+     * Outlook is a SPA — the observer can silently die on navigation.
+     */
+    startObserverHealthCheck() {
+        this.observerHealthCheck = setInterval(async () => {
+            if (!this.win || this.win.isDestroyed()) return;
+            try {
+                // First verify the page can execute JS at all
+                const pageReady = await this.win.webContents.executeJavaScript(
+                    `(() => {
+                        try {
+                            return document.readyState === 'complete'
+                                || document.readyState === 'interactive';
+                        } catch(e) { return false; }
+                    })()`
+                );
+                if (!pageReady) {
+                    logger.debug('Health check: page not ready, skipping');
+                    return;
+                }
+
+                const connected = await this.win.webContents.executeJavaScript(
+                    `(() => {
+                        return typeof window.__utoutlookObserverActive !== 'undefined'
+                            && window.__utoutlookObserverActive === true;
+                    })()`
+                );
+                if (connected) {
+                    // Observer is active — remember for future checks
+                    this.observerWasActive = true;
+                } else if (this.observerWasActive) {
+                    // Observer WAS active but is now gone (SPA navigation killed it)
+                    // Only re-inject in this case — let the observer's own retry
+                    // backoff handle the initial connection on first load.
+                    this.observerWasActive = false;
+                    logger.info('Observer disconnected — re-injecting');
+                    await this.addUnreadNumberObserver();
+                }
+                // else: observer never connected yet — its own retry backoff
+                // (3s → 30s exponential) is handling initial connection.
+            } catch (err) {
+                // Page might not be ready or navigating — will retry next interval
+                logger.debug('Observer health check failed:', err.message);
+            }
+        }, 10000);
+        logger.info('Observer health check started (10s)');
+    }
+
+    // --- UBports notification relay ---
+
+    /**
+     * Retourne le chemin du binary `notify` embarqué, ou null s'il n'existe pas.
+     * @returns {string|null}
+     */
+    getNotifyBinaryPath() {
+        const appDir = path.dirname(process.execPath);
+        const notifyPath = path.resolve(appDir, '..', 'notify');
+        return fs.existsSync(notifyPath) ? notifyPath : null;
+    }
+
+    /**
+     * Envoie une notification Ubuntu Touch via le binary `notify` (D-Bus Postal).
+     * @param {string} title - Titre de la notification
+     * @param {string} [body] - Corps de la notification
+     * @param {Function} [onError] - Callback appelé si le spawn échoue (async)
+     * @returns {boolean} true si la notification a été envoyée
+     */
+    sendUbportsNotification(title, body, onError) {
+        const notifyPath = this.getNotifyBinaryPath();
+        if (!notifyPath) return false;
+        try {
+            const args = body ? [title, body] : [title];
+            const child = spawn(notifyPath, args, {detached: true, stdio: 'ignore'});
+            child.unref();
+            child.on('error', (err) => {
+                logger.error('Failed to spawn notify binary:', err);
+                if (onError) onError();
+            });
+            return true;
+        } catch (err) {
+            logger.error('Failed to spawn notify binary:', err);
+            return false;
+        }
+    }
+
+    // --- CSP ---
+
+    setupCSP() {
+        // Apply CSP to this account's session partition (not just defaultSession)
+        const ses = session.fromPartition(this.sessionPartition);
+        ses.webRequest.onHeadersReceived((details, callback) => {
+            callback({
+                responseHeaders: {
+                    ...details.responseHeaders,
+                    'Content-Security-Policy': [
+                        "default-src 'self' https://outlook.com https://*.outlook.com " +
+                        "https://outlook.office.com https://*.office.com " +
+                        "https://*.office365.com https://*.live.com https://*.live.net " +
+                        "https://*.microsoft.com https://*.microsoftonline.com https://*.cloud.microsoft " +
+                        "https://*.msauth.net https://*.msocdn.com " +
+                        "https://*.sharepoint.com https://*.msecnd.net https://*.msftauth.net " +
+                        "https://*.cdn.office.net https://*.onecdn.static.microsoft " +
+                        "https://*.github.com https://*.githubassets.com https://*.bing.com; " +
+                        // script-src must include ALL domains that serve JS, not just
+                        // default-src — otherwise Outlook boot JS from CDNs is blocked
+                        // (olkerror.html?esrc=NoBootJs). blob: needed for web workers.
+                        "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: " +
+                        "https://outlook.com https://*.outlook.com " +
+                        "https://outlook.office.com https://*.office.com https://*.office365.com " +
+                        "https://*.live.com https://*.live.net " +
+                        "https://*.microsoft.com https://*.microsoftonline.com https://*.cloud.microsoft " +
+                        "https://*.msocdn.com https://*.msauth.net https://*.msecnd.net " +
+                        "https://*.msftauth.net https://*.cdn.office.net https://*.sharepoint.com " +
+                        "https://*.onecdn.static.microsoft " +
+                        "https://*.github.com https://*.githubassets.com https://*.bing.com; " +
+                        "style-src 'self' 'unsafe-inline' https://outlook.com https://*.outlook.com " +
+                        "https://outlook.office.com https://*.office.com " +
+                        "https://*.office365.com https://*.live.com https://*.live.net " +
+                        "https://*.microsoft.com https://*.microsoftonline.com https://*.cloud.microsoft " +
+                        "https://*.msocdn.com https://*.msauth.net " +
+                        "https://*.msftauth.net https://*.cdn.office.net https://*.onecdn.static.microsoft " +
+                        "https://*.github.com https://*.githubassets.com https://*.bing.com; " +
+                        "img-src 'self' data: https: blob:; " +
+                        "connect-src 'self' https://outlook.com https://*.outlook.com " +
+                        "https://outlook.office.com https://*.office.com wss://*.office.com " +
+                        "https://*.live.com https://*.live.net " +
+                        "https://*.office365.com https://*.sharepoint.com " +
+                        "https://*.microsoft.com https://*.microsoftonline.com https://*.cloud.microsoft https://*.msocdn.com " +
+                        "https://*.msauth.net https://*.msecnd.net https://*.msftauth.net " +
+                        "https://*.cdn.office.net https://*.onecdn.static.microsoft " +
+                        "https://*.github.com https://*.githubassets.com https://*.bing.com " +
+                        "wss://*.live.com wss://*.live.net wss://*.office365.com wss://*.cloud.microsoft; " +
+                        "font-src 'self' https://outlook.com https://*.outlook.com " +
+                        "https://outlook.office.com https://*.office.com " +
+                        "https://*.office365.com https://*.live.com https://*.live.net " +
+                        "https://*.microsoft.com https://*.microsoftonline.com https://*.cloud.microsoft " +
+                        "https://*.msocdn.com https://*.msauth.net " +
+                        "https://*.msftauth.net https://*.cdn.office.net https://*.onecdn.static.microsoft " +
+                        "https://*.github.com https://*.githubassets.com https://*.bing.com data:; " +
+                        "media-src 'self' https: blob:; " +
+                        "frame-src 'self' https://outlook.com https://*.outlook.com " +
+                        "https://outlook.office.com https://*.office.com " +
+                        "https://*.office365.com https://*.live.com https://*.live.net " +
+                        "https://*.microsoft.com https://*.microsoftonline.com https://*.cloud.microsoft https://*.sharepoint.com; " +
+                        "worker-src 'self' blob:;"
+                    ]
+                }
+            });
+        });
+    }
+
+    // --- Dark mode (amélioré) ---
+
+    /**
+     * Détermine si le mode sombre doit être actif.
+     * @returns {boolean}
+     */
+    shouldUseDarkMode() {
+        const mode = settings.get("darkMode") || 'auto';
+        if (mode === 'on') return true;
+        if (mode === 'off') return false;
+        return nativeTheme.shouldUseDarkColors;
+    }
+
+    /**
+     * Cycle le mode sombre : auto → on → off → auto.
+     * @returns {string} nouveau mode ('auto' | 'on' | 'off')
+     */
+    async toggleDarkMode() {
+        const current = settings.get("darkMode") || 'auto';
+        const next = current === 'auto' ? 'on' : current === 'on' ? 'off' : 'auto';
+        settings.set("darkMode", next);
+        await this.applyDarkModeClass();
+        await this.injectStyles();
+        logger.info(`Dark mode: ${next}`);
+        return next;
+    }
+
+    /**
+     * Applique ou retire la classe dark-mode sur <html> selon le setting.
+     */
+    async applyDarkModeClass() {
+        if (!this.win || this.win.isDestroyed()) return;
+        const dark = this.shouldUseDarkMode();
+        // v3.3.65: .catch — page may be navigating, avoid unhandled rejection
+        await this.win.webContents.executeJavaScript(
+            `document.documentElement.classList.toggle('dark-mode', ${dark});`
+        ).catch(() => {});
+    }
+
+    getDarkModeCSS() {
+        return `
+            /* Dark mode — Outlook web */
+            html.dark-mode body,
+            html.dark-mode [role="main"],
+            html.dark-mode [class*="bodyContainer"],
+            html.dark-mode [class*="content"],
+            html.dark-mode [class*="mainContent"],
+            html.dark-mode [class*="readingPane"],
+            html.dark-mode [class*="messageList"],
+            html.dark-mode [class*="listView"] {
+                background-color: #1a1a1a !important;
+                color: #e0e0e0 !important;
+            }
+            /* Navigation pane */
+            html.dark-mode [data-app-section="NavigationPane"],
+            html.dark-mode [class*="folderPane"],
+            html.dark-mode [class*="navigationPane"] {
+                background-color: #252525 !important;
+                color: #c0c0c0 !important;
+            }
+            /* Cards and surfaces */
+            html.dark-mode [class*="card"],
+            html.dark-mode [class*="surface"],
+            html.dark-mode [class*="panel"],
+            html.dark-mode [class*="dialog"] {
+                background-color: #2d2d2d !important;
+                color: #e0e0e0 !important;
+            }
+            /* Inputs */
+            html.dark-mode input,
+            html.dark-mode textarea,
+            html.dark-mode [class*="textField"] {
+                background-color: #3a3a3a !important;
+                color: #e0e0e0 !important;
+                border-color: #555 !important;
+            }
+            /* Links */
+            html.dark-mode a { color: #6cb6ff !important; }
+            /* Separators */
+            html.dark-mode [class*="divider"],
+            html.dark-mode hr {
+                border-color: #444 !important;
+            }
+            /* System dark preference fallback */
+            @media (prefers-color-scheme: dark) {
+                body { background-color: #1a1a1a !important; color: #e0e0e0 !important; }
+            }
+        `;
+    }
+
+    // --- Focus mode (lecture concentrée) ---
+
+    getFocusModeCSS() {
+        return `
+            /* Hide navigation pane */
+            [data-app-section="NavigationPane"],
+            [class*="folderPane"],
+            [class*="navigationPane"],
+            [class*="LeftRail"],
+            [class*="leftRail"] {
+                display: none !important;
+            }
+            /* Hide ads and banners */
+            [class*="adBar"],
+            [class*="AdBar"],
+            [class*="premiumBanner"],
+            [class*="upgradeBanner"] {
+                display: none !important;
+            }
+            /* Hide reading pane header actions (keep first 3 primary buttons: Reply, Forward, etc.) */
+            [class*="commandBar"] button:nth-child(n+4),
+            [class*="commandBar"] [role="button"]:nth-child(n+4) {
+                display: none !important;
+            }
+            /* Maximize email content area */
+            [class*="readingPane"],
+            [class*="messageBody"],
+            [class*="emailContent"] {
+                max-width: 100% !important;
+                padding: 8px 16px !important;
+            }
+            /* Dim non-essential UI */
+            [class*="headerBar"] > *:not(button):not([role="button"]),
+            [class*="topBar"] > *:not(button):not([role="button"]) {
+                opacity: 0.5 !important;
+            }
+            /* Focus indicator */
+            body::after {
+                content: "${t('focus.indicator')}";
+                position: fixed;
+                bottom: 8px;
+                right: 8px;
+                background: rgba(0,0,0,0.6);
+                color: #fff;
+                padding: 4px 12px;
+                border-radius: 12px;
+                font-size: 12px;
+                z-index: 9999;
+                pointer-events: none;
+                font-family: Ubuntu, sans-serif;
+            }
+        `;
+    }
+
+    // --- Accent color theme ---
+
+    getAccentColorCSS(color) {
+        return `
+            /* Custom accent color override */
+            :root {
+                --utoutlook-accent: ${color} !important;
+            }
+            /* Buttons */
+            button[class*="primary"],
+            [role="button"][class*="primary"],
+            button[class*="accent"],
+            [class*="ms-Button--primary"] {
+                background-color: ${color} !important;
+                border-color: ${color} !important;
+            }
+            /* Links */
+            a[class*="primary"],
+            [class*="link"][class*="primary"] {
+                color: ${color} !important;
+            }
+            /* Selection highlight */
+            ::selection {
+                background-color: ${color} !important;
+                color: #fff !important;
+            }
+            /* Focus ring */
+            *:focus-visible {
+                outline-color: ${color} !important;
+            }
+            /* Progress bar */
+            [class*="progressBar"] > div,
+            [class*="progress"] > div {
+                background-color: ${color} !important;
+            }
+        `;
+    }
+
+    /**
+     * Bascule le mode lecture concentrée (focus mode).
+     * @returns {boolean} nouvel état
+     */
+    async toggleFocusMode() {
+        this.focusMode = !this.focusMode;
+        settings.set("focusMode", this.focusMode);
+        await this.injectStyles();
+        logger.info(`Focus mode: ${this.focusMode ? 'ON' : 'OFF'}`);
+        return this.focusMode;
+    }
+
+    /**
+     * Définit la couleur d'accent personnalisée.
+     * @param {string} color - Code couleur hex (#rrggbb)
+     */
+    async setAccentColor(color) {
+        if (!/^#[0-9a-fA-F]{6}$/.test(color)) {
+            logger.warn(`Invalid accent color: ${color}`);
+            return;
+        }
+        this.accentColor = color;
+        settings.set("accentColor", color);
+        await this.injectStyles();
+        logger.info(`Accent color set to: ${color}`);
+    }
+
+    // --- Lifecycle orchestrator ---
+
+    init() {
+        this.reloadSettings();
+        this.setupCSP();
+        this.createSplashWindow();
+        this.createWindow();
+        this.loadMainUrl();
+        this.setupLoadingIndicators();
+        this.setupContextMenu();
+        this.setupIpcHandlers();
+        this.setupWebContentsEvents();
+        this.setupWindowOpenHandler();
+        // v3.3.20: the compose window opens as a SEPARATE BrowserWindow — inject
+        // the UT look & gestures there too, or it stays unstyled.
+        app.on('browser-window-created', (_e, win) => {
+            if (win === this.win) return;
+            win.webContents.on('dom-ready', () => {
+                this.injectStyles(win).catch(() => {});
+                this.injectGestures(win);
+            });
+        });
+        this.setupWindowEvents();
+        this.setupPowerEvents();
+        this.setupScreenEvents();
+        this.setupOfflineDetection();
+        this.startServerMonitor(); // v4.0.3: real in-app server reachability test
+        this.startCacheWatcher();
+        this.startCookieFlush();
+        this.startObserverHealthCheck();
+    }
+
+    // --- Splash screen ---
+
+    createSplashWindow() {
+        const splashPath = path.resolve(__dirnameNew, '../../public/splash.html');
+        if (!fs.existsSync(splashPath)) {
+            // v3.3.4: without the splash there is no 30s safety timeout that
+            // calls closeSplashWindow() → win.show(). Log loudly so a missing
+            // splash.html in the asar is visible in the logs.
+            logger.error(`splash.html NOT FOUND at ${splashPath} — no splash timeout will fire`);
+            return;
+        }
+        logger.info('Splash window created');
+
+        const primaryDisplay = screen.getPrimaryDisplay();
+        const {width, height} = primaryDisplay.workAreaSize;
+
+        this.splashWindow = new BrowserWindow({
+            width: Math.min(400, width),
+            height: Math.min(520, height),
+            frame: false,
+            transparent: false,
+            resizable: false,
+            movable: false,
+            minimizable: false,
+            maximizable: false,
+            fullscreenable: false,
+            alwaysOnTop: true,
+            skipTaskbar: true,
+            show: true,
+            backgroundColor: '#0f0f1a',
+            webPreferences: {
+                contextIsolation: true,
+                sandbox: true,
+                // v4.0.10: preload dédié splash — expose UNIQUEMENT first-install
+                // (bouton « ceinture et bretelles » si l'app ne démarre pas)
+                preload: path.resolve(__dirnameNew, 'splash-preload.js'),
+            },
+        });
+
+        this.splashWindow.setMenu(null);
+        // Pass translations via query params
+        const splashParams = new URLSearchParams({
+            loading: t('splash.loading'),
+            appName: t('app.name'),
+            firstInstall: t('login.firstInstall'),
+        });
+        this.splashWindow.loadFile(splashPath, {search: splashParams.toString()});
+
+        // Safety timeout: close splash after 15s even if the mail interface
+        // URL is never detected (slow connection, login wall, error page).
+        // 10s was too short for Outlook on mobile — the splash would vanish
+        // before the page finished loading, revealing a half-rendered page.
+        this.splashTimeout = setTimeout(() => {
+            logger.warn('Splash timeout (15s) — forcing splash close');
+            // v4.0.36: tell the user to relaunch if the splash got stuck
+            try { this.sendUbportsNotification(t('app.name'), t('splash.timeout')); } catch (e) { /* ignore */ }
+            this.closeSplashWindow();
+        }, 15000);
+    }
+
+    closeSplashWindow() {
+        if (this.splashClosed) return;
+        this.splashClosed = true;
+        if (this.splashTimeout) {
+            clearTimeout(this.splashTimeout);
+            this.splashTimeout = null;
+        }
+        if (this.splashWindow && !this.splashWindow.isDestroyed()) {
+            this.splashWindow.close();
+            this.splashWindow = null;
+        }
+        // Show the main window when the splash closes — the user should see
+        // the app content (mail interface, login page, or offline overlay)
+        // immediately after the splash disappears, never a blank screen.
+        // v4.0.10 (fix upgrade from < 3.0): ALWAYS show on the first splash
+        // close. A startMinimized=true persisted by a v2.x settings.json used
+        // to keep the window hidden here → app running but invisible, user
+        // stuck on the splash / transparent screen. (settings.mjs now also
+        // forces startMinimized=false at startup; this is defense in depth.)
+        if (this.win && !this.win.isDestroyed()) {
+            logger.info('closeSplashWindow: showing main window');
+            this.initialMinimization.domReady = false;
+            this.handleDisplayChange(); // v3.3.82: fenêtre plein écran dès le départ en portrait
+            this.win.show();
+            // v3.3.31: grab the X11 focus too — a visible-but-unfocused window
+            // does not raise Maliit's virtual keyboard when the login field is
+            // tapped (password field stays empty).
+            this.win.focus();
+        } else {
+            logger.warn(`closeSplashWindow: NOT showing main window (win=${!!this.win}, destroyed=${this.win?.isDestroyed()})`);
+        }
+    }
+
+    /**
+     * Détecte si l'URL est l'interface mail réelle (pas une page de redirect
+     * ou de login). Outlook redirige plusieurs fois au démarrage :
+     * outlook.com → outlook.office.com → (login) → outlook.office.com/mail/
+     * Le splash doit rester ouvert pendant ces redirects intermédiaires.
+     * @param {string} url
+     * @returns {boolean}
+     */
+    isMailInterfaceUrl(url) {
+        return url.includes('/mail/') &&
+               !url.includes('login') &&
+               !url.includes('oauth') &&
+               !url.includes('consent') &&
+               !url.includes('error');
+    }
+
+    /**
+     * Détecte si l'URL est une page de login. Dans ce cas, le splash doit
+     * se fermer pour que l'utilisateur puisse interagir avec le formulaire.
+     * @param {string} url
+     * @returns {boolean}
+     */
+    isLoginPageUrl(url) {
+        return url.includes('login.live.com') ||
+               url.includes('login.microsoftonline.com') ||
+               url.includes('login.microsoft.com') ||
+               url.includes('account.microsoft.com') ||
+               url.includes('oauth') ||
+               url.includes('consent');
+    }
+
+    // v4.0.37: masquait la fenêtre pendant le resync d'une boucle 2FA.
+    // v4.0.39: ne plus masquer — sur Ubuntu Touch (FP5, GPU Adreno/Zink fragile)
+    // le win.hide() provoquait la mort du process GPU (FATAL "GPU process isn't
+    // usable") donc l'app « sortait » aussitôt après la validation du compte.
+    // v4.0.40: au lieu de masquer, affiche un VOILE BLANC opaque avec un message
+    // i18n « Veuillez patienter... » en gros — bloque les taps (évite le double
+    // appui sur le bouton pendant le resync) sans toucher au GPU.
+    // Retiré quand une page mail charge (voir isMailPage) ou après 20 s (fallback).
+    hideDuringResync() {
+        if (this.resyncHidden) return;
+        this.resyncHidden = true;
+        logger.info('resync 2FA en cours — voile blanc « veuillez patienter » (v4.0.40)');
+        try {
+            const msg = JSON.stringify(t('resync.pleaseWait'));
+            this.win.webContents.executeJavaScript(`
+                (function () {
+                    if (document.getElementById('utoutlook-resync-overlay')) return;
+                    var d = document.createElement('div');
+                    d.id = 'utoutlook-resync-overlay';
+                    d.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#ffffff;' +
+                        'display:flex;align-items:center;justify-content:center;text-align:center;' +
+                        'font-family:sans-serif;font-size:8vw;font-weight:bold;color:#E95420;' +
+                        'padding:2em;cursor:wait;user-select:none;';
+                    d.textContent = ${msg};
+                    document.body.appendChild(d);
+                })();
+            `).catch(() => {});
+        } catch (e) { /* ignore */ }
+        setTimeout(() => {
+            if (this.resyncHidden && this.alive) {
+                this.resyncHidden = false;
+                this.removeResyncOverlay();
+            }
+        }, 20000);
+    }
+
+    removeResyncOverlay() {
+        try {
+            this.win.webContents.executeJavaScript(`
+                (function () {
+                    var d = document.getElementById('utoutlook-resync-overlay');
+                    if (d) d.remove();
+                })();
+            `).catch(() => {});
+        } catch (e) { /* ignore */ }
+    }
+
+    // v4.0.37: 2FA loop via in-page (SPA) navigations. On desktop the loop
+    // after Authenticator approval is a series of pushState on
+    // login.live.com/ppsecure/post.srf — did-finish-load never fires, so the
+    // full-load detector misses it. Count these too and break the loop the
+    // same way (aggressive cookie sync + reload last mail URL).
+    trackInPageAuthLoop(url) {
+        // v4.0.38: ppsecure/post.srf est AUSSI la page normale juste APRÈS une
+        // validation de compte réussie (le SPA rejoue le POST de login par
+        // pushState). v4.0.39: on compte à nouveau post.srf seul (comme v4.0.37)
+        // car sur le téléphone la VRAIE boucle 2FA est une répétition pure de
+        // post.srf sans jamais atteindre la page mail — exiger un rebond vers
+        // /authorize désactivait la détection et la boucle revenait. Le faux
+        // positif d'avant venait du win.hide() (crash GPU sur UT), pas du
+        // comptage : hideDuringResync ne masque plus la fenêtre (v4.0.39).
+        // Reset propre si la page mail est atteinte en in-page (login réussi).
+        let isLoopPage = false;
+        try {
+            isLoopPage = new URL(url).pathname.includes('ppsecure/post.srf');
+        } catch (e) { return; }
+        const isMailPage = url.includes('outlook.live.com/mail') ||
+                           url.includes('outlook.office.com/mail') ||
+                           url.includes('outlook.office365.com/mail') ||
+                           url.includes('outlook.cloud.microsoft/mail') ||
+                           url.includes('outlook.com/mail');
+        if (isMailPage) {
+            this.inPageAuthEvents = [];
+            return;
+        }
+        if (!isLoopPage) return;
+        const now = Date.now();
+        this.inPageAuthEvents.push({t: now, kind: 'post'});
+        this.inPageAuthEvents = this.inPageAuthEvents.filter(e => now - e.t < 30000);
+        const postCount = this.inPageAuthEvents.length;
+        // v4.0.41: ne JAMAIS déclencher la reprise 2FA si la page mail a été
+        // atteinte il y a moins de 60 s — le token vient d'être posé et flushé,
+        // recharger maintenant le perdrait (retour au login).
+        const mailRecentlyReached = this.lastMailPageTime && (now - this.lastMailPageTime < 60000);
+        if (postCount >= 4 && this.lastMailUrl && !this.mfaLoopDetected && !mailRecentlyReached) {
+            this.mfaLoopDetected = true;
+            logger.warn(`2FA SPA loop detected: ${postCount} post.srf in-page navigations in 30s with bounce-back to auth page — aggressive cookie sync`);
+            this.hideDuringResync();
+            this.loginPageLoadTimes = [];
+            this.authStartLoadTimes = [];
+            this.inPageAuthEvents = [];
+            this.syncCookiesToLiveCom().then(async () => {
+                try { await session.fromPartition(this.sessionPartition).cookies.flushStore(); } catch (e) { /* ignore */ }
+                // v4.0.37: compte perso (outlook.fr/hotmail) — la session vit sur live.com,
+                        // office.com/cloud.microsoft rebondissent sur oauthRedirect.html.
+                        const lastUrl = this.lastMailUrl || this.mainMailServiceUrl || '';
+                        // v4.0.37: live.com uniquement pour un compte PERSO (knownEmail n'est renseigné
+                        // que pour outlook/hotmail/live/msn) ; compte pro = on garde lastUrl.
+                        const isPersonal = !!this.knownEmail;
+                        const target = (isPersonal && (lastUrl.includes('office.com') || lastUrl.includes('cloud.microsoft')))
+                            ? 'https://outlook.live.com/mail/' : lastUrl;
+                logger.info(`2FA SPA loop: reloading ${target} after aggressive cookie sync`);
+                this.win.loadURL(target);
+                this.mfaLoopDetected = false;
+            }).catch(() => {});
+        } else if (postCount >= 4 && !this.lastMailUrl && !this.mfaLoopDetected && !mailRecentlyReached) {
+            // v4.0.41: boucle post.srf SANS jamais avoir atteint la page mail
+            // (token perdu / connexion vierge) — recharger avec prompt=login
+            // pour forcer le formulaire de login au lieu du resume SSO/select_account
+            // qui boucle en boucle sur post.srf sans laisser l'utilisateur interagir.
+            this.mfaLoopDetected = true;
+            logger.warn(`2FA SPA loop (no mail page yet): ${postCount} post.srf in 30s — reloading with prompt=login to show login form`);
+            this.inPageAuthEvents = [];
+            this.loginPageLoadTimes = [];
+            this.authStartLoadTimes = [];
+            this.syncCookiesToLiveCom().then(async () => {
+                try { await session.fromPartition(this.sessionPartition).cookies.flushStore(); } catch (e) { /* ignore */ }
+                let target = this.mainMailServiceUrl || 'https://outlook.office.com/mail/';
+                target += (target.includes('?') ? '&' : '?') + 'prompt=login';
+                logger.info(`2FA SPA loop (no mail): reloading ${target} with prompt=login`);
+                this.win.loadURL(target);
+                this.mfaLoopDetected = false;
+            }).catch(() => {});
+        }
+    }
+
+    createWindow() {
+        this.win = new BrowserWindow({
+            x: 100, y: 100,
+            width: 1400, height: 900,
+            frame: this.showWindowFrame,
+            autoHideMenuBar: true,
+            show: false,
+            title: `UToulookMail — ${this.accountName}`,
+            icon: ICON_PATH,
+            webPreferences: {
+                contextIsolation: true,
+                preload: path.join(__dirnameNew, "preload.js"),
+                sandbox: false, // Required for preload to work on Ubuntu Touch
+                partition: this.sessionPartition, // Isolate storage per account
+            },
+        });
+
+        // v3.3.32: never throttle rendering when the window is hidden/backgrounded —
+        // on Ubuntu Touch a throttled X11 window is not repainted after wake →
+        // white screen. Combined with the resume handler below.
+        this.win.webContents.setBackgroundThrottling(false);
+
+        this.isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
+        if (this.isDev) {
+            this.win.webContents.openDevTools();
+        }
+
+        fs.writeFile(INIT_FLAG_FILE, 'initialise!', err => { if (err) logger.error(err); });
+    }
+
+    /**
+     * v3.3.18: read the known Microsoft account email from the partition's
+     * Local Storage (leveldb) — used ONLY locally to add login_hint= to the
+     * authorize URL so the select_account page shows the account tile.
+     * NEVER log or publish this email (confidentiality rule).
+     * @returns {string|null}
+     */
+    readKnownAccountEmail() {
+        // v3.3.82: avec une partition persist:xxx, Chromium stocke le Local
+        // Storage dans userData/Partitions/<partition>/Local Storage — lire
+        // AUSSI ce répertoire (c'est celui réellement utilisé), sinon le
+        // dernier login validé n'apparaît plus dans la fenêtre de login.
+        const candidates = [
+            path.join(app.getPath('userData'), 'Local Storage', 'leveldb'),
+            path.join(app.getPath('userData'), 'Partitions', this.sessionPartition.replace(/^persist:/, ''), 'Local Storage', 'leveldb'),
+        ];
+        for (const leveldbDir of candidates) {
+            try {
+                const files = fs.readdirSync(leveldbDir).filter(f => f.endsWith('.log') || f.endsWith('.ldb'));
+                for (const f of files) {
+                    const buf = fs.readFileSync(path.join(leveldbDir, f));
+                    // v4.0.2: Chromium leveldb stocke souvent en UTF-16LE — tester
+                    // les deux décodages, sinon l'email n'est jamais trouvé et le
+                    // login_hint (tuile du compte sur la page de login) disparaît.
+                    for (const enc of ['latin1', 'utf16le']) {
+                        const m = buf.toString(enc).match(/[a-zA-Z0-9._%+-]+@(outlook|hotmail|live|msn|passport)\.[a-z.]{2,}/i);
+                        if (m) return m[0];
+                    }
+                }
+            } catch (e) { /* répertoire absent — essayer le suivant */ }
+        }
+        return null;
+    }
+
+    // v3.3.22: this.win is set to null on 'closed', but webContents event handlers
+    // can still fire afterwards → TypeError (setProgressBar/webContents of null)
+    // → uncaughtException → app.exit(1) (crash.log: 10× setProgressBar, 6× webContents).
+    get alive() {
+        return !!(this.win && !this.win.isDestroyed());
+    }
+
+    async loadMainUrl() {
+        // v3.3.18: known account email (local only, never logged/published) — used
+        // to add login_hint= to the authorize URL so the account tile shows.
+        this.knownEmail = this.readKnownAccountEmail();
+
+        // Dynamic user agent based on the Chromium version bundled with Electron
+        const chromeVersion = process.versions.chrome || '143.0.0.0';
+        const userAgentOS = "X11; Linux x86_64";
+        const customUserAgent =
+            `Mozilla/5.0 ${userAgentOS} AppleWebKit/537.36 (KHTML, like Gecko) ` +
+            `Chrome/${chromeVersion} Safari/537.36 Edg/${chromeVersion}`;
+
+        // v3.3.17: sync cookies BEFORE the first navigation (not in parallel) so
+        // the select_account page on login.microsoftonline.com already receives
+        // the shared auth cookies (login.live.com → login.microsoftonline.com) and
+        // reliably shows the account tile. No auto-login: the user clicks the tile.
+        // v4.0.45: restaurer d'abord le token sauvegardé (si Chromium l'a perdu)
+        if (this.restoreAuthToken) await this.restoreAuthToken();
+        await this.syncCookiesToLiveCom().catch(e => logger.warn('Initial cookie sync failed:', e.message));
+
+        this.win.loadURL(this.mainMailServiceUrl, {userAgent: customUserAgent});
+
+        this.win.webContents.on('did-finish-load', () => {
+            if (!this.alive) return; // v3.3.22: window closed mid-load
+            this.loginPage++;
+            const url = this.win.webContents.getURL();
+            logger.info(`Page loaded #${this.loginPage}: ${url}`);
+
+            // v3.3.14: re-sync on every load — cheap and keeps cloud.microsoft /
+            // live.com in sync as Microsoft rotates domains during the redirect chain.
+            this.syncCookiesToLiveCom().catch(() => {});
+
+            // --- Splash lifecycle (hotfix #15) ---
+            // The splash stays open during intermediate redirects (outlook.com →
+            // outlook.office.com → …). Only close it when we reach the actual
+            // mail interface OR a login page (user must be able to interact).
+            // This prevents the jarring flash: splash → half-loaded page with
+            // Outlook envelope loading screen → progress bar → fully loaded.
+            if (!this.splashClosed && (this.isMailInterfaceUrl(url) || this.isLoginPageUrl(url))) {
+                logger.info(`Splash closing — URL is ${this.isMailInterfaceUrl(url) ? 'mail interface' : 'login page'}`);
+                this.closeSplashWindow();
+            }
+
+
+
+            // --- Cookie sync for personal accounts (hotfix #7c) ---
+            // When outlook.office.com/mail/ loads with an auth code (#code=...),
+            // the page will redirect to outlook.live.com/mail/?login_hint=... for
+            // personal accounts. Sync cookies NOW (before the redirect) so the
+            // session is valid on .live.com and the redirect loop is avoided.
+            // v3.3.59: also cover outlook.live.com and outlook.cloud.microsoft with
+            // ?code= or #code= (post-2FA redirect carries an auth code too).
+            const hasAuthCode = url.includes('#code=') || url.includes('?code=');
+            const isOutlookMail = url.includes('outlook.office.com/mail') ||
+                                  url.includes('outlook.live.com/mail') ||
+                                  url.includes('outlook.office365.com/mail') ||
+                                  url.includes('outlook.cloud.microsoft/mail');
+            if (isOutlookMail && hasAuthCode) {
+                logger.info('Auth code detected — syncing cookies before redirect (v3.3.59)');
+                this.syncCookiesToLiveCom();
+            }
+
+            // --- Redirect loop detection ---
+            // Outlook sometimes loops: mail page → oauthRedirect.html → mail page → …
+            // Detect when the same mail URL loads too many times in a short window
+            // and break the loop by clearing the session (forces fresh login).
+            const now = Date.now();
+            this.pageLoadTimes.push({url, time: now});
+            // Keep only loads from the last 60 seconds
+            this.pageLoadTimes = this.pageLoadTimes.filter(p => now - p.time < 60000);
+
+            // v3.3.11: outlook.cloud.microsoft/mail is a mail page too.
+            const isMailPage = url.includes('outlook.com/mail') ||
+                               url.includes('outlook.live.com/mail') ||
+                               url.includes('outlook.office.com/mail') ||
+                               url.includes('outlook.office365.com/mail') ||
+                               url.includes('outlook.cloud.microsoft/mail');
+            const mailLoads = this.pageLoadTimes.filter(p =>
+                p.url.includes('outlook.com/mail') ||
+                p.url.includes('outlook.live.com/mail') ||
+                p.url.includes('outlook.office.com/mail') ||
+                p.url.includes('outlook.office365.com/mail') ||
+                p.url.includes('outlook.cloud.microsoft/mail')
+            );
+            if (isMailPage) {
+                // v4.0.40: retire le voile « veuillez patienter » pendant un resync de boucle 2FA
+                if (this.resyncHidden) {
+                    this.resyncHidden = false;
+                    this.removeResyncOverlay();
+                }
+                // v3.3.67: mémorise la dernière URL mail propre (sans ?code=#) —
+                // cible de reprise après une boucle 2FA (live.com pour les comptes perso)
+                this.lastMailUrl = url.split('?')[0].split('#')[0];
+                // v4.0.41: flush IMMÉDIAT des cookies quand la page mail est atteinte —
+                // le token MSAAUTH/__Host-MSAAUTHP posé pendant le login doit être
+                // écrit sur disque tout de suite, pas dans 15 s (perdu si kill/reload).
+                this.lastMailPageTime = now;
+                this.flushSessionCookies();
+                session.fromPartition(this.sessionPartition).cookies.flushStore().catch(() => {});
+            }
+
+            if (isMailPage && mailLoads.length >= 5 && !this.redirectLoopDetected) {
+                this.redirectLoopDetected = true;
+                this.loopDetectorRetries++;
+                logger.warn(`Redirect loop detected (retry ${this.loopDetectorRetries}/3): ${mailLoads.length} mail page loads in 60s`);
+                // Sync cookies from office.com → live.com and reload the clean mail URL.
+                // The loop happens because session cookies don't transfer across domains.
+                this.pageLoadTimes = [];
+                if (this.loopDetectorRetries >= 3) {
+                    logger.error('Loop detector: max retries reached — navigating to office.com for fresh login');
+                    this.win.loadURL('https://outlook.office.com/mail/');
+                    return;
+                }
+                this.syncCookiesToLiveCom().then(() => {
+                    const currentUrl = this.win.webContents.getURL();
+                    const cleanUrl = currentUrl.split('?')[0].split('#')[0];
+                    logger.info(`Reloading ${cleanUrl} after cookie sync`);
+                    this.win.loadURL(cleanUrl);
+                    // Allow detector to fire again if loop persists
+                    this.redirectLoopDetected = false;
+                }).catch(() => {}); // v3.3.66: avoid unhandled rejection
+            }
+
+            // --- v3.3.59: 2FA/MFA loop detection ---
+            // After approving the Microsoft Authenticator push on another device,
+            // Microsoft sets session cookies on login.microsoftonline.com then
+            // redirects to outlook.live.com/mail. If those cookies are not
+            // propagated to live.com / cloud.microsoft, the mail page bounces
+            // back to the 2FA prompt → infinite loop. Detect frequent loads of
+            // login.microsoftonline.com (the 2FA/verify page) and force an
+            // aggressive cookie sync + flush.
+            const isMfaPage = url.includes('login.microsoftonline.com') ||
+                              url.includes('login.live.com') ||
+                              url.includes('account.live.com') ||
+                              url.includes('oauth') ||
+                              url.includes('consent');
+            // v3.3.67: ne compte que les pages de DÉMARRAGE d'auth (authorize /
+            // select_account). Un flux 2FA légitime (authorize → verify → KMSI)
+            // ne les visite qu'1-2 fois ; une boucle « rester connecté » les
+            // recharge à chaque cycle → seuil 4 en 30s ne se déclenche plus en
+            // plein flux 2FA légitime (qui provoquait une NOUVELLE requête d'auth).
+            let isAuthStartPage = false;
+            try {
+                const path = new URL(url).pathname;
+                // v4.0.37: en desktop la boucle 2FA passe par ppsecure/post.srf
+                // (rejeu du POST Microsoft) — sans ça le détecteur ne compte
+                // jamais ces rechargements et la boucle est infinie.
+                isAuthStartPage = path.includes('/authorize') || path.includes('select_account') || path.includes('ppsecure/post.srf');
+            } catch (e) { /* URL invalide — ignore */ }
+            if (isMfaPage) {
+                this.loginPageLoadTimes.push({url, time: now});
+                this.loginPageLoadTimes = this.loginPageLoadTimes.filter(p => now - p.time < 30000);
+                if (isAuthStartPage) {
+                    this.authStartLoadTimes.push(now);
+                    this.authStartLoadTimes = this.authStartLoadTimes.filter(t => now - t < 30000);
+                }
+                const recentMfaLoads = this.authStartLoadTimes.length;
+                // Flush cookies immediately on every login page load — the 2FA
+                // approval cookie must survive even if the app is killed before
+                // the next periodic flush (15s).
+                session.fromPartition(this.sessionPartition).cookies.flushStore()
+                    .catch(() => {});
+                // v3.3.70: ne JAMAIS déclencher la reprise si aucune page mail n'a
+                // encore été chargée (connexion vierge) — recharger mainMailServiceUrl
+                // ne ferait que reboucler office.com → /authorize → « tentative de
+                // connexion en cours » en boucle, sans aucune saisie utilisateur.
+                // v4.0.41: ne pas déclencher non plus si la page mail a été atteinte
+                // il y a moins de 60 s — le token vient d'être flushé, recharger le perd.
+                const mailRecentlyReached = this.lastMailPageTime && (now - this.lastMailPageTime < 60000);
+                if (recentMfaLoads >= 5 && this.lastMailUrl && !this.mfaLoopDetected && !mailRecentlyReached) {
+                    this.mfaLoopDetected = true;
+                    logger.warn(`2FA loop detected: ${recentMfaLoads} auth-start page loads in 30s — aggressive cookie sync`);
+                    this.hideDuringResync();
+                    this.loginPageLoadTimes = [];
+                    this.authStartLoadTimes = [];
+                    this.syncCookiesToLiveCom().then(async () => {
+                        // Extra flush after sync to persist the copied cookies
+                        try {
+                            await session.fromPartition(this.sessionPartition).cookies.flushStore();
+                        } catch (e) { /* ignore */ }
+                        // v3.3.67: recharge la dernière URL mail réellement chargée
+                        // (outlook.live.com pour les comptes perso), PAS office.com
+                        // en dur — office.com n'a pas la session perso et rebondit
+                        // sur /authorize → nouvelle requête d'auth Authenticator.
+                        // v4.0.37: compte perso (outlook.fr/hotmail) — la session vit sur live.com,
+                        // office.com/cloud.microsoft rebondissent sur oauthRedirect.html.
+                        const lastUrl = this.lastMailUrl || this.mainMailServiceUrl || '';
+                        // v4.0.37: live.com uniquement pour un compte PERSO (knownEmail n'est renseigné
+                        // que pour outlook/hotmail/live/msn) ; compte pro = on garde lastUrl.
+                        const isPersonal = !!this.knownEmail;
+                        const target = (isPersonal && (lastUrl.includes('office.com') || lastUrl.includes('cloud.microsoft')))
+                            ? 'https://outlook.live.com/mail/' : lastUrl;
+                        logger.info(`2FA loop: reloading ${target} after aggressive cookie sync`);
+                        this.win.loadURL(target);
+                        this.mfaLoopDetected = false;
+                    }).catch(() => {}); // v3.3.66
+                } else if (recentMfaLoads >= 5 && !this.lastMailUrl && !this.mfaLoopDetected && !mailRecentlyReached) {
+                    // v4.0.41: boucle authorize/select_account SANS jamais avoir atteint
+                    // la page mail (token perdu) — recharger avec prompt=login pour
+                    // forcer le formulaire de login au lieu du resume SSO qui boucle.
+                    this.mfaLoopDetected = true;
+                    logger.warn(`2FA loop (no mail page yet): ${recentMfaLoads} auth-start loads in 30s — reloading with prompt=login`);
+                    this.loginPageLoadTimes = [];
+                    this.authStartLoadTimes = [];
+                    this.syncCookiesToLiveCom().then(async () => {
+                        try { await session.fromPartition(this.sessionPartition).cookies.flushStore(); } catch (e) { /* ignore */ }
+                        let target = this.mainMailServiceUrl || 'https://outlook.office.com/mail/';
+                        target += (target.includes('?') ? '&' : '?') + 'prompt=login';
+                        logger.info(`2FA loop (no mail): reloading ${target} with prompt=login`);
+                        this.win.loadURL(target);
+                        this.mfaLoopDetected = false;
+                    }).catch(() => {});
+                }
+            } else {
+                // Reset the MFA loop detector when we leave the login pages
+                this.loginPageLoadTimes = [];
+                this.authStartLoadTimes = [];
+            }
+        });
+
+        fs.writeFile(LOGIN_FLAG_FILE, 'notif!', err => { if (err) logger.error(err); });
+    }
+
+    setupLoadingIndicators() {
+        this.win.webContents.on('did-start-loading', () => {
+            // hotfix #15: don't show the blue progress bar while the splash
+            // is still open. The progress bar on a hidden window can still
+            // appear as a blue line in the Lomiri app header — jarring when
+            // the splash (blue background) is showing on top.
+            if (!this.splashClosed) return;
+            if (!this.alive) return; // v3.3.22
+            this.win.setProgressBar(0.3);
+        });
+        // did-stop-loading handled in setupWebContentsEvents (merged to avoid
+        // listener accumulation — MaxListenersExceededWarning at 11 listeners)
+    }
+
+    setupContextMenu() {
+        const isDev = this.isDev;
+        this.win.webContents.on("context-menu", (_event, params) => {
+            const menuTemplate = [];
+            if (params.isEditable) {
+                menuTemplate.push(
+                    {label: t('ctx.undo'), role: "undo"},
+                    {label: t('ctx.redo'), role: "redo"},
+                    {type: "separator"},
+                    {label: t('ctx.cut'), role: "cut", enabled: params.editFlags.canCut},
+                    {label: t('ctx.copy'), role: "copy", enabled: params.editFlags.canCopy},
+                    {label: t('ctx.paste'), role: "paste", enabled: params.editFlags.canPaste},
+                    {type: "separator"},
+                    {label: t('ctx.selectAll'), role: "selectAll"}
+                );
+            } else {
+                if (params.selectionText) {
+                    menuTemplate.push({label: t('ctx.copy'), role: "copy"});
+                }
+                if (params.linkURL) {
+                    if (menuTemplate.length > 0) menuTemplate.push({type: "separator"});
+                    menuTemplate.push(
+                        {
+                            label: t('ctx.openLink'),
+                            click: () => { this.openExternalLink(params.linkURL); },
+                        },
+                        {
+                            label: t('ctx.copyLink'),
+                            click: () => { clipboard.writeText(params.linkURL); },
+                        }
+                    );
+                }
+                if (params.selectionText || params.pageURL) {
+                    if (menuTemplate.length > 0) menuTemplate.push({type: "separator"});
+                    menuTemplate.push({label: t('ctx.selectAll'), role: "selectAll"});
+                }
+            }
+            if (isDev) {
+                if (menuTemplate.length > 0) menuTemplate.push({type: "separator"});
+                menuTemplate.push({
+                    label: t('ctx.inspect'),
+                    click: () => { this.win.webContents.inspectElement(params.x, params.y); },
+                });
+            }
+            if (menuTemplate.length > 0) {
+                Menu.buildFromTemplate(menuTemplate).popup();
+            }
+        });
+    }
+
+    setupIpcHandlers() {
+        ipcMain.on("show", (event) => {
+            // Only respond if this is our window's webContents
+            if (this.win && event.sender === this.win.webContents) {
+                this.show();
+            }
+        });
+
+        ipcMain.on("insert-text", (event, text) => {
+            if (this.win && event.sender === this.win.webContents) {
+                this.insertText(text);
+            }
+        });
+
+        ipcMain.on("zoom", (event, {action}) => {
+            if (this.win && event.sender === this.win.webContents) {
+                this.handleZoomCommand(action);
+            }
+        });
+
+        // Per-account unread tracking (filter by sender)
+        ipcMain.on("updateUnread", (event, value) => {
+            if (this.win && event.sender === this.win.webContents) {
+                this.unreadCount = value || 0;
+                if (this.onUnreadChange) {
+                    this.onUnreadChange(this.accountId, this.unreadCount);
+                }
+                // v3.3.21: notify the unread count EVEN when the mailbox is open
+                // (user request) — but only when the count actually changed and
+                // is > 0, to avoid spamming on SPA re-render fluctuations.
+                if (this.unreadCount > 0 && this.unreadCount !== this.lastNotifiedUnread) {
+                    this.lastNotifiedUnread = this.unreadCount;
+                    this.handleNotification(
+                        t('notif.newMessages.title'),
+                        t('notif.newMessages.body', {count: this.unreadCount})
+                    );
+                }
+                if (this.unreadCount === 0) this.lastNotifiedUnread = 0;
+            }
+        });
+
+        ipcMain.on("show-notification", (event, {title, body, icon, urgent}) => {
+            if (this.win && event.sender === this.win.webContents) {
+                // hotfix #13: skip notification when the app is in the foreground —
+                // UNLESS urgent (e.g. DOM changed alert, v3.3.21).
+                if (!urgent && this.win.isVisible() && this.win.isFocused()) {
+                    logger.info(`[NOTIFICATION SUPPRESSED] foreground — title="${title}" body="${body}"`);
+                    return;
+                }
+                this.handleNotification(title, body, icon);
+            }
+        });
+
+        // Focus mode toggle (from renderer or tray)
+        ipcMain.on("toggle-focus-mode", (event) => {
+            if (this.win && event.sender === this.win.webContents) {
+                this.toggleFocusMode();
+            }
+        });
+
+        // Accent color change (from renderer or tray)
+        ipcMain.on("set-accent-color", (event, color) => {
+            if (this.win && event.sender === this.win.webContents) {
+                this.setAccentColor(color);
+            }
+        });
+
+        // Dark mode toggle (from renderer or tray)
+        ipcMain.on("toggle-dark-mode", (event) => {
+            if (this.win && event.sender === this.win.webContents) {
+                this.toggleDarkMode();
+            }
+        });
+
+        // Reload (from renderer, e.g. offline.html retry button)
+        ipcMain.on("reload", (event) => {
+            if (this.win && event.sender === this.win.webContents) {
+                this.reloadWindow();
+            }
+        });
+        // v3.3.66: first-install — wipe ALL session data from the main process.
+        // The in-page clear (document.cookie/localStorage) only reaches the current
+        // origin, and syncCookiesToLiveCom() would re-copy surviving cookies to the
+        // other Microsoft domains on the next login page load. Here we remove every
+        // cookie from the partition and clear all storage (localStorage, IndexedDB,
+        // cache) — knownEmail lives in localStorage leveldb so it goes too.
+        // Confirmation uses a NATIVE dialog: window.confirm() is not implemented in
+        // Electron and always returns false, which made the in-page confirm inert.
+        ipcMain.handle("first-install", async (event) => {
+            // v4.0.10: accepte aussi la splash window comme sender (bouton
+            // first-install sur le splash, ceinture et bretelles)
+            const fromMain = this.win && !this.win.isDestroyed() && event.sender === this.win.webContents;
+            const fromSplash = this.splashWindow && !this.splashWindow.isDestroyed() && event.sender === this.splashWindow.webContents;
+            if (!fromMain && !fromSplash) return false;
+            const parentWin = fromSplash ? this.splashWindow : this.win;
+            const {response} = await dialog.showMessageBox(parentWin, {
+                type: 'warning',
+                title: t('app.name'),
+                message: t('login.firstInstallConfirm'),
+                buttons: [t('common.cancel'), t('login.firstInstallConfirmAction')],
+                defaultId: 0,
+                cancelId: 0,
+                noLink: true,
+            });
+            if (response !== 1) return false;
+            try {
+                this.knownEmail = null;
+                const ses = session.fromPartition(this.sessionPartition);
+                const cookies = await ses.cookies.get({});
+                for (const c of cookies) {
+                    const url = `${c.secure ? 'https' : 'http'}://${c.domain.replace(/^\./, '')}${c.path || '/'}`;
+                    await ses.cookies.remove(url, c.name).catch(() => {});
+                }
+                await ses.cookies.flushStore().catch(() => {});
+                await ses.clearStorageData().catch(() => {});
+                logger.info('First-install: all cookies and storage cleared');
+            } catch (e) {
+                logger.warn('First-install clear failed:', e.message);
+            }
+            // v4.0.10: si appelé depuis le splash, fermer le splash (qui affichera
+            // la fenêtre principale via closeSplashWindow) puis recharger
+            if (fromSplash) this.closeSplashWindow();
+            if (this.win && !this.win.isDestroyed()) {
+                this.win.loadURL('https://outlook.office.com/mail/');
+            }
+            return true;
+        });
+    }
+
+    /**
+     * Traite une demande de notification depuis le renderer.
+     * @param {string} title
+     * @param {string} body
+     * @param {string|null} icon
+     */
+    handleNotification(title, body, icon) {
+        logger.info(`[NOTIFICATION] title="${title}" body="${body}"`);
+        fs.writeFile(NOTIF_FLAG_FILE, 'notif!', err => { if (err) logger.error(err); });
+
+        // Relay to Ubuntu Touch notifications (D-Bus Postal / Lomiri)
+        const sentToUbports = this.sendUbportsNotification(title, body, () => {
+            // Async spawn failure — fall back to Electron native
+            this.showElectronNotification(title, body, icon);
+        });
+        if (sentToUbports) return;
+
+        // Fallback: Electron native notification (desktop)
+        this.showElectronNotification(title, body, icon);
+    }
+
+    /**
+     * Affiche une notification native Electron (fallback desktop).
+     * @param {string} title
+     * @param {string} body
+     * @param {string|null} icon
+     */
+    showElectronNotification(title, body, icon) {
+        if (!Notification.isSupported()) return;
+        const notificationConfig = {title, body};
+        const iconPath = icon || ICON_PATH;
+        if (iconPath.startsWith("data:")) {
+            notificationConfig.icon = nativeImage.createFromDataURL(iconPath);
+        } else {
+            notificationConfig.icon = iconPath;
+        }
+        const notification = new Notification(notificationConfig);
+        notification.on("click", () => { this.show(); });
+        notification.show();
+    }
+
+    setupWebContentsEvents() {
+        // Log console messages from the renderer — captures JS errors, CSP violations
+        this.win.webContents.on('console-message', (_event, level, message, _line, _sourceId) => {
+            const levelName = ['verbose', 'info', 'warning', 'error'][level] || 'log';
+            // v3.3.74: compte les RangeError de la page (page de login Microsoft qui
+            // boucle sur « tentative de connexion » quand son Knockout plante)
+            if (message.includes('Maximum call stack size exceeded')) {
+                const now = Date.now();
+                this.pageRangeErrors.push(now);
+                this.pageRangeErrors = this.pageRangeErrors.filter(t => now - t < 30000);
+                if (this.pageRangeErrors.length >= 5 && !this.sessionClearedForLoop) {
+                    this.sessionClearedForLoop = true;
+                    const url = this.win.webContents.getURL();
+                    logger.warn(`v3.3.74: ${this.pageRangeErrors.length} RangeError/30s sur ${url} — session probablement vérolée, clear + reload avec prompt=login`);
+                    this.clearOutlookSession().then(() => {
+                        this.pageRangeErrors = [];
+                        // force prompt=login pour sauter le resume SSO silencieux
+                        // (c'est la vue « Trying to sign you in » qui plante en boucle)
+                        let target = this.mainMailServiceUrl;
+                        if (url.includes('/authorize')) {
+                            target = url.replace(/([?&])prompt=[^&]*/, '$1prompt=login');
+                            if (!target.includes('prompt=')) target += (target.includes('?') ? '&' : '?') + 'prompt=login';
+                        }
+                        this.win.loadURL(target);
+                    }).catch(() => {});
+                }
+            }
+            // Skip noisy messages
+            if (message.includes('Autofill') || message.includes('DevTools')) return;
+            logger.info(`[console.${levelName}] ${message.substring(0, 500)}`);
+        });
+
+        // Log failed resource loads — helps diagnose boot failures (olkerror.html)
+        this.win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+            // -3 (ERR_ABORTED) is normal for SPA redirects — skip it
+            if (errorCode === -3) return;
+            logger.warn(`Load failed [${errorCode}] ${errorDescription}: ${validatedURL} (mainFrame=${isMainFrame})`);
+            // v4.0.10: a main-frame failure (network down, server unreachable,
+            // renderer error page) will never match isMailInterfaceUrl/isLoginPageUrl
+            // in did-finish-load — close the splash here so the user sees the
+            // offline overlay instead of a spinner stuck forever.
+            if (isMainFrame) this.closeSplashWindow();
+        });
+
+        // v4.0.10: if the renderer process dies (OOM on the phone, GPU crash),
+        // did-finish-load never fires — close the splash so the user is not
+        // left staring at the spinner.
+        this.win.webContents.on('render-process-gone', (_event, details) => {
+            logger.error(`Renderer process gone: ${JSON.stringify(details)} — closing splash`);
+            this.closeSplashWindow();
+        });
+
+        // Insert styles and observer on DOM ready.
+        // NOTE (hotfix #15): the splash is NOT closed here anymore. dom-ready
+        // fires on every redirect during Outlook's startup chain. Closing the
+        // splash here would reveal a half-loaded page (envelope icon + blue
+        // progress bar). The splash is now closed by did-finish-load when the
+        // URL is the actual mail interface or a login page.
+        this.win.webContents.on("dom-ready", () => {
+            if (!this.alive) return; // v3.3.22
+            this.injectStyles().catch(() => {});
+            this.addUnreadNumberObserver().catch(() => {});
+            this.injectGestures();
+            // v3.3.21: no theme variants — make sure no stale dark-mode class remains
+            this.win.webContents.executeJavaScript(
+                `document.documentElement.classList.remove('dark-mode');`
+            ).catch(() => {});
+        });
+
+        // Re-inject on SPA navigation (Outlook is a single-page app)
+        this.win.webContents.on('did-navigate-in-page', (_event, url) => {
+            if (!this.alive) return; // v3.3.22
+            logger.info(`SPA navigation: ${url}`);
+            this.trackInPageAuthLoop(url); // v4.0.37: la boucle 2FA desktop passe par des pushState sur ppsecure/post.srf
+            this.injectStyles().catch(() => {});
+            this.addUnreadNumberObserver().catch(() => {});
+            this.injectGestures();
+        });
+
+        // Intercept login_hint redirect and sync cookies (hotfix #7c):
+        // After login on outlook.office.com, Microsoft redirects personal accounts
+        // to outlook.live.com/mail/?login_hint=... The session cookies set on
+        // .office.com are NOT sent to .live.com, so the page loops with
+        // oauthRedirect.html. Fix: copy cookies from office.com → live.com
+        // before loading. Keep the login_hint — the page needs it to identify
+        // the account, and the synced cookies provide the session.
+        this.win.webContents.on('will-navigate', (event, url) => {
+            if (!this.alive) { try { event.preventDefault(); } catch (e) {} return; } // v3.3.22
+            // v3.3.78: supprime le cookie SSO « stsservicecookie » sur
+            // login.microsoftonline.com AVANT /authorize — sa présence déclenche
+            // le resume silencieux « Trying to sign you in » dont la vue Knockout
+            // plante en boucle (RangeError) dans Chromium embarqué.
+            if (url.includes('login.microsoftonline.com') && url.includes('/authorize')) {
+                const ses = session.fromPartition(this.sessionPartition);
+                ses.cookies.remove('https://login.microsoftonline.com/', 'stsservicecookie')
+                    .catch(() => {});
+            }
+            // v3.3.11: outlook.cloud.microsoft is the new mail host — same
+            // login_hint treatment as live.com.
+            if ((url.includes('outlook.live.com/mail') || url.includes('outlook.cloud.microsoft/mail'))
+                && url.includes('login_hint=')) {
+                event.preventDefault();
+                this.loginHintIntercepts++;
+                logger.info(`Intercepted login_hint redirect #${this.loginHintIntercepts}: ${url}`);
+                this.syncCookiesToLiveCom().then(() => {
+                    logger.info(`Loading with synced cookies (login_hint preserved)`);
+                    this.win.loadURL(url); // keep login_hint
+                }).catch(() => {}); // v3.3.66
+                return;
+            }
+            // v3.3.18: add login_hint=<known email> to the authorize URL so the
+            // select_account page shows the account tile. login_hint only
+            // PRE-FILLS the account — it does NOT sign in (no auto-login);
+            // the user still clicks the tile. Never log the email itself.
+            // v4.0.2: relire l'email connu à la volée (le leveldb n'est peuplé
+            // qu'après la 1ère connexion) pour que la tuile réapparaisse à chaque fois
+            if (!this.knownEmail) this.knownEmail = this.readKnownAccountEmail();
+            if (url.includes('login.microsoftonline.com') && url.includes('/authorize') &&
+                !url.includes('login_hint=') && this.knownEmail) {
+                event.preventDefault();
+                const sep = url.includes('?') ? '&' : '?';
+                const withHint = `${url}${sep}login_hint=${encodeURIComponent(this.knownEmail)}`;
+                logger.info('Adding login_hint to authorize URL (account tile shown, no auto-login)');
+                this.win.loadURL(withHint);
+                return;
+            }
+            // v3.3.11: ne PAS réécrire select_account en connexion silencieuse —
+            // l'utilisateur veut voir la page « compte retrouvé » et cliquer
+            // lui-même sur son compte (pas de connexion automatique).
+        });
+
+        // Re-inject after page finishes loading (catches late-rendered SPA content)
+        // Also clears the progress bar — merged with setupLoadingIndicators
+        // to keep a single did-stop-loading listener.
+        this.win.webContents.on('did-stop-loading', () => {
+            if (!this.alive) return; // v3.3.22: crash.log — setProgressBar of null
+            this.win.setProgressBar(-1);
+            // Small delay to let the SPA render after load event
+            setTimeout(() => {
+                if (this.alive) {
+                    this.addUnreadNumberObserver().catch(() => {});
+                }
+            }, 2000);
+        });
+    }
+
+    setupWindowOpenHandler() {
+        this.win.webContents.setWindowOpenHandler(({url}) => {
+            if (url === "about:blank") {
+                return {action: "allow", overrideBrowserWindowOptions: {autoHideMenuBar: true}};
+            }
+            if (this.safelinksPattern && this.safelinksPattern.test(url)) {
+                this.openExternalLink(url);
+                return {action: "deny"};
+            }
+            if (this.deeplinkPattern && this.deeplinkPattern.test(url)) {
+                return {action: "allow", overrideBrowserWindowOptions: {autoHideMenuBar: true}};
+            }
+            if (this.mailServicesPattern && this.mailServicesPattern.test(url)) {
+                this.win.loadURL(url);
+                return {action: "deny"};
+            }
+            this.openExternalLink(url);
+            return {action: "deny"};
+        });
+    }
+
+    setupPowerEvents() {
+        // v3.3.32: after a suspend/resume (screen off → on), the X11/XWayland
+        // window is no longer repainted → white screen on wake ("veille puis
+        // écran blanc"). powerMonitor 'resume' fires from logind → force a
+        // full redraw of the webContents and re-assert visibility/focus.
+        powerMonitor.on('resume', () => {
+            logger.info('powerMonitor resume — forcing window repaint (v3.3.32)');
+            if (!this.alive) return;
+            try { this.win.webContents.invalidate(); } catch (e) { logger.warn('invalidate failed:', e.message); }
+            try { if (!this.win.isVisible()) this.win.show(); } catch (e) { /* ignore */ }
+            try { this.win.focus(); } catch (e) { /* ignore */ }
+        });
+        powerMonitor.on('suspend', () => logger.info('powerMonitor suspend (v3.3.32)'));
+    }
+
+    setupWindowEvents() {
+        // v3.3.4: log window lifecycle events — needed to diagnose "app does not
+        // start" episodes where the process and heartbeat are alive but the
+        // window never appears (or is hidden and never re-shown on relaunch).
+        // v3.3.32: also force a repaint on every show — covers the return to
+        // foreground after the app was backgrounded (Lomiri may SIGSTOP it).
+        this.win.on("show", () => {
+            logger.info('Window event: show');
+            try { this.win.webContents.invalidate(); } catch (e) { /* ignore */ }
+        });
+        this.win.on("hide", () => logger.info('Window event: hide'));
+        this.win.on("focus", () => logger.info('Window event: focus'));
+        this.win.on("blur", () => logger.info('Window event: blur'));
+
+        // Hide instead of quit on close
+        this.win.on("close", (e) => {
+            if (this.win.isVisible() && settings.get("hideOnClose")) {
+                logger.info('Window event: close intercepted (hideOnClose) → hide');
+                e.preventDefault();
+                this.win.hide();
+            } else {
+                // v3.3.28: on a swipe-close, Mir stops the session and the X11
+                // teardown can kill the process before the 'closed' handler
+                // runs — write the clean-quit flag NOW, synchronously, while
+                // the 'close' event is being handled, so the shell wrapper
+                // does not relaunch the app. Skipped during window recreation
+                // (preventAutoCloseApp) and hideOnClose.
+                if (!global.preventAutoCloseApp) markCleanExit();
+                logger.info('Window event: close → letting it close');
+            }
+        });
+
+        // Hide instead of minimize
+        this.win.on("minimize", (e) => {
+            if (settings.get("hideOnMinimize")) {
+                logger.info('Window event: minimize intercepted (hideOnMinimize) → hide');
+                e.preventDefault();
+                this.win.hide();
+            }
+        });
+
+        // Window closed
+        this.win.on("closed", () => {
+            this.win = null;
+            this.closeSplashWindow();
+            if (this.cacheWatcher) {
+                this.cacheWatcher.close();
+                this.cacheWatcher = null;
+            }
+            // Clear all pending debounce timers
+            for (const timer of this.triggerTimers.values()) {
+                clearTimeout(timer);
+            }
+            this.triggerTimers.clear();
+            // Stop connectivity monitor
+            if (this.connectivityTimer) {
+                clearInterval(this.connectivityTimer);
+                this.connectivityTimer = null;
+            }
+            // Stop server reachability monitor (v4.0.3)
+            if (this.serverMonitor) {
+                clearInterval(this.serverMonitor);
+                this.serverMonitor = null;
+            }
+            // Stop cookie flush
+            if (this.cookieFlushInterval) {
+                clearInterval(this.cookieFlushInterval);
+                this.cookieFlushInterval = null;
+            }
+            // Stop observer health check
+            if (this.observerHealthCheck) {
+                clearInterval(this.observerHealthCheck);
+                this.observerHealthCheck = null;
+            }
+            // Flush cookies one last time before window destruction
+            this.flushSessionCookies();
+            if (!global.preventAutoCloseApp) {
+                // v3.3.28: this app.exit(0) is what actually runs on a
+                // swipe-close (window 'closed'), before window-all-closed —
+                // write the clean-quit flag synchronously so the wrapper
+                // does not relaunch the app.
+                markCleanExit();
+                app.exit(0);
+            }
+            global.preventAutoCloseApp = false;
+        });
+    }
+
+    setupScreenEvents() {
+        screen.on('display-metrics-changed', () => { this.handleDisplayChange(); });
+        screen.on('display-added', () => this.handleDisplayChange());
+        screen.on('display-removed', () => this.handleDisplayChange());
+    }
+
+    handleDisplayChange() {
+        if (!this.win || this.win.isDestroyed()) return;
+        const primaryDisplay = screen.getPrimaryDisplay();
+        const {width, height} = primaryDisplay.size;
+        const isPortrait = height > width;
+        logger.info(`Display changed: ${width}x${height} (${isPortrait ? 'portrait' : 'landscape'})`);
+        // v3.3.82: en portrait (téléphone), la fenêtre DOIT remplir tout l'écran —
+        // sinon la liste des messages s'arrête avant le bas de l'écran (fenêtre
+        // créée en 1400x900 fixe).
+        if (isPortrait) {
+            try { this.win.setBounds({x: 0, y: 0, width, height}); } catch (e) { logger.warn('setBounds failed:', e.message); }
+        }
+    }
+
+    // --- Offline detection ---
+
+    setupOfflineDetection() {
+        this.isOffline = false;
+        this.connectivityTimer = null;
+
+        // Detect network failures on page load
+        this.win.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+            // hotfix #14: only react to main-frame failures, not sub-resources.
+            // Outlook SPA loads many images/scripts/XHRs — a single failed image
+            // must NOT trigger the offline overlay + connectivity monitor, which
+            // would reload the entire page (jarring flash: progress bar → reload
+            // → Outlook splash envelope → back to app).
+            if (!isMainFrame) return;
+            // Network-related error codes.
+            // NOTE: -3 (ERR_ABORTED) is intentionally excluded — Outlook SPA triggers
+            // it during normal redirects/navigations, causing false offline overlays.
+            const networkErrors = [-100, -101, -102, -105, -106, -109, -118, -121, -137, -323];
+            if (networkErrors.includes(errorCode) && validatedURL && !validatedURL.startsWith('file://')) {
+                logger.warn(`Network error ${errorCode}: ${errorDescription} — showing offline overlay`);
+                // v4.0.3: test actif immédiat pour distinguer « pas de réseau »
+                // (serveur injoignable) de « le serveur ne répond pas » (login
+                // indisponible alors que la connexion existe).
+                this.checkServerReachable().then(reachable => {
+                    this.showOfflineOverlay(reachable ? 'offline' : 'server');
+                });
+                this.startConnectivityMonitor();
+            }
+        });
+    }
+
+    // kind: 'offline' (no Internet) or 'server' (server/login not responding) — v4.0.3
+    showOfflineOverlay(kind = 'offline') {
+        if (!this.win || this.win.isDestroyed()) return;
+        this.isOffline = true;
+        const tr = getAllTranslations();
+        const titleKey = kind === 'server' ? 'server.title' : 'offline.title';
+        const messageKey = kind === 'server' ? 'server.message' : 'offline.message';
+
+        this.win.webContents.executeJavaScript(`
+            (() => {
+                // Remove existing overlay if any
+                const existing = document.getElementById('utoutlook-offline-overlay');
+                if (existing) existing.remove();
+
+                const overlay = document.createElement('div');
+                overlay.id = 'utoutlook-offline-overlay';
+                overlay.innerHTML = \`
+                    <div style="position:fixed;top:0;left:0;width:100%;height:100%;
+                         background:#1a1a2e;z-index:99999;display:flex;flex-direction:column;
+                         align-items:center;justify-content:center;font-family:Ubuntu,sans-serif;
+                         color:#e0e0e0;text-align:center;padding:24px;box-sizing:border-box;">
+                        <div style="font-size:72px;margin-bottom:24px;opacity:0.6;">&#x1F4F6;</div>
+                        <h1 style="font-size:24px;font-weight:300;margin-bottom:12px;">${tr[titleKey]}</h1>
+                        <p style="font-size:16px;opacity:0.7;margin-bottom:32px;line-height:1.5;">
+                            ${tr[messageKey]}
+                        </p>
+                        <div style="width:24px;height:24px;border:2px solid rgba(255,255,255,0.2);
+                             border-top-color:#0078d4;border-radius:50%;
+                             animation:utoutlook-spin 0.8s linear infinite;"></div>
+                        <div style="margin-top:16px;font-size:13px;opacity:0.5;">${tr['offline.autoReconnect']}</div>
+                    </div>
+                \`;
+                // Add spinner animation
+                const style = document.createElement('style');
+                style.textContent = '@keyframes utoutlook-spin{to{transform:rotate(360deg)}}';
+                document.head.appendChild(style);
+                document.body.appendChild(overlay);
+            })()
+        `).catch(err => logger.error('Failed to show offline overlay:', err));
+
+        // Notify via UBports
+        const notifKey = kind === 'server' ? 'notif.serverUnreachable.title' : 'notif.offline.title';
+        this.sendUbportsNotification(t('app.name'), t(notifKey));
+    }
+
+    hideOfflineOverlay() {
+        if (!this.win || this.win.isDestroyed()) return;
+        this.isOffline = false;
+
+        this.win.webContents.executeJavaScript(`
+            (() => {
+                const overlay = document.getElementById('utoutlook-offline-overlay');
+                if (overlay) overlay.remove();
+            })()
+        `).catch(err => logger.error('Failed to hide offline overlay:', err));
+    }
+
+    startConnectivityMonitor() {
+        if (this.connectivityTimer) clearInterval(this.connectivityTimer);
+
+        this.connectivityTimer = setInterval(async () => {
+            if (!this.win || this.win.isDestroyed()) {
+                clearInterval(this.connectivityTimer);
+                this.connectivityTimer = null;
+                return;
+            }
+
+            try {
+                // v4.0.3: navigator.onLine is NOT a real network test — in
+                // Electron/Ubuntu Touch it often stays true even with no
+                // connectivity (it only reflects Chromium's interface state).
+                // Use a real request to the mail server instead.
+                const reachable = await this.checkServerReachable();
+                if (reachable) {
+                    // hotfix #14: do NOT reload the page. A full reload causes
+                    // a jarring flash (progress bar → page reload → Outlook splash
+                    // envelope animation → back to app). Just hide the overlay —
+                    // the Outlook SPA reconnects and refreshes on its own.
+                    logger.info('Connectivity restored — hiding offline overlay');
+                    clearInterval(this.connectivityTimer);
+                    this.connectivityTimer = null;
+                    this.hideOfflineOverlay();
+                    this.sendUbportsNotification(t('app.name'), t('notif.online.title'));
+                }
+            } catch (err) {
+                // Page might not be ready, keep polling
+            }
+        }, 3000);
+    }
+
+    // --- Server reachability test (v4.0.3) ---
+    // Real in-app network test: an actual HTTP request to the mail/login
+    // server. did-fail-load only fires during navigations and
+    // navigator.onLine does not reflect real connectivity, so without this
+    // the app never notices that the server (or the login) is down.
+
+    /**
+     * Teste réellement que le serveur mail/login répond (requête HTTP avec
+     * timeout). Retourne true si le serveur répond (any HTTP status), false sinon.
+     * @returns {Promise<boolean>}
+     */
+    async checkServerReachable() {
+        const target = this.mainMailServiceUrl || settings.get('urlMainWindow') || 'https://outlook.office.com/';
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
+        try {
+            const res = await net.fetch(target, {
+                method: 'HEAD',
+                signal: controller.signal,
+            });
+            // Any HTTP response (even 3xx/4xx) means the server is alive.
+            return res.status > 0;
+        } catch (err) {
+            logger.warn(`Server reachability check failed for ${target}: ${err.message}`);
+            return false;
+        } finally {
+            clearTimeout(timeout);
+        }
+    }
+
+    /**
+     * Moniteur périodique : teste le serveur toutes les 30s. Après 2 échecs
+     * consécutifs, affiche l'écran « serveur ne répond pas » (si le login/la
+     * page mail n'est pas disponible). Dès que le serveur répond à nouveau,
+     * masque l'écran et notifie.
+     */
+    startServerMonitor() {
+        if (this.serverMonitor) clearInterval(this.serverMonitor);
+        // Premier test rapide après le lancement (le splash couvre les 30s,
+        // ce test détecte un serveur down avant même la fin du chargement).
+        setTimeout(() => this.runServerCheck(), 5000);
+
+        this.serverMonitor = setInterval(() => this.runServerCheck(), 30000);
+        logger.info('Server reachability monitor started (30s)');
+    }
+
+    async runServerCheck() {
+        if (!this.win || this.win.isDestroyed()) return;
+        const reachable = await this.checkServerReachable();
+        if (!reachable) {
+            this.serverFailCount++;
+            logger.warn(`Server check failed (${this.serverFailCount}/2 consecutive)`);
+            if (this.serverFailCount >= 2 && !this.serverWasUnreachable) {
+                this.serverWasUnreachable = true;
+                logger.warn('Server unreachable — showing "server not responding" screen');
+                this.showOfflineOverlay('server');
+            }
+        } else {
+            if (this.serverWasUnreachable) {
+                logger.info('Server reachable again — hiding overlay');
+                this.serverWasUnreachable = false;
+                this.hideOfflineOverlay();
+                this.sendUbportsNotification(t('app.name'), t('notif.serverReachable.title'));
+            }
+            this.serverFailCount = 0;
+        }
+    }
+
+    async injectStyles(targetWin = null) {
+        const win = targetWin || this.win;
+        if (!win || win.isDestroyed()) return;
+        // v3.3.20: per-window CSS keys (compose opens in a separate window and
+        // must get the UT look too)
+        if (!win.__utoutlookCssKeys) win.__utoutlookCssKeys = { main: null, noFrame: null, reading: null };
+        const keys = win.__utoutlookCssKeys;
+
+        // Remove previously inserted CSS
+        for (const key of ['main', 'noFrame', 'reading']) {
+            if (keys[key]) {
+                try { await win.webContents.removeInsertedCSS(keys[key]); } catch (e) { /* ignore */ }
+                keys[key] = null;
+            }
+        }
+
+        // Insert fresh CSS
+        // v3.3.21: base CSS only — no theme variants (dark/focus/accent removed,
+        // user wants the plain UT look without themes).
+        keys.main = await win.webContents.insertCSS(getClientFile("main.css"));
+        if (!this.showWindowFrame) {
+            keys.noFrame = await win.webContents.insertCSS(getClientFile("no-frame.css"));
+        }
+        // v3.3.25: reading font scale (message body), independent of global zoom
+        const readingScale = settings.get('readingFontScale') || 1.0;
+        if (readingScale !== 1.0) {
+            keys.reading = await win.webContents.insertCSS(
+                `[role="complementary"], [data-app-section*="ReadingPane" i], [class*="readingPane" i] ` +
+                `{ font-size: ${readingScale}em !important; }`
+            );
+        }
+    }
+
+    async addUnreadNumberObserver() {
+        if (!this.win || this.win.isDestroyed()) return;
+        // Inject translations as a global before the observer script
+        const tr = getAllTranslations();
+        const i18nJson = JSON.stringify({
+            newMessagesTitle: tr['notif.newMessages.title'],
+            newMessagesBody: tr['notif.newMessages.body'],
+            newMailTitle: tr['notif.newMail.title'],
+            newMailBody: tr['notif.newMail.body'],
+            newMailBodyNoSubject: tr['notif.newMail.bodyNoSubject'],
+            calendarTitle: tr['notif.calendar.title'],
+            appName: tr['app.name'],
+            emptyTitle: tr['empty.title'],
+            emptyBody: tr['empty.body'],
+        });
+        // executeJavaScript returns a Promise — catch rejections to avoid
+        // unhandled rejections when the page is navigating or not ready.
+        try {
+            await this.win.webContents.executeJavaScript(
+                `window.__utoutlookI18n = ${i18nJson};\n` +
+                getClientFile("unread-number-observer.js")
+            );
+        } catch (err) {
+            // Page may be navigating — will be re-injected by health check or next event
+            logger.debug('Observer injection deferred (page not ready):', err.message);
+        }
+    }
+
+    injectGestures(targetWin = null) {
+        const win = targetWin || this.win;
+        if (!win || win.isDestroyed()) return;
+        // v3.3.50: inject the i18n strings used by the in-page scripts (login badge label)
+        const tr = getAllTranslations();
+        const i18nJson = JSON.stringify({
+            loginMadeFor: tr['login.madeFor'],
+            knownLogin: this.knownEmail || '',   // v3.3.57: pré-remplir le champ login (jamais loggé)
+            firstInstall: tr['login.firstInstall'],           // v3.3.63: bouton first-install sur la page de login
+            firstInstallConfirm: tr['login.firstInstallConfirm'],
+            firstInstallConfirmAction: tr['login.firstInstallConfirmAction'],
+        });
+        win.webContents.executeJavaScript(
+            `window.__utoutlookI18n = Object.assign(window.__utoutlookI18n||{}, ${i18nJson});\n` +
+            getClientFile("gestures.js")
+        ).catch(() => {
+            // gestures.js may not exist yet or page not ready, ignore
+        });
+    }
+
+    /**
+     * Bascule la visibilité de la fenêtre (show/hide).
+     */
+    toggleWindow() {
+        if (this.win.isVisible()) {
+            this.win.hide();
+        } else {
+            this.initialMinimization.domReady = false;
+            this.show();
+        }
+    }
+
+    /**
+     * Recharge la page Outlook.
+     */
+    reloadWindow() {
+        this.initialMinimization.domReady = false;
+        this.win.reload();
+    }
+
+    /**
+     * Affiche la fenêtre principale (restore si minimisée).
+     * Extrait également le token fb_dtsg de la page.
+     */
+    async show() {
+        if (!this.alive) return; // v3.3.22
+        this.initialMinimization.domReady = false;
+        if (this.win.isMinimized()) {
+            this.win.restore();
+        } else {
+            this.win.show();
+        }
+        this.win.focus();
+
+        // Extract fb_dtsg token from the page
+        try {
+            const result = await this.win.webContents.executeJavaScript(
+                `(() => { const el = document.querySelector('input[name="fb_dtsg"]'); return el ? el.value : null; })()`
+            );
+            if (result) logger.debug("fb_dtsg token retrieved");
+        } catch (err) {
+            logger.debug("Could not extract fb_dtsg token:", err.message);
+        }
+    }
+}
+
+export default MailWindowController
