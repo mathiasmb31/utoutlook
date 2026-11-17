@@ -84,6 +84,9 @@ DEBUG_SESSION_NOTE="Sign-in and 2FA work reliably again on the phone: no more lo
     echo "$DEBUG_SESSION_NOTE" | fold -s -w 80
     echo ""
   fi
+  echo "Tested on Fairphone 5 (FP5) with Ubuntu Touch framework 24.04 — no guarantee on other models."
+  echo "Thanks for your feedback! :)"
+  echo ""
   echo "Changes since $LAST_PUBLISHED:"
   echo ""
   # un saut de ligne entre chaque commit pour un rendu lisible partout
