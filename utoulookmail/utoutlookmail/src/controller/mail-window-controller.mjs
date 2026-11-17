@@ -2256,6 +2256,11 @@ class MailWindowController {
                 document.dispatchEvent(new Event('resize'));
                 const list = document.querySelector('[class*="listView"], [class*="messageList"], [role="main"]');
                 if (list) { list.scrollTop = 0; list.scrollTop = 1; list.scrollTop = 0; forceReflow(); }
+                // v4.0.68: après un pivot, Outlook bascule en layout « étroit » et
+                // montre le menu de navigation à la place de la liste des messages.
+                // Si un bouton retour/fermer le menu est visible, cliquer dessus.
+                const back = document.querySelector('[aria-label*="back" i], [aria-label*="retour" i], [data-automation-id*="back" i], [class*="backArrow"], [class*="closeNav"]');
+                if (back && back.offsetParent) { back.click(); }
             })()
         `).catch(() => {});
     }
