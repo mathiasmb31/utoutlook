@@ -2266,9 +2266,10 @@ class MailWindowController {
         // v3.3.82: en portrait (téléphone), la fenêtre DOIT remplir tout l'écran —
         // sinon la liste des messages s'arrête avant le bas de l'écran (fenêtre
         // créée en 1400x900 fixe).
-        if (isPortrait) {
-            try { this.win.setBounds({x: 0, y: 0, width, height}); } catch (e) { logger.warn('setBounds failed:', e.message); }
-        }
+        // v4.0.64: idem en PAYSAGE — avant, seul le portrait redimensionnait la
+        // fenêtre, donc après un pivot en landscape la fenêtre gardait ses
+        // anciennes bornes et la liste des messages était coupée/invisible.
+        try { this.win.setBounds({x: 0, y: 0, width, height}); } catch (e) { logger.warn('setBounds failed:', e.message); }
     }
 
     // --- Offline detection ---
