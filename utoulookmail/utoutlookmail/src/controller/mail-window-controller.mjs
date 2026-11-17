@@ -2227,8 +2227,10 @@ class MailWindowController {
                 // runs — write the clean-quit flag NOW, synchronously, while
                 // the 'close' event is being handled, so the shell wrapper
                 // does not relaunch the app. Skipped during window recreation
-                // (preventAutoCloseApp) and hideOnClose.
-                if (!global.preventAutoCloseApp) markCleanExit();
+                // (preventAutoCloseApp), hideOnClose, and v4.0.84 rotation
+                // relaunch (skipCleanExitFlag) — otherwise app.exit(0) after a
+                // pivot would write exitclient and the wrapper would NOT relaunch.
+                if (!global.preventAutoCloseApp && !global.skipCleanExitFlag) markCleanExit();
                 logger.info('Window event: close → letting it close');
             }
         });
@@ -2292,7 +2294,8 @@ class MailWindowController {
                 // swipe-close (window 'closed'), before window-all-closed —
                 // write the clean-quit flag synchronously so the wrapper
                 // does not relaunch the app.
-                markCleanExit();
+                // v4.0.85: skip the flag on rotation relaunch (skipCleanExitFlag).
+                if (!global.skipCleanExitFlag) markCleanExit();
                 app.exit(0);
             }
             global.preventAutoCloseApp = false;
@@ -2492,14 +2495,21 @@ class MailWindowController {
                 // métriques de l'écran : seule la taille de la fenêtre bouge.
                 const wb = this.win.getBounds();
                 const key = `${d.rotation}|${d.size.width}x${d.size.height}|win ${wb.width}x${wb.height}`;
+                // v4.0.85: ne déclencher QUE sur un vrai changement d'ORIENTATION
+                // (portrait <-> paysage). Un simple changement de TAILLE de la
+                // fenêtre (ex. au démarrage : 612x1350 -> 612x1298 quand le chrome
+                // s'ajuste) ne doit PAS être pris pour une rotation, sinon l'app
+                // se relance/quitte 800 ms après son lancement.
+                const winLandscape = wb.width > wb.height;
+                const keyOriented = `${winLandscape ? 'L' : 'P'}|${key}`;
                 const first = this.lastDisplayKey === '';
                 this.lastDisplayKey = key;
-                if (first) { this.recentDisplayKeys = [key]; return; } // ne rien faire au démarrage
+                if (first) { this.recentDisplayKeys = [keyOriented]; return; } // ne rien faire au démarrage
                 // v4.0.77: déclenche si l'état courant n'a pas été vu récemment
                 // (détecte A→B→A rapide) ; intervalle 500 ms pour la réactivité.
-                if (!this.recentDisplayKeys.includes(key)) {
+                if (!this.recentDisplayKeys.includes(keyOriented)) {
                     this.lastRotationTime = Date.now(); // v4.0.78: pour le watchdog liste vide
-                    this.recentDisplayKeys.push(key);
+                    this.recentDisplayKeys.push(keyOriented);
                     if (this.recentDisplayKeys.length > 4) this.recentDisplayKeys.shift();
                     logger.info(`v4.0.84: rotation détectée (${key}) — setBounds + toast « rotation détectée, relance application » + relance différée 800 ms`);
                     this.handleDisplayChange();

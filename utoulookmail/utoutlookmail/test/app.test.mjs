@@ -1616,11 +1616,11 @@ test('v3.3.28: clean quit writes exitclient synchronously so the wrapper does NO
     // swipe-close (Mir session stop can kill the process before 'closed') —
     // it must write the flag synchronously while letting the window close
     const ctrl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
-    const closeHandler = ctrl.slice(ctrl.indexOf('"close", (e)'), ctrl.indexOf('"close", (e)') + 900);
+    const closeHandler = ctrl.slice(ctrl.indexOf('"close", (e)'), ctrl.indexOf('"close", (e)') + 1600);
     assert.ok(closeHandler.includes('markCleanExit()') && closeHandler.includes('letting it close'),
         'window close handler must call markCleanExit before letting it close (v3.3.28)');
     // the 'closed' handler (app.exit there fires before window-all-closed) must mark too
-    const closed = ctrl.slice(ctrl.indexOf('preventAutoCloseApp'), ctrl.indexOf('preventAutoCloseApp') + 500);
+    const closed = ctrl.slice(ctrl.indexOf('preventAutoCloseApp'), ctrl.indexOf('preventAutoCloseApp') + 900);
     assert.ok(closed.includes('markCleanExit()'), 'window closed handler must call markCleanExit before app.exit (v3.3.28)');
     // restart paths (settings import/reset) must NOT mark a clean quit
     const tray = fs.readFileSync(path.resolve(__dirname, '../src/controller/tray-controller.mjs'), 'utf-8');
