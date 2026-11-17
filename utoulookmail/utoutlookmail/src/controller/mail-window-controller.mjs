@@ -631,6 +631,58 @@ class MailWindowController {
      * If the page navigated or the observer was lost, re-inject it.
      * Outlook is a SPA — the observer can silently die on navigation.
      */
+    /**
+     * v4.0.78: watchdog « liste vide » — contrôle toutes les 8 s ; si page mail
+     * et MessageList sans aucune ligne pendant 2 contrôles consécutifs (~16 s),
+     * recharger la page (garde-fou: max 1 reload / 60 s). Un simple querySelector
+     * par tick, coût négligeable. Couvre pivot, refresh et chargement incomplet.
+     */
+    startListEmptyWatchdog() {
+        this.listEmptyCount = 0;
+        this.lastListReload = 0;
+        this.listWatchdog = setInterval(async () => {
+            if (!this.win || this.win.isDestroyed()) return;
+            try {
+                const url = this.win.webContents.getURL();
+                if (!/outlook\.(live|office|office365|cloud\.microsoft)\.com\/mail/.test(url)) { this.listEmptyCount = 0; return; }
+                const empty = await this.win.webContents.executeJavaScript(`
+                    (() => {
+                        const ml = document.querySelector('[data-app-section="MessageList"]');
+                        if (!ml || !ml.offsetParent) return false; // pas de liste visible = autre vue
+                        // v4.0.78: les lignes Outlook sont des role="option" dans un
+                        // listbox (pas role="listitem" !) — ancien sélecteur = faux
+                        // positifs "liste vide" et reloads en boucle.
+                        return ml.querySelectorAll('[role="option"], [role="listitem"], [class*="listItem"]').length === 0;
+                    })()
+                `);
+                // v4.0.78: le reload auto ne se fait QU'après une rotation récente
+                // (< 30 s) — la liste vide est systématique au pivot ; hors rotation
+                // (chargement initial, refresh) on ne touche à rien.
+                const rotatedRecently = this.lastRotationTime && (Date.now() - this.lastRotationTime < 30000);
+                if (empty && rotatedRecently) {
+                    this.listEmptyCount++;
+                    if (this.listEmptyCount === 1) {
+                        // v4.0.78: prévenir l'utilisateur avant le reload automatique
+                        logger.info('v4.0.78: liste vide détectée — avertissement, reload au prochain contrôle si toujours vide');
+                        this.showToast(t('overlay.listEmptyReload'));
+                    }
+                    if (this.listEmptyCount >= 2) {
+                        const now = Date.now();
+                        if (!this.lastListReload || now - this.lastListReload > 60000) {
+                            this.lastListReload = now;
+                            this.listEmptyCount = 0;
+                            logger.warn('v4.0.78: liste vide persistante sur la page mail — reload de la page');
+                            this.win.webContents.reload();
+                        }
+                    }
+                } else {
+                    this.listEmptyCount = 0;
+                }
+                if (!empty || !rotatedRecently) this.listEmptyCount = 0;
+            } catch (e) { /* ignore */ }
+        }, 8000);
+    }
+
     startObserverHealthCheck() {
         this.observerHealthCheck = setInterval(async () => {
             if (!this.win || this.win.isDestroyed()) return;
@@ -1108,6 +1160,7 @@ class MailWindowController {
         this.setupIpcHandlers();
         this.setupWebContentsEvents();
         this.setupOrientationHandler(); // v4.0.61: fix liste vide après rotation d'écran
+        this.startListEmptyWatchdog();   // v4.0.78: reload si la liste reste vide sur la page mail
         this.setupWindowOpenHandler();
         // v3.3.20: the compose window opens as a SEPARATE BrowserWindow — inject
         // the UT look & gestures there too, or it stays unstyled.
@@ -1940,7 +1993,7 @@ class MailWindowController {
         let timer = null;
         const onResize = () => {
             if (timer) clearTimeout(timer);
-            timer = setTimeout(() => { repaint('resize'); setTimeout(() => repaint('resize+1s'), 1000); }, 500);
+            timer = setTimeout(() => { repaint('resize'); }, 500);
         };
         this.win.webContents.on('resize', onResize);
         this.win.webContents.on('dom-ready', () => {
@@ -2223,6 +2276,11 @@ class MailWindowController {
                 clearInterval(this.rotationPoll);
                 this.rotationPoll = null;
             }
+            // v4.0.78: stop list-empty watchdog
+            if (this.listWatchdog) {
+                clearInterval(this.listWatchdog);
+                this.listWatchdog = null;
+            }
             // Flush cookies one last time before window destruction
             this.flushSessionCookies();
             if (!global.preventAutoCloseApp) {
@@ -2281,7 +2339,7 @@ class MailWindowController {
                     this.win.webContents.executeJavaScript(`
                         (() => {
                             const ml = document.querySelector('[data-app-section="MessageList"]');
-                            return !(ml && ml.offsetParent && ml.querySelector('[role="listitem"], [class*="listItem"]'));
+                            return !(ml && ml.offsetParent && ml.querySelector('[role="option"], [role="listitem"], [class*="listItem"]'));
                         })()
                     `).then((listHidden) => {
                         if (!listHidden) return;
@@ -2301,8 +2359,14 @@ class MailWindowController {
      * l'app a détecté le pivot et agit (repaint/reload). Disparaît après 1,5 s.
      */
     showRotationToast() {
+        this.showToast(t('overlay.rotation'));
+    }
+
+    /**
+     * Toast générique en bas d'écran (fond sombre, texte orange), 1,5 s.
+     */
+    showToast(msg) {
         if (!this.win || this.win.isDestroyed()) return;
-        const msg = t('overlay.rotation');
         this.win.webContents.executeJavaScript(`
             (() => {
                 let el = document.getElementById('utoutlook-rotation-toast');
@@ -2331,6 +2395,7 @@ class MailWindowController {
         // est faite au niveau compositor. On POLL la rotation de l'écran et on
         // force setBounds + invalidate + repaint de la liste quand elle change.
         this.lastDisplayKey = '';
+        this.lastRotationTime = 0; // v4.0.78: timestamp de la dernière rotation détectée
         // v4.0.77: historique court des états — un pivot rapide A→B→A en moins
         // d'un tick ne doit pas être manqué (état intermédiaire détecté).
         this.recentDisplayKeys = [];
@@ -2349,14 +2414,26 @@ class MailWindowController {
                 // v4.0.77: déclenche si l'état courant n'a pas été vu récemment
                 // (détecte A→B→A rapide) ; intervalle 500 ms pour la réactivité.
                 if (!this.recentDisplayKeys.includes(key)) {
+                    this.lastRotationTime = Date.now(); // v4.0.78: pour le watchdog liste vide
                     this.recentDisplayKeys.push(key);
                     if (this.recentDisplayKeys.length > 4) this.recentDisplayKeys.shift();
-                    logger.info(`v4.0.77: rotation détectée (${key}) — setBounds + invalidate + repaint + toast`);
+                    logger.info(`v4.0.78: rotation détectée (${key}) — setBounds + toast + RELOAD différé 800 ms`);
                     this.handleDisplayChange();
                     try { this.win.webContents.invalidate(); } catch (e) {}
                     this.showRotationToast();
-                    this.forceListRepaint('rotation');
-                    setTimeout(() => this.forceListRepaint('rotation+1s'), 1000);
+                    // v4.0.78: reload systématique après pivot — plus simple et fiable
+                    // que le repaint (la liste virtualisée restait vide sinon).
+                    // Garde-fou: max 1 reload / 15 s.
+                    const now = Date.now();
+                    if (!this.lastRotationReload || now - this.lastRotationReload > 15000) {
+                        this.lastRotationReload = now;
+                        setTimeout(() => {
+                            if (this.win && !this.win.isDestroyed()) {
+                                logger.info('v4.0.78: reload de la page après rotation');
+                                this.win.webContents.reload();
+                            }
+                        }, 800);
+                    }
                 }
             } catch (e) { /* ignore */ }
         }, 500);
