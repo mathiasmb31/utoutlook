@@ -2291,6 +2291,11 @@ class MailWindowController {
                 clearInterval(this.rotationPoll);
                 this.rotationPoll = null;
             }
+            // v4.0.89: stop keyboard health watchdog
+            if (this.keyboardHealthPoll) {
+                clearInterval(this.keyboardHealthPoll);
+                this.keyboardHealthPoll = null;
+            }
             // v4.0.78: stop list-empty watchdog
             if (this.listWatchdog) {
                 clearInterval(this.listWatchdog);
@@ -2514,6 +2519,19 @@ class MailWindowController {
         this.lastDisplayKey = '';
         this.lastRotationTime = 0; // v4.0.78: timestamp de la dernière rotation détectée
         this.mailListReady = false; // v4.0.85: true quand la page mail (liste des messages) est atteinte
+        // v4.0.89: watchdog clavier — après une relance post-rotation, le focus
+        // Wayland peut être perdu sans événement blur/focus : le clavier Maliit
+        // n'envoie alors plus rien. Toutes les 3 s, si la page n'a plus le focus
+        // document, on restaure le focus fenêtre + renderer.
+        this.keyboardHealthPoll = setInterval(() => {
+            if (!this.win || this.win.isDestroyed() || !this.mailListReady) return;
+            this.win.webContents.executeJavaScript('document.hasFocus()').then(has => {
+                if (!has && this.win && !this.win.isDestroyed()) {
+                    logger.info('v4.0.89: perte de focus document détectée — restauration clavier (win.focus + wakeVirtualKeyboard)');
+                    this.wakeVirtualKeyboard();
+                }
+            }).catch(() => {});
+        }, 3000);
         // v4.0.77: historique court des états — un pivot rapide A→B→A en moins
         // d'un tick ne doit pas être manqué (état intermédiaire détecté).
         this.recentDisplayKeys = [];
@@ -2563,6 +2581,12 @@ class MailWindowController {
                         setTimeout(() => {
                             if (this.win && !this.win.isDestroyed()) {
                                 logger.info('v4.0.84: relance complète de l\'app après rotation');
+                                // v4.0.89: fermer le clavier virtuel AVANT de quitter —
+                                // sinon Maliit reste ouvert sur une fenêtre morte et
+                                // ne se réveille plus après la relance.
+                                this.win.webContents.executeJavaScript(
+                                    'if (document.activeElement && document.activeElement.blur) document.activeElement.blur()'
+                                ).catch(() => {});
                                 global.skipCleanExitFlag = true; // pas de exitclient -> le wrapper relance
                                 app.exit(0);
                             }
