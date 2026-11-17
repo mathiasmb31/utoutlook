@@ -329,7 +329,22 @@ class MailWindowController {
                         cleaned++;
                     }
                 }
-                if (cleaned > 0) logger.info(`v4.0.54: ${cleaned} cookies non-essentiels nettoyés au démarrage`);
+                // v4.0.60: dédupliquer esctx-<id> / OParams (un par tentative de
+                // login) — ne garder que le dernier par famille et par domaine
+                const seenFam = new Map();
+                for (const c of all) {
+                    const fam = /^(esctx-.+|OParams\d*)$/i.exec(c.name || '');
+                    if (!fam) continue;
+                    const key = (fam[1].startsWith('esctx') ? 'esctx' : 'OParams') + '@' + (c.domain || '');
+                    if (seenFam.has(key)) {
+                        const old = seenFam.get(key);
+                        const u = `${old.secure ? 'https' : 'http'}://${(old.domain || '').replace(/^\./, '')}${old.path || '/'}`;
+                        await ses.cookies.remove(u, old.name).catch(() => {});
+                        cleaned++;
+                    }
+                    seenFam.set(key, c);
+                }
+                if (cleaned > 0) logger.info(`v4.0.60: ${cleaned} cookies non-essentiels/dupliqués nettoyés au démarrage`);
                 await ses.cookies.flushStore().catch(() => {});
 
                 if (!fs.existsSync(AUTH_TOKEN_FILE)) return;
@@ -340,9 +355,12 @@ class MailWindowController {
                 // v4.0.52: domaines ESSENTIELS uniquement — restaurer sur 9 domaines
                 // créait un header Cookie énorme (>8 Ko) que les serveurs Microsoft
                 // rejetaient (431 Request Header Fields Too Large → "bad request").
+                // v4.0.60: ne PAS référencer `entry` ici (TDZ — la restauration
+                // throwait à chaque démarrage depuis v4.0.52 et le token n'était
+                // jamais restauré). Le domaine propre à chaque entrée est déjà
+                // ajouté dans la boucle ci-dessous.
                 const domains = ['login.live.com', '.live.com',
-                                 'login.microsoftonline.com', '.cloud.microsoft',
-                                 entry.domain].filter(Boolean);
+                                 'login.microsoftonline.com', '.cloud.microsoft'];
                 let restored = 0;
                 // v4.0.53: ne restaurer QUE les cookies d'auth essentiels — restaurer
                 // les 30 cookies × 4 domaines = header Cookie > 11 Ko, rejeté par
@@ -762,38 +780,54 @@ class MailWindowController {
             h.includes('office.com') || h.includes('office365.com') || h.includes('outlook') ||
             h.includes('msauth.net') || h.includes('msocdn.com') || h.includes('msecnd.net') ||
             h.includes('msftauth.net') || h.includes('sharepoint.com');
+        // v4.0.60: blacklist de tracking — on garde TOUT sauf le junk connu.
+        // Un whitelist (même EXTENDED) risquait de retirer un cookie de session
+        // dont le flux a besoin (ex: buid) et cassait la requête de sign-in/2FA.
+        const JUNK = /^(__Host-|__Secure-)?(MUID|MSCC|MSFPC|MCN|MR|buid|fpc|MSPOK|brcap|ANONCHK|NAP|ANON|WLSSC)/i;
         ses.webRequest.onBeforeSendHeaders((details, callback) => {
             try {
                 const host = new URL(details.url).hostname;
                 if (!isMsHost(host)) return callback({});
                 const headers = details.requestHeaders || {};
-                let raw = headers['Cookie'] ?? headers['cookie'];
-                if (Array.isArray(raw)) raw = raw.join('; ');
+                const key = ('Cookie' in headers) ? 'Cookie' : ('cookie' in headers ? 'cookie' : null);
+                if (!key) return callback({});
+                const orig = headers[key];
+                let raw = Array.isArray(orig) ? orig.join('; ') : orig;
                 if (!raw || raw.length <= MAX_COOKIE_HEADER) return callback({});
                 const parts = raw.split(';').map(s => s.trim()).filter(Boolean);
-                let kept = parts.filter(p => EXTENDED.test(p.split('=')[0].trim()));
-                let tier = 'EXTENDED';
+                // 1) drop le junk tracking, garde tout le reste (session incluse)
+                let kept = parts.filter(p => !JUNK.test(p.split('=')[0].trim()));
+                // 2) si toujours trop gros, drop les plus gros non-auth d'abord
                 if (kept.join('; ').length > MAX_COOKIE_HEADER) {
-                    kept = parts.filter(p => CORE_AUTH.test(p.split('=')[0].trim()));
-                    tier = 'CORE_AUTH';
+                    const auth = kept.filter(p => CORE_AUTH.test(p.split('=')[0].trim()));
+                    const rest = kept.filter(p => !CORE_AUTH.test(p.split('=')[0].trim()))
+                                    .sort((a, b) => b.length - a.length);
+                    kept = [...auth];
+                    let size = auth.join('; ').length;
+                    for (const p of rest) {
+                        if (size + p.length + 2 > MAX_COOKIE_HEADER) continue;
+                        kept.push(p); size += p.length + 2;
+                    }
                 }
                 if (kept.length === 0) {
                     const rest = { ...headers };
                     delete rest['Cookie']; delete rest['cookie'];
-                    logger.warn(`v4.0.57: header Cookie (${raw.length} B) supprimé sur ${host} — aucun cookie d'auth, 431 évité`);
+                    logger.warn(`v4.0.60: header Cookie (${raw.length} B) supprimé sur ${host} — 431 évité`);
                     return callback({ requestHeaders: rest });
                 }
                 const trimmed = kept.join('; ');
-                logger.warn(`v4.0.57: header Cookie ${raw.length} B → ${trimmed.length} B sur ${host} (niveau ${tier}, ${parts.length - kept.length} cookies retirés, 431 évité)`);
+                logger.warn(`v4.0.60: header Cookie ${raw.length} B → ${trimmed.length} B sur ${host} (${parts.length - kept.length} cookies de tracking retirés, 431 évité)`);
                 const newHeaders = { ...headers };
-                if ('Cookie' in newHeaders) newHeaders['Cookie'] = trimmed;
-                if ('cookie' in newHeaders) newHeaders['cookie'] = trimmed;
+                // v4.0.60: préserver le format d'origine (Electron 44 peut passer
+                // des tableaux) — écrire une string à la place d'un array perdait
+                // le header et cassait la session
+                newHeaders[key] = Array.isArray(orig) ? [trimmed] : trimmed;
                 callback({ requestHeaders: newHeaders });
             } catch (e) {
                 callback({});
             }
         });
-        logger.info('v4.0.57: garde-fou header Cookie actif (anti-431, 2 niveaux)');
+        logger.info('v4.0.60: garde-fou header Cookie actif (anti-431, blacklist tracking)');
     }
 
     /**
