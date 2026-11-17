@@ -312,6 +312,23 @@ class MailWindowController {
         // Restaurer les tokens sauvegardés au démarrage (avant le 1er loadURL)
         this.restoreAuthToken = async () => {
             try {
+                // v4.0.54: nettoyer d'abord les cookies non-essentiels accumulés par les
+                // anciens syncs (390 cookies = 11,7 Ko → header Cookie > 8 Ko → 431).
+                const all = await ses.cookies.get({});
+                const CORE = /^(__Host-)?MSAAUTH(P)?$|ESTSAUTH|esctx|fptctx|PPLState|msal\.cache/i;
+                let cleaned = 0;
+                for (const c of all) {
+                    const d = (c.domain || '').toLowerCase();
+                    const isMs = d.includes('live.com') || d.includes('microsoft') || d.includes('office.com') || d.includes('outlook');
+                    if (isMs && !CORE.test(c.name)) {
+                        const url = `${c.secure ? 'https' : 'http'}://${d.replace(/^\./, '')}${c.path || '/'}`;
+                        await ses.cookies.remove(url, c.name).catch(() => {});
+                        cleaned++;
+                    }
+                }
+                if (cleaned > 0) logger.info(`v4.0.54: ${cleaned} cookies non-essentiels nettoyés au démarrage`);
+                await ses.cookies.flushStore().catch(() => {});
+
                 if (!fs.existsSync(AUTH_TOKEN_FILE)) return;
                 let saved = JSON.parse(fs.readFileSync(AUTH_TOKEN_FILE, 'utf8'));
                 // v4.0.46: format = tableau de cookies (rétrocompat: objet unique)
