@@ -1107,6 +1107,7 @@ class MailWindowController {
         this.setupContextMenu();
         this.setupIpcHandlers();
         this.setupWebContentsEvents();
+        this.setupOrientationHandler(); // v4.0.61: fix liste vide après rotation d'écran
         this.setupWindowOpenHandler();
         // v3.3.20: the compose window opens as a SEPARATE BrowserWindow — inject
         // the UT look & gestures there too, or it stays unstyled.
@@ -1917,6 +1918,47 @@ class MailWindowController {
         const notification = new Notification(notificationConfig);
         notification.on("click", () => { this.show(); });
         notification.show();
+    }
+
+    /**
+     * v4.0.61: rotation d'écran — après un pivot, la liste des messages Outlook
+     * peut devenir vide et ne jamais se réafficher (le SPA ne recalcule pas sa
+     * mise en page, et notre CSS injecté a des hauteurs mesurées à l-load).
+     * On réinjecte les styles et on force un repaint de la liste (nudge de
+     * scrollTop) + on dispatch un vrai événement resize pour le SPA.
+     */
+    setupOrientationHandler() {
+        if (!this.win || this.win.isDestroyed()) return;
+        let timer = null;
+        const onResize = () => {
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(() => {
+                if (!this.win || this.win.isDestroyed()) return;
+                logger.info('v4.0.61: resize/orientation — réinjection styles + repaint liste');
+                this.injectStyles().catch(() => {});
+                this.win.webContents.executeJavaScript(`
+                    (() => {
+                        window.dispatchEvent(new Event('resize'));
+                        document.documentElement.classList.add('utoutlook-rotated');
+                        setTimeout(() => document.documentElement.classList.remove('utoutlook-rotated'), 300);
+                        const list = document.querySelector('[class*="listView"], [class*="messageList"], [role="main"]');
+                        if (list) { list.scrollTop += 1; list.scrollTop -= 1; }
+                    })()
+                `).catch(() => {});
+            }, 400);
+        };
+        this.win.webContents.on('resize', onResize);
+        this.win.webContents.on('dom-ready', () => {
+            this.win.webContents.executeJavaScript(`
+                if (!window.__utoutlookOrient) {
+                    window.__utoutlookOrient = true;
+                    let t = null;
+                    const fire = () => { clearTimeout(t); t = setTimeout(() => window.dispatchEvent(new Event('resize')), 300); };
+                    window.addEventListener('orientationchange', fire);
+                    window.addEventListener('resize', fire);
+                }
+            `).catch(() => {});
+        });
     }
 
     setupWebContentsEvents() {
