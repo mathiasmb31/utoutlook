@@ -1,10 +1,15 @@
 #!/bin/bash
 # Test rapide utoutlook sur le téléphone (adb 57606579)
-# Usage: ./test-rapide.sh [version]
-#   - tue les vieux process (zombies)
-#   - lance l'app
-#   - affiche: version installée, nb de process, heartbeat, URL courante, dernières pages, erreurs récentes, token sauvegardé
 set -e
+
+if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+  echo "Usage: ./test-rapide.sh [version]"
+  echo "  Tue les vieux process (zombies), lance l'app, puis affiche:"
+  echo "  version installée, nb de process, heartbeat, URL courante,"
+  echo "  dernières pages chargées, erreurs CSP/crash, boucles post.srf,"
+  echo "  token sauvegardé (auth-token.json), restauration, MSAAUTH dans la DB"
+  exit 0
+fi
 
 DEV="57606579"
 V="${1:-}"

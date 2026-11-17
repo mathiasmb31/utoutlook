@@ -1,13 +1,17 @@
 #!/bin/bash
 # Workflow git rapide pour utoutlook (évite d'appeler l'IA pour les commits/push)
-#
-# Usage:
-#   ./git-auto.sh commit "fix(v4.0.52): description courte"   → commit sur la branche courante avec pied Vibe
-#   ./git-auto.sh push                                          → push la branche courante (hook pre-push bloque les .click)
-#   ./git-auto.sh pr "Titre de la PR"                          → push + crée la PR via gh (si installé) ou affiche l'URL
-#   ./git-auto.sh newfix "nom-du-fix"                          → crée une branche fix/<nom> depuis main
-#   ./git-auto.sh status                                        → résumé : branche, commits en avance, fichiers modifiés
 set -e
+
+if [ "$1" = "--help" ] || [ "$1" = "-h" ] || [ -z "$1" ]; then
+  echo "Usage: ./git-auto.sh <commande> [args]"
+  echo ""
+  echo '  status                        -> branche courante, commits en avance, fichiers modifies'
+  echo '  commit "fix(vX.Y.Z): desc"    -> git add -A + commit avec pied Vibe + grep brethous'
+  echo '  push                          -> push la branche (hook pre-push bloque les .click)'
+  echo '  pr "Titre de la PR"           -> push + cree la PR (gh si installe, sinon URL GitHub)'
+  echo '  newfix <nom>                  -> cree fix/<nom> depuis main a jour'
+  exit 0
+fi
 
 CMD="${1:?Usage: $0 {commit|push|pr|newfix|status} ...}"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
