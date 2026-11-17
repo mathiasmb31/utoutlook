@@ -317,10 +317,12 @@ class MailWindowController {
                 // v4.0.46: format = tableau de cookies (rétrocompat: objet unique)
                 if (!Array.isArray(saved)) saved = [saved];
                 if (saved.length === 0 || !saved[0].name) return;
-                const domains = ['.live.com', 'login.live.com', '.microsoftonline.com',
+                // v4.0.52: domaines ESSENTIELS uniquement — restaurer sur 9 domaines
+                // créait un header Cookie énorme (>8 Ko) que les serveurs Microsoft
+                // rejetaient (431 Request Header Fields Too Large → "bad request").
+                const domains = ['login.live.com', '.live.com',
                                  'login.microsoftonline.com', '.cloud.microsoft',
-                                 '.office.com', 'outlook.live.com', 'outlook.cloud.microsoft',
-                                 '.microsoft.com'];
+                                 entry.domain].filter(Boolean);
                 let restored = 0;
                 for (const entry of saved) {
                     if (!entry.name || !entry.value) continue;
