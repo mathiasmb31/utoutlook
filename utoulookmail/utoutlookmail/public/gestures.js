@@ -581,8 +581,10 @@
                 // écran qui tourne). À la place on clique sur le VRAI bouton
                 // refresh d'Outlook (sync de la boîte) s'il est présent.
                 console.log('[gestures] Pull-to-refresh → clic bouton refresh Outlook');
-                const btn = document.querySelector('[aria-label*="refresh" i], [aria-label*="actualiser" i], [aria-label*="synchroniser" i], [data-automation-id*="refresh" i], [data-automation-id*="sync" i], [class*="refreshButton"]');
-                if (btn && btn.offsetParent) btn.click();
+                // v4.0.74: ne PAS tester offsetParent — le bouton sync est dans le
+                // ruban replié (offsetParent null / vis=false) mais .click() fonctionne.
+                const btn = document.querySelector('[aria-label*="synchroniser" i], [aria-label*="refresh" i], [aria-label*="actualiser" i], [data-automation-id*="refresh" i], [data-automation-id*="sync" i], [class*="refreshButton"]');
+                if (btn) btn.click();
                 pullIndicator.style.transform = 'scaleX(1)';
                 setTimeout(() => {
                     if (pullIndicator) pullIndicator.style.transform = 'scaleX(0)';
