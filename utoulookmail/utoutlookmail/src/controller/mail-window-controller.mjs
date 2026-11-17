@@ -315,7 +315,10 @@ class MailWindowController {
                 // v4.0.54: nettoyer d'abord les cookies non-essentiels accumulés par les
                 // anciens syncs (390 cookies = 11,7 Ko → header Cookie > 8 Ko → 431).
                 const all = await ses.cookies.get({});
-                const CORE = /^(__Host-)?MSAAUTH(P)?$|ESTSAUTH|esctx|fptctx|PPLState|msal\.cache/i;
+                // v4.0.57: liste élargie aux cookies de session du flux Microsoft
+                // (MSPAuth/NAP/ANON/…) — ne garder que MSAAUTH/ESTSAUTH supprimait
+                // des cookies nécessaires et cassait la suite du login
+                const CORE = /^(__Host-)?MSAAUTH(P)?$|ESTSAUTH|esctx|fptctx2?|PPLState|ChainedAuthProbe|MSPAuth|MSPProf|NAP|ANON|WLSSC|MSPOK|OParams|uaid|ClientId|brcap|buid|fpc|msal\.cache|stsservicecookie/i;
                 let cleaned = 0;
                 for (const c of all) {
                     const d = (c.domain || '').toLowerCase();
@@ -728,8 +731,13 @@ class MailWindowController {
     // jamais touché.
     setupCookieHeaderGuard() {
         const ses = session.fromPartition(this.sessionPartition);
-        const CORE = /^(__Host-|__Secure-)?(MSAAUTH|MSAAUTHP|ESTSAUTH|ESTSAUTHPERSIST|esctx|fptctx2?|PPLState|msal\.cache|stsservicecookie)$/i;
-        const MAX_COOKIE_HEADER = 6500; // rester bien sous la limite serveur de 8 Ko
+        // v4.0.57: deux niveaux. EXTENDED = tous les cookies de session dont le
+        // flux de login Microsoft a besoin (sinon la requête 2FA n'est plus
+        // envoyée — régression v4.0.56 qui ne gardait que CORE). CORE_AUTH =
+        // repli ultime si même EXTENDED dépasse le seuil.
+        const EXTENDED = /^(__Host-|__Secure-)?(MSAAUTH|MSAAUTHP|ESTSAUTH|ESTSAUTHPERSIST|esctx|fptctx2?|PPLState|ChainedAuthProbe|MSPAuth|MSPProf|NAP|ANON|WLSSC|MSPOK|OParams|uaid|ClientId|brcap|buid|fpc|msal\.cache|stsservicecookie)/i;
+        const CORE_AUTH = /^(__Host-|__Secure-)?(MSAAUTH|MSAAUTHP|ESTSAUTH|ESTSAUTHPERSIST|esctx|fptctx2?|PPLState|msal\.cache|stsservicecookie)$/i;
+        const MAX_COOKIE_HEADER = 7500; // rester sous la limite serveur de 8 Ko (431) avec marge
         const isMsHost = (h) => h.includes('live.com') || h.includes('microsoft') ||
             h.includes('office.com') || h.includes('office365.com') || h.includes('outlook') ||
             h.includes('msauth.net') || h.includes('msocdn.com') || h.includes('msecnd.net') ||
@@ -742,18 +750,21 @@ class MailWindowController {
                 let raw = headers['Cookie'] ?? headers['cookie'];
                 if (Array.isArray(raw)) raw = raw.join('; ');
                 if (!raw || raw.length <= MAX_COOKIE_HEADER) return callback({});
-                const kept = raw.split(';').map(s => s.trim()).filter(p => {
-                    const name = p.split('=')[0].trim();
-                    return CORE.test(name);
-                });
+                const parts = raw.split(';').map(s => s.trim()).filter(Boolean);
+                let kept = parts.filter(p => EXTENDED.test(p.split('=')[0].trim()));
+                let tier = 'EXTENDED';
+                if (kept.join('; ').length > MAX_COOKIE_HEADER) {
+                    kept = parts.filter(p => CORE_AUTH.test(p.split('=')[0].trim()));
+                    tier = 'CORE_AUTH';
+                }
                 if (kept.length === 0) {
                     const rest = { ...headers };
                     delete rest['Cookie']; delete rest['cookie'];
-                    logger.warn(`v4.0.56: header Cookie (${raw.length} B) supprimé sur ${host} — aucun cookie d'auth, 431 évité`);
+                    logger.warn(`v4.0.57: header Cookie (${raw.length} B) supprimé sur ${host} — aucun cookie d'auth, 431 évité`);
                     return callback({ requestHeaders: rest });
                 }
                 const trimmed = kept.join('; ');
-                logger.warn(`v4.0.56: header Cookie ${raw.length} B → ${trimmed.length} B sur ${host} (431 évité)`);
+                logger.warn(`v4.0.57: header Cookie ${raw.length} B → ${trimmed.length} B sur ${host} (niveau ${tier}, ${parts.length - kept.length} cookies retirés, 431 évité)`);
                 const newHeaders = { ...headers };
                 if ('Cookie' in newHeaders) newHeaders['Cookie'] = trimmed;
                 if ('cookie' in newHeaders) newHeaders['cookie'] = trimmed;
@@ -762,7 +773,7 @@ class MailWindowController {
                 callback({});
             }
         });
-        logger.info('v4.0.56: garde-fou header Cookie actif (anti-431)');
+        logger.info('v4.0.57: garde-fou header Cookie actif (anti-431, 2 niveaux)');
     }
 
     /**
