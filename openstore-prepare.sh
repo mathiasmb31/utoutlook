@@ -59,7 +59,32 @@ fi
 
 # Kit publishstore
 cp -f "$CLICK" "$KIT/" 2>/dev/null || true
-[ -f "$KIT/whatsnew.txt" ] || echo "(whatsnew $VERSION à rédiger)" > "$KIT/whatsnew.txt"
+
+# whatsnew.txt : généré automatiquement depuis les commits git depuis la dernière version publiée sur OpenStore
+LAST_PUBLISHED=$(curl -sS --max-time 10 "https://open-store.io/api/v4/apps/${APP}" 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['data'].get('version',''))" 2>/dev/null || echo "")
+if [ -z "$LAST_PUBLISHED" ]; then LAST_PUBLISHED="4.0.40"; echo "(API injoignable, fallback sur $LAST_PUBLISHED)"; fi
+echo "Dernière version publiée sur OpenStore: $LAST_PUBLISHED"
+
+# Commits depuis le commit de la dernière version publiée (cherché dans les messages de commit)
+LAST_COMMIT=$(git log --oneline --grep="Version $LAST_PUBLISHED" -1 --format="%H" 2>/dev/null || git log --oneline --grep="v$LAST_PUBLISHED" -1 --format="%H" 2>/dev/null || echo "")
+if [ -z "$LAST_COMMIT" ]; then
+  echo "(commit de $LAST_PUBLISHED non trouvé, whatsnew depuis 20 derniers commits)"
+  RANGE="HEAD~20..HEAD"
+else
+  RANGE="${LAST_COMMIT}..HEAD"
+fi
+
+{
+  echo "Version $VERSION — $(date +"%d %B %Y")"
+  echo ""
+  echo "Changes since $LAST_PUBLISHED:"
+  echo ""
+  git log "$RANGE" --format="- %s" 2>/dev/null | sed 's/ — Tests [0-9/]*\. Version [0-9.]*\.//; s/Tests [0-9/]*\. Version [0-9.]*\.//' | head -40
+  echo ""
+  echo "Co-worked by Mathias & Vibe — verified and tested by Mathias."
+} > "$KIT/whatsnew.txt"
+echo "whatsnew.txt généré depuis $LAST_PUBLISHED ($RANGE)"
+
 [ -f "$KIT/metadata.json" ] || echo '{"name":"UToutlook Mail","description":"Outlook pour Ubuntu Touch"}' > "$KIT/metadata.json"
 
 echo ""
