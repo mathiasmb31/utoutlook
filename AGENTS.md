@@ -85,6 +85,10 @@ a provoqué OOM + figeage total le 2026-11-04.
 
 **Ne jamais lancer de build depuis l'agent IA** (économie de tokens/API) : Mathias fait les builds lui-même via les scripts `build-deploy.sh` / `build-fast.sh` du projet. L'agent prépare le code, les tests et les scripts ; Mathias lance le build + déploiement + test device.
 
+## Publication OpenStore (OBLIGATOIRE — règle Mathias, 2026-11-17)
+
+**L'agent IA ne lance JAMAIS `openstore-prepare.sh --upload` ni aucun upload OpenStore : c'est Mathias qui exécute la commande à la main** (`OPENSTORE_APIKEY=... ./openstore-prepare.sh <version> --upload "OK"`, apikey en env var uniquement). L'agent peut seulement lire/préparer les fichiers du kit `publishstore/` et afficher les récap. Préalables : test device concluant (adb `XXXX`, 0 crash) + « OK » explicite de Mathias après revue du contenu complet.
+
 ## Pied de commit (OBLIGATOIRE)
 
 Tout commit fait par l'agent Mistral Vibe porte systématiquement ce pied de message :
