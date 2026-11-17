@@ -77,6 +77,12 @@ fi
 {
   echo "Version $VERSION — $(date +"%d %B %Y")"
   echo ""
+  echo "Sign-in and 2FA work reliably again on the phone: no more login loop"
+  echo "after quitting/relaunching, no more \"header too long\" error after the"
+  echo "Authenticator approval, and closing the app no longer leaves hidden"
+  echo "processes running. A complicated debugging session went into fixing"
+  echo "these — thanks for testing each build on the phone."
+  echo ""
   echo "Changes since $LAST_PUBLISHED:"
   echo ""
   git log "$RANGE" --format="- %s" 2>/dev/null | sed 's/ — Tests [0-9/]*\. Version [0-9.]*\.//; s/Tests [0-9/]*\. Version [0-9.]*\.//' | head -40
