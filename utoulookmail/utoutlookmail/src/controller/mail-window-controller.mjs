@@ -496,6 +496,11 @@ class MailWindowController {
                 // login.microsoftonline.com déclenche le resume SSO silencieux
                 // « Trying to sign you in » dont la vue plante en boucle (RangeError)
                 if (cookie.name.toLowerCase() === 'stsservicecookie') continue;
+                // v4.0.55: ne recopier QUE les cookies d'auth essentiels — copier les
+                // ~30 cookies (tracking inclus) × 9 domaines = header Cookie > 8 Ko
+                // rejeté par Microsoft (431 Header Too Long) après la validation 2FA.
+                const CORE_SYNC = /^(__Host-)?MSAAUTH(P)?$|ESTSAUTH|esctx|fptctx2?|PPLState|msal\.cache/i;
+                if (!CORE_SYNC.test(cookie.name)) continue;
                 // Map source domains to live.com equivalents.
                 // Also copy login.live.com cookies to outlook.live.com specifically,
                 // and office.com cookies to .live.com (parent domain) for sharing.
