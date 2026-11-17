@@ -1558,6 +1558,9 @@ class MailWindowController {
                 logger.info(`Splash closing — URL is ${this.isMailInterfaceUrl(url) ? 'mail interface' : 'login page'}`);
                 this.closeSplashWindow();
             }
+            // v4.0.85: la liste des messages est atteinte — autorise la relance
+            // après rotation (le poller bloque le quit tant que ce flag est false).
+            if (this.isMailInterfaceUrl(url)) this.mailListReady = true;
 
 
 
@@ -2483,6 +2486,7 @@ class MailWindowController {
         // force setBounds + invalidate + repaint de la liste quand elle change.
         this.lastDisplayKey = '';
         this.lastRotationTime = 0; // v4.0.78: timestamp de la dernière rotation détectée
+        this.mailListReady = false; // v4.0.85: true quand la page mail (liste des messages) est atteinte
         // v4.0.77: historique court des états — un pivot rapide A→B→A en moins
         // d'un tick ne doit pas être manqué (état intermédiaire détecté).
         this.recentDisplayKeys = [];
@@ -2496,12 +2500,13 @@ class MailWindowController {
                 const wb = this.win.getBounds();
                 const key = `${d.rotation}|${d.size.width}x${d.size.height}|win ${wb.width}x${wb.height}`;
                 // v4.0.85: ne déclencher QUE sur un vrai changement d'ORIENTATION
-                // (portrait <-> paysage). Un simple changement de TAILLE de la
-                // fenêtre (ex. au démarrage : 612x1350 -> 612x1298 quand le chrome
-                // s'ajuste) ne doit PAS être pris pour une rotation, sinon l'app
-                // se relance/quitte 800 ms après son lancement.
+                // (portrait <-> paysage) — la clé de détection ne contient PAS la
+                // taille de la fenêtre : au démarrage elle passe de 612x1350 à
+                // 612x1298 (ajustement du chrome) sans changer d'orientation, ce
+                // qui provoquait une fausse rotation et un quit 800 ms après le
+                // lancement.
                 const winLandscape = wb.width > wb.height;
-                const keyOriented = `${winLandscape ? 'L' : 'P'}|${key}`;
+                const keyOriented = `${winLandscape ? 'L' : 'P'}|${d.rotation}|${d.size.width}x${d.size.height}`;
                 const first = this.lastDisplayKey === '';
                 this.lastDisplayKey = key;
                 if (first) { this.recentDisplayKeys = [keyOriented]; return; } // ne rien faire au démarrage
@@ -2511,16 +2516,19 @@ class MailWindowController {
                     this.lastRotationTime = Date.now(); // v4.0.78: pour le watchdog liste vide
                     this.recentDisplayKeys.push(keyOriented);
                     if (this.recentDisplayKeys.length > 4) this.recentDisplayKeys.shift();
-                    logger.info(`v4.0.84: rotation détectée (${key}) — setBounds + toast « rotation détectée, relance application » + relance différée 800 ms`);
+                    logger.info(`v4.0.85: rotation détectée (${key}) — setBounds${this.mailListReady ? ' + toast + relance différée 800 ms' : ' (liste pas encore atteinte : PAS de quit)'}`);
                     this.handleDisplayChange();
                     try { this.win.webContents.invalidate(); } catch (e) {}
-                    this.showRotationToast();
                     // v4.0.84: RELANCE COMPLÈTE de l'app après pivot — le reload de
                     // page ne suffisait pas (listbox 0x0 persistait aléatoirement).
                     // On quitte SANS le flag exitclient : le wrapper voit le heartbeat
                     // mort et relance l'app fraîche (launchtry). Garde-fou: 1 fois / 20 s.
+                    // v4.0.85: le quit est BLOQUÉ tant que la liste des messages n'est
+                    // pas atteinte (mailListReady) — sinon une fausse détection au
+                    // démarrage empêche l'app de s'ouvrir.
                     const now = Date.now();
-                    if (!this.lastRotationReload || now - this.lastRotationReload > 20000) {
+                    if (this.mailListReady && (!this.lastRotationReload || now - this.lastRotationReload > 20000)) {
+                        this.showRotationToast();
                         this.lastRotationReload = now;
                         setTimeout(() => {
                             if (this.win && !this.win.isDestroyed()) {
