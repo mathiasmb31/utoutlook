@@ -2331,6 +2331,9 @@ class MailWindowController {
         // est faite au niveau compositor. On POLL la rotation de l'écran et on
         // force setBounds + invalidate + repaint de la liste quand elle change.
         this.lastDisplayKey = '';
+        // v4.0.77: historique court des états — un pivot rapide A→B→A en moins
+        // d'un tick ne doit pas être manqué (état intermédiaire détecté).
+        this.recentDisplayKeys = [];
         this.rotationPoll = setInterval(() => {
             if (!this.win || this.win.isDestroyed()) return;
             try {
@@ -2340,11 +2343,15 @@ class MailWindowController {
                 // métriques de l'écran : seule la taille de la fenêtre bouge.
                 const wb = this.win.getBounds();
                 const key = `${d.rotation}|${d.size.width}x${d.size.height}|win ${wb.width}x${wb.height}`;
-                if (key !== this.lastDisplayKey) {
-                    const first = this.lastDisplayKey === '';
-                    this.lastDisplayKey = key;
-                    if (first) return; // ne rien faire au démarrage
-                    logger.info(`v4.0.76: rotation détectée (${key}) — setBounds + invalidate + repaint + toast`);
+                const first = this.lastDisplayKey === '';
+                this.lastDisplayKey = key;
+                if (first) { this.recentDisplayKeys = [key]; return; } // ne rien faire au démarrage
+                // v4.0.77: déclenche si l'état courant n'a pas été vu récemment
+                // (détecte A→B→A rapide) ; intervalle 500 ms pour la réactivité.
+                if (!this.recentDisplayKeys.includes(key)) {
+                    this.recentDisplayKeys.push(key);
+                    if (this.recentDisplayKeys.length > 4) this.recentDisplayKeys.shift();
+                    logger.info(`v4.0.77: rotation détectée (${key}) — setBounds + invalidate + repaint + toast`);
                     this.handleDisplayChange();
                     try { this.win.webContents.invalidate(); } catch (e) {}
                     this.showRotationToast();
@@ -2352,7 +2359,7 @@ class MailWindowController {
                     setTimeout(() => this.forceListRepaint('rotation+1s'), 1000);
                 }
             } catch (e) { /* ignore */ }
-        }, 2000);
+        }, 500);
     }
 
     handleDisplayChange() {
