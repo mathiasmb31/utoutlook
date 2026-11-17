@@ -2501,20 +2501,22 @@ class MailWindowController {
                     this.lastRotationTime = Date.now(); // v4.0.78: pour le watchdog liste vide
                     this.recentDisplayKeys.push(key);
                     if (this.recentDisplayKeys.length > 4) this.recentDisplayKeys.shift();
-                    logger.info(`v4.0.78: rotation détectée (${key}) — setBounds + toast + RELOAD différé 800 ms`);
+                    logger.info(`v4.0.84: rotation détectée (${key}) — setBounds + toast « rotation détectée, relance application » + relance différée 800 ms`);
                     this.handleDisplayChange();
                     try { this.win.webContents.invalidate(); } catch (e) {}
                     this.showRotationToast();
-                    // v4.0.78: reload systématique après pivot — plus simple et fiable
-                    // que le repaint (la liste virtualisée restait vide sinon).
-                    // Garde-fou: max 1 reload / 15 s.
+                    // v4.0.84: RELANCE COMPLÈTE de l'app après pivot — le reload de
+                    // page ne suffisait pas (listbox 0x0 persistait aléatoirement).
+                    // On quitte SANS le flag exitclient : le wrapper voit le heartbeat
+                    // mort et relance l'app fraîche (launchtry). Garde-fou: 1 fois / 20 s.
                     const now = Date.now();
-                    if (!this.lastRotationReload || now - this.lastRotationReload > 15000) {
+                    if (!this.lastRotationReload || now - this.lastRotationReload > 20000) {
                         this.lastRotationReload = now;
                         setTimeout(() => {
                             if (this.win && !this.win.isDestroyed()) {
-                                logger.info('v4.0.78: reload de la page après rotation');
-                                this.win.webContents.reload();
+                                logger.info('v4.0.84: relance complète de l\'app après rotation');
+                                global.skipCleanExitFlag = true; // pas de exitclient -> le wrapper relance
+                                app.exit(0);
                             }
                         }, 800);
                     }

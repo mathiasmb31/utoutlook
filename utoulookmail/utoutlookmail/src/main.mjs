@@ -344,7 +344,8 @@ class ProspectMail {
         // async cookie flushes below — a SIGKILL during the flush must not
         // lose the flag (the wrapper would relaunch a deliberately quit app).
         // Skipped when the quit is a restart (settings import/reset).
-        if (!global.restartRequested) markCleanExit();
+        // v4.0.84: skipCleanExitFlag = relance volontaire après rotation (le wrapper doit relancer l'app)
+        if (!global.restartRequested && !global.skipCleanExitFlag) markCleanExit();
         heartbeatExiting = true;
         clearInterval(heartbeatInterval);
         stopSocketServer();
