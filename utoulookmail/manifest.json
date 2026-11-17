@@ -14,7 +14,7 @@
              "push-helper": "push.json"
             }
     },
-    "version": "4.0.88",
+    "version": "4.0.89",
     "maintainer": "mathias <email@domain.org>",
     "framework" : "@CLICK_FRAMEWORK@"
 }
