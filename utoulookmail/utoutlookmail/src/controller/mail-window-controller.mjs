@@ -324,8 +324,13 @@ class MailWindowController {
                                  'login.microsoftonline.com', '.cloud.microsoft',
                                  entry.domain].filter(Boolean);
                 let restored = 0;
+                // v4.0.53: ne restaurer QUE les cookies d'auth essentiels — restaurer
+                // les 30 cookies × 4 domaines = header Cookie > 11 Ko, rejeté par
+                // Microsoft (431 Header Too Long) → la requête 2FA n'est jamais envoyée.
+                const CORE_AUTH = /^(__Host-)?MSAAUTH(P)?$|ESTSAUTH/i;
                 for (const entry of saved) {
                     if (!entry.name || !entry.value) continue;
+                    if (!CORE_AUTH.test(entry.name)) continue; // ignorer esctx, fptctx, tracking, etc.
                     for (const domain of new Set([...domains, entry.domain].filter(Boolean))) {
                         try {
                             const host = domain.replace(/^\./, '');
