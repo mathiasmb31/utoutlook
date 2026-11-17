@@ -652,7 +652,8 @@ class MailWindowController {
                         // v4.0.78: les lignes Outlook sont des role="option" dans un
                         // listbox (pas role="listitem" !) — ancien sélecteur = faux
                         // positifs "liste vide" et reloads en boucle.
-                        return ml.querySelectorAll('[role="option"], [role="listitem"], [class*="listItem"]').length === 0;
+                        // v4.0.81: ne compter que les lignes VRAIMENT visibles (hauteur > 0)
+                        return Array.from(ml.querySelectorAll('[role="option"], [role="listitem"], [class*="listItem"]')).filter(o => o.getBoundingClientRect().height > 0).length === 0;
                     })()
                 `);
                 // v4.0.78: le reload auto ne se fait QU'après une rotation récente
@@ -2316,6 +2317,21 @@ class MailWindowController {
                 forceReflow();
                 window.dispatchEvent(new Event('resize'));
                 document.dispatchEvent(new Event('resize'));
+                // v4.0.81: débloquer la listbox rendue 0x0 après un resize — remonter
+                // depuis la listbox et forcer display:flex sur tout ancêtre masqué
+                // (méthode prouvée sur le device : options 0 px -> 112 px).
+                const lb = document.querySelector('[data-app-section="MessageList"] [role="listbox"]');
+                if (lb) {
+                    let a = lb;
+                    while (a && a !== document.body) {
+                        if (getComputedStyle(a).display === 'none') {
+                            a.style.display = 'flex';
+                            a.style.visibility = 'visible';
+                            if (!a.style.height) a.style.height = '100%';
+                        }
+                        a = a.parentElement;
+                    }
+                }
                 const list = document.querySelector('[class*="listView"], [class*="messageList"], [role="main"]');
                 if (list) { list.scrollTop = 0; list.scrollTop = 1; list.scrollTop = 0; forceReflow(); }
                 // v4.0.68/4.0.72: après un pivot, Outlook bascule en layout « étroit » et
@@ -2342,7 +2358,9 @@ class MailWindowController {
                     this.win.webContents.executeJavaScript(`
                         (() => {
                             const ml = document.querySelector('[data-app-section="MessageList"]');
-                            return !(ml && ml.offsetParent && ml.querySelector('[role="option"], [role="listitem"], [class*="listItem"]'));
+                            // v4.0.81: une option peut exister mais faire 0 px de haut
+                            const o = ml && ml.querySelector('[role="option"], [role="listitem"], [class*="listItem"]');
+                            return !(o && o.getBoundingClientRect().height > 0);
                         })()
                     `).then((listHidden) => {
                         if (!listHidden) return;
@@ -2399,14 +2417,20 @@ class MailWindowController {
         if (!this.win || this.win.isDestroyed()) return;
         this.win.webContents.executeJavaScript(`
             (() => {
+                // v4.0.81: NE PLUS CLIQUER sur le bouton (c'est un toggle — cliqué
+                // au mauvais moment il ROUVRE le volet, boucle infinie). On masque
+                // le volet par une classe CSS déterministe.
+                if (!document.getElementById('utoutlook-nav-hide-css')) {
+                    const st = document.createElement('style');
+                    st.id = 'utoutlook-nav-hide-css';
+                    st.textContent = 'html.utoutlook-hide-nav [data-app-section="NavigationPane"]{display:none !important;}';
+                    document.head.appendChild(st);
+                }
                 const navPane = document.querySelector('[data-app-section="NavigationPane"]');
                 const msgList = document.querySelector('[data-app-section="MessageList"]');
-                if (!navPane || !navPane.offsetParent) return;
-                const covers = !msgList || !msgList.offsetParent || window.innerWidth > window.innerHeight;
-                if (!covers) return;
-                const hideBtn = Array.from(document.querySelectorAll('button[aria-label], [role="button"][aria-label]'))
-                    .find(b => /masquer le volet de navigation|^hide the navigation pane$/i.test((b.getAttribute('aria-label') || '').trim()));
-                if (hideBtn) hideBtn.click();
+                const navVisible = navPane && navPane.offsetParent;
+                const covers = navVisible && (!msgList || !msgList.offsetParent || window.innerWidth > window.innerHeight);
+                document.documentElement.classList.toggle('utoutlook-hide-nav', !!covers);
             })()
         `).catch(() => {});
     }
