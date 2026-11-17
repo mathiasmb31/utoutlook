@@ -1,7 +1,7 @@
 import QtQuick 2.9
 import QtQuick.Window 2.2
 import QtQuick.Controls 2.2
-.import "/tmp/utoutlook-qml-i18n.js" as QmlI18n
+import "/tmp/utoutlook-qml-i18n.js" as QmlI18n
 
 // v4.0.91: écran de relance après changement d'orientation — fond opaque style
 // Mathias (#0f0f1a) + roue qui tourne (BusyIndicator) orange + texte centré.
