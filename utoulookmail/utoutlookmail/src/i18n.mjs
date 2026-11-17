@@ -59,6 +59,11 @@ const T = {
         fr: 'Veuillez patienter...', en: 'Please wait...', es: 'Espera...', de: 'Bitte warten...',
         it: 'Attendi...', pt: 'Aguarde...', zh: '请稍候...', ar: 'الرجاء الانتظار...',
     },
+    // v4.0.76: toast affiché quand un changement d'orientation est détecté
+    'overlay.rotation': {
+        fr: "Changement d'orientation…", en: 'Orientation change…', es: 'Cambio de orientación…', de: 'Orientierungswechsel…',
+        it: "Cambio di orientazione…", pt: 'Mudança de orientação…', zh: '方向改变…', ar: 'تغيير الاتجاه…',
+    },
     'common.cancel': {
         fr: 'Annuler', en: 'Cancel', es: 'Cancelar', de: 'Abbrechen',
         it: 'Annulla', pt: 'Cancelar', zh: '取消', ar: 'إلغاء',
