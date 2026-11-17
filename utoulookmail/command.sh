@@ -412,10 +412,13 @@ fi
 # instance still closing right now) triggers the short wait.
 if [ -f "${UTOUTLOOK_CLOSING}" ]; then
 	if utoutlook_flag_fresh "${UTOUTLOOK_CLOSING}"; then
-		utoutlook_notify "$(utoutlook_t 'shell.pleaseWait')"
 		echo "app is closing — waiting for goodbye before launching (pid $$)"
 		_i=0
 		while [ ${_i} -lt 5 ] && [ -f "${UTOUTLOOK_CLOSING}" ]; do
+			# v4.0.69: renotifier à chaque itération — une notif D-Bus ne dure que
+			# quelques secondes, le message d'attente doit rester visible pendant
+			# toute la fermeture (jusqu'à 15 s)
+			utoutlook_notify "$(utoutlook_t 'shell.pleaseWait')"
 			sleep_int 3
 			_i=$((_i + 1))
 		done
