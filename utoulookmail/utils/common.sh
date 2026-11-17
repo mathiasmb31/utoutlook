@@ -19,6 +19,8 @@ export UTOUTLOOK_LOCKSOCK="${UTOUTLOOK_CONFIG_DIR}/prospect-mail/SingletonSocket
 
 # IPC flag files
 export UTOUTLOOK_EXITCLIENT="${UTOUTLOOK_CONFIG_DIR}/exitclient"
+# v4.0.91: flag écrit par l'app juste avant de quitter pour une rotation
+export UTOUTLOOK_ROTATIONFLAG="${UTOUTLOOK_CONFIG_DIR}/rotation-relaunch"
 export UTOUTLOOK_KILLEDCLIENT="${UTOUTLOOK_CONFIG_DIR}/killedmail"
 export UTOUTLOOK_FILELIFE="${UTOUTLOOK_CONFIG_DIR}/follow"
 export UTOUTLOOK_EXITCOMMAND="${UTOUTLOOK_CONFIG_DIR}/close"
@@ -166,6 +168,17 @@ utoutlook_t() {
 				ar) echo "لا توجد شبكة !!" ;;
 				*)  echo "PAS DE RÉSEAU !!" ;;
 			esac ;;
+		"qml.relaunch")
+			case "${lang}" in
+				en) echo "Relaunching (orientation change)…" ;;
+				es) echo "Reiniciando (cambio de orientación)…" ;;
+				de) echo "Neu starten (Orientierungswechsel)…" ;;
+				it) echo "Riavvio (cambio di orientazione)…" ;;
+				pt) echo "A reiniciar (mudança de orientação)…" ;;
+				zh) echo "正在重启（方向改变）…" ;;
+				ar) echo "جارٍ إعادة التشغيل (تغيير الاتجاه)…" ;;
+				*)  echo "Relance en cours (changement d'orientation)…" ;;
+			esac ;;
 		"qml.exitTimeout")
 			case "${lang}" in
 				en) echo "Timeout speaking with outlook server. This is not really a problem — you can launch the client once more ;)" ;;
@@ -189,6 +202,7 @@ utoutlook_write_qml_i18n() {
 	{
 		echo "var NO_NETWORK = \"$(utoutlook_t 'qml.noNetwork' | sed 's/\\/\\\\/g; s/"/\\"/g')\";"
 		echo "var EXIT_TIMEOUT = \"$(utoutlook_t 'qml.exitTimeout' | sed 's/\\/\\\\/g; s/"/\\"/g')\";"
+		echo "var RELAUNCH = \"$(utoutlook_t 'qml.relaunch' | sed 's/\\/\\\\/g; s/"/\\"/g')\";"
 	} > "${f}" 2>/dev/null || true
 }
 

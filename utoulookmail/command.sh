@@ -165,7 +165,18 @@ function verify_prospect_life() {
 			echo ${oldfollow}
 			# v3.3.9: nettoyer puis RELANCER au lieu de quitter (limite launchtry>3).
 			echo "heartbeat dead — cleaning and relaunching (try ${launchtry})"
-			echo "******" && utoutlook_notify "$(utoutlook_t 'shell.cleaning')"
+			# v4.0.91: si l'app a quitté pour un changement d'orientation (flag
+			# frais), afficher une roue plein écran pendant la relance — elle est
+			# tuée dès que le nouvel app répond sur le socket (voir boucle while).
+			if [ -f "${rotationflag}" ] && utoutlook_flag_fresh "${rotationflag}"; then
+				"${WD}"/bin/rm -f "${rotationflag}" 2>/dev/null || true
+				utoutlook_write_qml_i18n
+				qmlscene "${WD}"/qml/relaunch.qml &
+				RELAUNCH_QML_PID=$!
+				echo "rotation relaunch screen shown (qml pid ${RELAUNCH_QML_PID})"
+			else
+				echo "******" && utoutlook_notify "$(utoutlook_t 'shell.cleaning')"
+			fi
 			stagnantCount=0
 			oldfollow=""
 			launch_prospect
@@ -247,6 +258,11 @@ function close_command() {
 	# v4.0.14: embed wrapper PID so the app only honors OUR close flag
 	echo "closed:${UTOUTLOOK_WRAPPER_PID}" >"${UTOUTLOOK_EXITCOMMAND}"
 	utoutlook_notify "$(utoutlook_t 'shell.goodbye')"
+	# v4.0.91: tuer aussi l'écran de relance (roue) s'il est encore affiché
+	if [ -n "${RELAUNCH_QML_PID}" ]; then
+		kill "${RELAUNCH_QML_PID}" 2>/dev/null || true
+		RELAUNCH_QML_PID=""
+	fi
 	# v4.0.58: tuer ACTIVEMENT notre fils prospect-mail — ne pas compter sur le
 	# socket/flag seuls : si l'app est pendue ou si le wrapper a reçu SIGKILL,
 	# personne ne le tue et il reste orphelin indéfiniment. kill sur notre propre
@@ -296,6 +312,8 @@ export lock="${UTOUTLOOK_LOCK}"
 export lockcook="${UTOUTLOOK_LOCKCOOK}"
 export locksock="${UTOUTLOOK_LOCKSOCK}"
 export exitclient="${UTOUTLOOK_EXITCLIENT}"
+export rotationflag="${UTOUTLOOK_ROTATIONFLAG}"
+RELAUNCH_QML_PID=""
 export killedclient="${UTOUTLOOK_KILLEDCLIENT}"
 export filelifefollow="${UTOUTLOOK_FILELIFE}"
 export exitcommand="${UTOUTLOOK_EXITCOMMAND}"
@@ -532,5 +550,12 @@ while true; do
 	sleep_int 3
 
 	verify_prospect_life
+
+	# v4.0.91: fermer l'écran de relance (roue) dès que le nouvel app répond
+	if [ -n "${RELAUNCH_QML_PID}" ] && kill -0 "${RELAUNCH_QML_PID}" 2>/dev/null && utoutlook_socket_ping; then
+		kill "${RELAUNCH_QML_PID}" 2>/dev/null || true
+		RELAUNCH_QML_PID=""
+		echo "relaunch screen closed — client is back"
+	fi
 
 done
