@@ -171,8 +171,9 @@ function verify_prospect_life() {
 			if [ -f "${rotationflag}" ] && utoutlook_flag_fresh "${rotationflag}"; then
 				"${WD}"/bin/rm -f "${rotationflag}" 2>/dev/null || true
 				utoutlook_write_qml_i18n
-				qmlscene "${WD}"/qml/relaunch.qml &
+				qmlscene "${WD}"/qml/relaunch.qml > "${UTOUTLOOK_CONFIG_DIR}/relaunch-qml.log" 2>&1 &
 				RELAUNCH_QML_PID=$!
+				RELAUNCH_QML_SHOWN_AT=$(date +%s)
 				echo "rotation relaunch screen shown (qml pid ${RELAUNCH_QML_PID})"
 			else
 				echo "******" && utoutlook_notify "$(utoutlook_t 'shell.cleaning')"
@@ -314,6 +315,7 @@ export locksock="${UTOUTLOOK_LOCKSOCK}"
 export exitclient="${UTOUTLOOK_EXITCLIENT}"
 export rotationflag="${UTOUTLOOK_ROTATIONFLAG}"
 RELAUNCH_QML_PID=""
+RELAUNCH_QML_SHOWN_AT=0
 export killedclient="${UTOUTLOOK_KILLEDCLIENT}"
 export filelifefollow="${UTOUTLOOK_FILELIFE}"
 export exitcommand="${UTOUTLOOK_EXITCOMMAND}"
@@ -552,7 +554,8 @@ while true; do
 	verify_prospect_life
 
 	# v4.0.91: fermer l'écran de relance (roue) dès que le nouvel app répond
-	if [ -n "${RELAUNCH_QML_PID}" ] && kill -0 "${RELAUNCH_QML_PID}" 2>/dev/null && utoutlook_socket_ping; then
+	_now=$(date +%s)
+	if [ -n "${RELAUNCH_QML_PID}" ] && kill -0 "${RELAUNCH_QML_PID}" 2>/dev/null && utoutlook_socket_ping && [ $((_now - ${RELAUNCH_QML_SHOWN_AT:-0})) -ge 5 ]; then
 		kill "${RELAUNCH_QML_PID}" 2>/dev/null || true
 		RELAUNCH_QML_PID=""
 		echo "relaunch screen closed — client is back"
