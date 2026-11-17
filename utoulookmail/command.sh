@@ -88,7 +88,9 @@ function verify_prospect_life() {
 	# l'app l'un contre l'autre en boucle (vu à l'upgrade 3.3.9→3.3.10).
 	local curpid
 	curpid=$("${WD}"/bin/cat "${UTOUTLOOK_DATA_DIR}/wrapper.pid" 2>/dev/null | "${WD}"/bin/tr -d '[:space:]')
-	if [ -n "${curpid}" ] && [ "${curpid}" != "$$" ]; then
+	# v4.0.62: un pidfile périmé (wrapper enregistré mort — SIGKILL Lomiri) ne doit
+	# PAS bloquer le lancement : ne céder que si le wrapper enregistré est VIVANT.
+	if [ -n "${curpid}" ] && [ "${curpid}" != "$$" ] && kill -0 "${curpid}" 2>/dev/null; then
 		echo "another wrapper (pid ${curpid}) owns the app — exiting"
 		exit 0
 	fi
@@ -221,7 +223,9 @@ function close_command() {
 	# right after its first launch.
 	local curpid
 	curpid=$("${WD}"/bin/cat "${UTOUTLOOK_DATA_DIR}/wrapper.pid" 2>/dev/null | "${WD}"/bin/tr -d '[:space:]')
-	if [ -n "${curpid}" ] && [ "${curpid}" != "$$" ]; then
+	# v4.0.62: un pidfile périmé (wrapper enregistré mort — SIGKILL Lomiri) ne doit
+	# PAS bloquer le lancement : ne céder que si le wrapper enregistré est VIVANT.
+	if [ -n "${curpid}" ] && [ "${curpid}" != "$$" ] && kill -0 "${curpid}" 2>/dev/null; then
 		exit 0
 	fi
 	# v4.0.37: mark "closing" immediately — any relaunch while we are shutting
@@ -323,6 +327,28 @@ export UTOUTLOOK_WRAPPER_MARKER="${UTOUTLOOK_CONFIG_DIR}/.wrapper-start"
 # looks like a previous utoutlook instance, wait for them to die, then clear
 # every lifecycle flag so this launch starts from a clean slate.
 "${WD}"/bin/pkill -9 -f "bin/App/prospect-mail" 2>/dev/null || true
+# v4.0.62: pkill/pgrep -f sont aveugles sous AppArmor (ne voient pas les autres
+# process) — tuer AUSSI via les pidfiles enregistrés et le scan /proc/*/exe.
+prospect_alive() {
+	if "${UTOUTLOOK_BIN}/pgrep" -f "bin/App/prospect-mail" >/dev/null 2>&1; then return 0; fi
+	local _pid
+	[ -f "${UTOUTLOOK_PID_FILE}" ] || return 1
+	while IFS= read -r _pid; do
+		_pid=$("${WD}"/bin/tr -d '[:space:]' <<<"${_pid}")
+		[ -n "${_pid}" ] && kill -0 "${_pid}" 2>/dev/null && return 0
+	done < "${UTOUTLOOK_PID_FILE}"
+	return 1
+}
+kill_prospect_pids() {
+	local _pid
+	[ -f "${UTOUTLOOK_PID_FILE}" ] || return 0
+	while IFS= read -r _pid; do
+		_pid=$("${WD}"/bin/tr -d '[:space:]' <<<"${_pid}")
+		[ -n "${_pid}" ] && kill -9 "${_pid}" 2>/dev/null || true
+	done < "${UTOUTLOOK_PID_FILE}"
+	utoutlook_kill_by_proc 2>/dev/null || true
+}
+kill_prospect_pids
 # v4.0.34: ask any surviving old app (cross-label, pkill is blocked by
 # AppArmor) to quit cleanly via the shared Unix socket — same socket path for
 # all versions, so the quit command reaches even an old-version process.
@@ -337,11 +363,12 @@ done
 # splash then exit" on relaunch). Retry loop instead of a fixed sleep.
 _i=0
 while [ ${_i} -lt 10 ]; do
-	if "${UTOUTLOOK_BIN}/pgrep" -f "bin/App/prospect-mail" > /dev/null 2>&1; then
+	if prospect_alive; then
 		# v4.0.25: notify the user once while we wait for the old process to die
 		if [ ${_i} -eq 0 ]; then
 			utoutlook_notify "$(utoutlook_t 'shell.waitingClose')"
 		fi
+		kill_prospect_pids   # v4.0.62: re-tuer à chaque itération (pidfiles + /proc)
 		sleep_int 1
 		_i=$((_i + 1))
 	else
