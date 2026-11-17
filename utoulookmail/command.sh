@@ -170,7 +170,6 @@ function verify_prospect_life() {
 			# tuée dès que le nouvel app répond sur le socket (voir boucle while).
 			if [ -f "${rotationflag}" ] && utoutlook_flag_fresh "${rotationflag}"; then
 				"${WD}"/bin/rm -f "${rotationflag}" 2>/dev/null || true
-				utoutlook_write_qml_i18n
 				qmlscene "${WD}"/qml/relaunch.qml > "${UTOUTLOOK_CONFIG_DIR}/relaunch-qml.log" 2>&1 &
 				RELAUNCH_QML_PID=$!
 				RELAUNCH_QML_SHOWN_AT=$(date +%s)
