@@ -51,6 +51,7 @@ class MailWindowController {
         this.loopDetectorRetries = 0; // count of loop detector activations (max 3)
         this.mfaLoopDetected = false; // v3.3.59: 2FA loop already handled
         this.lastMailUrl = null; // v3.3.67: dernière URL de boîte mail chargée (sans ?code=) — cible de reprise après boucle 2FA
+        this.lastMailPageTime = 0; // v4.0.41: timestamp de la dernière page mail atteinte — protège contre les rechargements agressifs qui perdent le token
         this.authStartLoadTimes = []; // v3.3.67: chargements des pages /authorize|select_account (détection boucle KMSI)
         this.inPageAuthEvents = []; // v4.0.38: navigations in-page récentes {t, kind: 'post'|'authstart'} pour la détection de boucle 2FA SPA
         this.pageRangeErrors = []; // v3.3.74: timestamps des RangeError « Maximum call stack » de la page
@@ -1046,7 +1047,11 @@ class MailWindowController {
         this.inPageAuthEvents.push({t: now, kind: 'post'});
         this.inPageAuthEvents = this.inPageAuthEvents.filter(e => now - e.t < 30000);
         const postCount = this.inPageAuthEvents.length;
-        if (postCount >= 4 && this.lastMailUrl && !this.mfaLoopDetected) {
+        // v4.0.41: ne JAMAIS déclencher la reprise 2FA si la page mail a été
+        // atteinte il y a moins de 60 s — le token vient d'être posé et flushé,
+        // recharger maintenant le perdrait (retour au login).
+        const mailRecentlyReached = this.lastMailPageTime && (now - this.lastMailPageTime < 60000);
+        if (postCount >= 4 && this.lastMailUrl && !this.mfaLoopDetected && !mailRecentlyReached) {
             this.mfaLoopDetected = true;
             logger.warn(`2FA SPA loop detected: ${postCount} post.srf in-page navigations in 30s with bounce-back to auth page — aggressive cookie sync`);
             this.hideDuringResync();
@@ -1232,6 +1237,12 @@ class MailWindowController {
                 // v3.3.67: mémorise la dernière URL mail propre (sans ?code=#) —
                 // cible de reprise après une boucle 2FA (live.com pour les comptes perso)
                 this.lastMailUrl = url.split('?')[0].split('#')[0];
+                // v4.0.41: flush IMMÉDIAT des cookies quand la page mail est atteinte —
+                // le token MSAAUTH/__Host-MSAAUTHP posé pendant le login doit être
+                // écrit sur disque tout de suite, pas dans 15 s (perdu si kill/reload).
+                this.lastMailPageTime = now;
+                this.flushSessionCookies();
+                session.fromPartition(this.sessionPartition).cookies.flushStore().catch(() => {});
             }
 
             if (isMailPage && mailLoads.length >= 5 && !this.redirectLoopDetected) {
@@ -1299,7 +1310,10 @@ class MailWindowController {
                 // encore été chargée (connexion vierge) — recharger mainMailServiceUrl
                 // ne ferait que reboucler office.com → /authorize → « tentative de
                 // connexion en cours » en boucle, sans aucune saisie utilisateur.
-                if (recentMfaLoads >= 5 && this.lastMailUrl && !this.mfaLoopDetected) {
+                // v4.0.41: ne pas déclencher non plus si la page mail a été atteinte
+                // il y a moins de 60 s — le token vient d'être flushé, recharger le perd.
+                const mailRecentlyReached = this.lastMailPageTime && (now - this.lastMailPageTime < 60000);
+                if (recentMfaLoads >= 5 && this.lastMailUrl && !this.mfaLoopDetected && !mailRecentlyReached) {
                     this.mfaLoopDetected = true;
                     logger.warn(`2FA loop detected: ${recentMfaLoads} auth-start page loads in 30s — aggressive cookie sync`);
                     this.hideDuringResync();
