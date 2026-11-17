@@ -2260,7 +2260,12 @@ class MailWindowController {
                 // ouvre le volet de navigation à la place de la liste. En paysage
                 // (largeur > hauteur) on clique sur « Masquer le volet de navigation ».
                 const navPane = document.querySelector('[data-app-section="NavigationPane"]');
-                if (navPane && navPane.offsetParent && window.innerWidth > window.innerHeight) {
+                const msgList = document.querySelector('[data-app-section="MessageList"]');
+                // v4.0.73: fermer le volet dès qu'il recouvre la liste, dans LES DEUX
+                // orientations (pivot aller ET retour) — sinon au retour en portrait
+                // le menu de gauche reste ouvert et la liste reste cachée.
+                const navCoversList = navPane && navPane.offsetParent && (!msgList || !msgList.offsetParent);
+                if (navCoversList || (navPane && navPane.offsetParent && window.innerWidth > window.innerHeight)) {
                     const hideBtn = Array.from(document.querySelectorAll('button[aria-label], [role="button"][aria-label]'))
                         .find(b => /masquer le volet|hide (the )?navigation|collapse/i.test(b.getAttribute('aria-label') || ''));
                     if (hideBtn) hideBtn.click();
