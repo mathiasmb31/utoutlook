@@ -52,6 +52,24 @@ const defaults = {
         "outlook.office365.com",
         "outlook.office.com",
         "outlook.cloud.microsoft",
+        // v4.0.50: domaines de LOGIN Microsoft — sans eux, un window.open() vers
+        // login.live.com / login.microsoftonline.com partait dans le navigateur
+        // EXTERNE (openExternalLink) : le token s'y posait mais jamais dans la
+        // partition de l'app → retour systématique à la page de login.
+        "login.live.com",
+        "login.microsoftonline.com",
+        "account.live.com",
+        "account.microsoft.com",
+        "cloud.microsoft",
+        "microsoft.com",
+        "microsoftonline.com",
+        "live.com",
+        "office.com",
+        "office365.com",
+        "msauth.net",
+        "msftauth.net",
+        "msocdn.com",
+        "msecnd.net",
     ],
     safelinksUrls: [
         "outlook.office.com/mail/safelink.html",
@@ -125,6 +143,21 @@ for (const key of ['urlsInternal', 'urlsExternal', 'safelinksUrls']) {
     if (!isValidStringArray(value)) {
         logger.warn(`Invalid ${key}, reverting to default`);
         settings.set(key, defaults[key]);
+    }
+}
+
+// v4.0.50: migration — fusionner les domaines de login Microsoft manquants dans
+// urlsExternal (l'ancien settings.json a une liste valide mais incomplète, donc
+// la validation ci-dessus ne la réinitialise pas). Sans login.live.com /
+// login.microsoftonline.com, les popups OAuth partaient dans le navigateur externe.
+{
+    const cur = settings.get('urlsExternal');
+    if (Array.isArray(cur)) {
+        const missing = defaults.urlsExternal.filter(d => !cur.includes(d));
+        if (missing.length > 0) {
+            settings.set('urlsExternal', [...cur, ...missing]);
+            logger.warn(`v4.0.50: migration urlsExternal — ${missing.length} domaines ajoutés (${missing.join(', ')})`);
+        }
     }
 }
 
