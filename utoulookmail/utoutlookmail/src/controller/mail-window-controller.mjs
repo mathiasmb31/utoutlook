@@ -1540,7 +1540,7 @@ class MailWindowController {
             this.loginPage++;
             // v4.0.79: après un (re)chargement, fermer le volet de navigation s'il
             // recouvre la liste (arrive après le reload post-rotation)
-            setTimeout(() => this.closeNavIfCovering(), 2000);
+            setTimeout(() => this.fixMailLayout(), 2000); // v4.0.83: répare la listbox 0x0 aussi après reload
             const url = this.win.webContents.getURL();
             logger.info(`Page loaded #${this.loginPage}: ${url}`);
 
@@ -2413,10 +2413,33 @@ class MailWindowController {
      * sur le DOM réel : data-app-section="NavigationPane" + bouton
      * « Masquer le volet de navigation ».
      */
-    closeNavIfCovering() {
+    closeNavIfCovering() { this.fixMailLayout(); }
+
+    /**
+     * v4.0.83: réparation de la mise en page mail — (a) débloquer la listbox
+     * rendue 0x0 (ancêtres display:none -> flex, prouvé sur device : options
+     * 0 px -> 112 px) ; (b) masquer le volet de nav s'il recouvre la liste, par
+     * classe CSS (clic utilisateur sur le bouton du volet lève le masque).
+     * Appelée après chaque did-finish-load et chaque repaint.
+     */
+    fixMailLayout() {
         if (!this.win || this.win.isDestroyed()) return;
         this.win.webContents.executeJavaScript(`
             (() => {
+                // (a) débloquer la listbox 0x0
+                const lb = document.querySelector('[data-app-section="MessageList"] [role="listbox"]');
+                if (lb) {
+                    let a = lb;
+                    while (a && a !== document.body) {
+                        if (getComputedStyle(a).display === 'none') {
+                            a.style.display = 'flex';
+                            a.style.visibility = 'visible';
+                            if (!a.style.height) a.style.height = '100%';
+                        }
+                        a = a.parentElement;
+                    }
+                }
+                // (b) volet de navigation
                 // v4.0.81: NE PLUS CLIQUER sur le bouton (c'est un toggle — cliqué
                 // au mauvais moment il ROUVRE le volet, boucle infinie). On masque
                 // le volet par une classe CSS déterministe.
