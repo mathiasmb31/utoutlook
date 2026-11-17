@@ -1072,6 +1072,24 @@ class MailWindowController {
                 this.win.loadURL(target);
                 this.mfaLoopDetected = false;
             }).catch(() => {});
+        } else if (postCount >= 4 && !this.lastMailUrl && !this.mfaLoopDetected && !mailRecentlyReached) {
+            // v4.0.41: boucle post.srf SANS jamais avoir atteint la page mail
+            // (token perdu / connexion vierge) — recharger avec prompt=login
+            // pour forcer le formulaire de login au lieu du resume SSO/select_account
+            // qui boucle en boucle sur post.srf sans laisser l'utilisateur interagir.
+            this.mfaLoopDetected = true;
+            logger.warn(`2FA SPA loop (no mail page yet): ${postCount} post.srf in 30s — reloading with prompt=login to show login form`);
+            this.inPageAuthEvents = [];
+            this.loginPageLoadTimes = [];
+            this.authStartLoadTimes = [];
+            this.syncCookiesToLiveCom().then(async () => {
+                try { await session.fromPartition(this.sessionPartition).cookies.flushStore(); } catch (e) { /* ignore */ }
+                let target = this.mainMailServiceUrl || 'https://outlook.office.com/mail/';
+                target += (target.includes('?') ? '&' : '?') + 'prompt=login';
+                logger.info(`2FA SPA loop (no mail): reloading ${target} with prompt=login`);
+                this.win.loadURL(target);
+                this.mfaLoopDetected = false;
+            }).catch(() => {});
         }
     }
 
@@ -1340,6 +1358,22 @@ class MailWindowController {
                         this.win.loadURL(target);
                         this.mfaLoopDetected = false;
                     }).catch(() => {}); // v3.3.66
+                } else if (recentMfaLoads >= 5 && !this.lastMailUrl && !this.mfaLoopDetected && !mailRecentlyReached) {
+                    // v4.0.41: boucle authorize/select_account SANS jamais avoir atteint
+                    // la page mail (token perdu) — recharger avec prompt=login pour
+                    // forcer le formulaire de login au lieu du resume SSO qui boucle.
+                    this.mfaLoopDetected = true;
+                    logger.warn(`2FA loop (no mail page yet): ${recentMfaLoads} auth-start loads in 30s — reloading with prompt=login`);
+                    this.loginPageLoadTimes = [];
+                    this.authStartLoadTimes = [];
+                    this.syncCookiesToLiveCom().then(async () => {
+                        try { await session.fromPartition(this.sessionPartition).cookies.flushStore(); } catch (e) { /* ignore */ }
+                        let target = this.mainMailServiceUrl || 'https://outlook.office.com/mail/';
+                        target += (target.includes('?') ? '&' : '?') + 'prompt=login';
+                        logger.info(`2FA loop (no mail): reloading ${target} with prompt=login`);
+                        this.win.loadURL(target);
+                        this.mfaLoopDetected = false;
+                    }).catch(() => {});
                 }
             } else {
                 // Reset the MFA loop detector when we leave the login pages
