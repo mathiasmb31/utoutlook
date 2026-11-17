@@ -433,6 +433,17 @@ utoutlook_notify() {
 }
 
 # ============================================================
+# v4.0.69: Clear all persistent notifications of this app from the Lomiri
+# notification drawer (notify --clear -> Postal ClearPersistent, tag vide).
+# Usage: utoutlook_notify_clear
+# ============================================================
+utoutlook_notify_clear() {
+	if [ -x "${UTOUTLOOK_BIN}/notify" ]; then
+		"${UTOUTLOOK_BIN}/notify" --clear 2>/dev/null || true
+	fi
+}
+
+# ============================================================
 # Wait for the notification service (Lomiri Postal) to be ready.
 # Uses "notify --badge 0" as a silent probe — it exercises the
 # D-Bus connection without showing any visible notification

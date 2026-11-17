@@ -181,6 +181,12 @@ function verify_prospect_life() {
 		launchtry=1
 		clientalive=1
 		touch ${lock}
+		# v4.0.69: app bien lancée — retirer du tiroir de notifications les
+		# messages transitoires (welcome, veuillez patienter, etc.)
+		if [ "${NOTIFS_CLEARED:-0}" -eq 0 ]; then
+			NOTIFS_CLEARED=1
+			utoutlook_notify_clear
+		fi
 	fi
 	oldfollow=${follow}
 	if [ ${clientalive} -eq 1 ]; then

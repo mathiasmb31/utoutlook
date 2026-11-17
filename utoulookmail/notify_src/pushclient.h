@@ -42,6 +42,8 @@ public:
 
     bool hasTag(const QString &tag);
     bool clearPersistent(const QString &tag);
+    // v4.0.69: clear ALL persistent notifications of this app (tag vide = toutes)
+    bool clearAll();
     bool updateCount(const QString &tag = QString(), const bool remove = false);
 
 private:
