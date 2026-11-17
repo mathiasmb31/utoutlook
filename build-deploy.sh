@@ -1,8 +1,14 @@
 #!/bin/bash
 # Build + install utoutlook sur le téléphone (adb XXXX)
-# Usage: ./build-deploy.sh [version]
-# Exemple: ./build-deploy.sh 4.0.51
 set -e
+
+if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+  echo "Usage: ./build-deploy.sh [version]"
+  echo "  Build l'app Electron (arm64) + clickable build + install sur le device adb XXXX"
+  echo "  Sans argument, lit la version dans package.json"
+  echo "  Exemple: ./build-deploy.sh 4.0.51"
+  exit 0
+fi
 
 VERSION="${1:-$(grep '"version"' utoulookmail/utoutlookmail/package.json | head -1 | sed 's/.*"version": "//;s/".*//')}"
 ROOT="$(cd "$(dirname "$0")" && pwd)"

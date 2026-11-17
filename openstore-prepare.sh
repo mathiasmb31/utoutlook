@@ -1,14 +1,22 @@
 #!/bin/bash
 # Prepare + (optionally) publish utoutlook to OpenStore
-# Usage:
-#   ./openstore-prepare.sh 4.0.51     → prépare livraison/ + publishstore/ kit, affiche le récap à montrer à Mathias
-#   ./openstore-prepare.sh 4.0.51 --upload "OK"  → upload UNIQUEMENT si Mathias a dit OK (2e arg obligatoire)
-#
-# Garde-fous (règles Mathias) :
-#   - Aucun upload sans OK explicite de Mathias sur le contenu complet
-#   - Test device obligatoire avant upload (adb, 0 crash)
-#   - L'apikey OpenStore n'est JAMAIS écrite ici : elle doit être passée en env: OPENSTORE_APIKEY=... ./openstore-prepare.sh X --upload "OK"
 set -e
+
+if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+  echo "Usage: ./openstore-prepare.sh <version> [--upload "OK"]"
+  echo ""
+  echo "  ./openstore-prepare.sh 4.0.51"
+  echo "    → prépare livraison/ + publishstore/ kit, affiche le récap à montrer à Mathias"
+  echo ""
+  echo "  OPENSTORE_APIKEY=... ./openstore-prepare.sh 4.0.51 --upload "OK""
+  echo "    → upload UNIQUEMENT si Mathias a dit OK explicitement (3e arg obligatoire)"
+  echo ""
+  echo "Garde-fous (règles Mathias) :"
+  echo "  - Aucun upload sans OK explicite de Mathias sur le contenu complet"
+  echo "  - Test device obligatoire avant upload (adb, 0 crash)"
+  echo "  - L'apikey OpenStore n'est JAMAIS écrite dans un fichier : env var uniquement"
+  exit 0
+fi
 
 VERSION="${1:?Usage: $0 <version> [--upload \"OK\"]}"
 UPLOAD_OK="${3:-}"
