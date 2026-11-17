@@ -390,6 +390,11 @@ while [ ${_i} -lt 10 ]; do
 		break
 	fi
 done
+# v4.0.90: délai de grâce après la mort des vieux process — le GPU process
+# (--in-process-gpu) peut échouer au lancement (error_code=1002, FATAL "GPU
+# process isn't usable") si on relance trop vite après un kill. 2 s laissent
+# au compositor le temps de libérer les ressources.
+sleep_int 2
 "${WD}"/bin/rm -f ${exitclient} ${killedclient} "${UTOUTLOOK_EXITCOMMAND}" "${UTOUTLOOK_CLOSING}" 2>/dev/null || true
 cleanup
 "${WD}"/utils/mkdir
