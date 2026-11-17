@@ -1626,8 +1626,8 @@ test('v3.3.28: clean quit writes exitclient synchronously so the wrapper does NO
     const tray = fs.readFileSync(path.resolve(__dirname, '../src/controller/tray-controller.mjs'), 'utf-8');
     assert.ok(tray.includes('global.restartRequested = true'),
         'tray relaunch paths must set restartRequested so the wrapper relaunches (v3.3.28)');
-    assert.ok(main.includes('if (!global.restartRequested) markCleanExit()'),
-        'cleanupAndExit must skip markCleanExit on restart (v3.3.28)');
+    assert.ok(main.includes('if (!global.restartRequested && !global.skipCleanExitFlag) markCleanExit()'),
+        'cleanupAndExit must skip markCleanExit on restart (v3.3.28) and on rotation relaunch (v4.0.84, skipCleanExitFlag)');
 
     const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
     // wrapper: on heartbeat stagnation, a FRESH clean-quit flag means exit, not

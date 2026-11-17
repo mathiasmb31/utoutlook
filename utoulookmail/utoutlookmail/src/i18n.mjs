@@ -60,9 +60,10 @@ const T = {
         it: 'Attendi...', pt: 'Aguarde...', zh: '请稍候...', ar: 'الرجاء الانتظار...',
     },
     // v4.0.76: toast affiché quand un changement d'orientation est détecté
+    // v4.0.84: précise que l'application va être relancée après le pivot
     'overlay.rotation': {
-        fr: "Changement d'orientation…", en: 'Orientation change…', es: 'Cambio de orientación…', de: 'Orientierungswechsel…',
-        it: "Cambio di orientazione…", pt: 'Mudança de orientação…', zh: '方向改变…', ar: 'تغيير الاتجاه…',
+        fr: 'Rotation détectée, relance de l\'application…', en: 'Rotation detected, relaunching app…', es: 'Rotación detectada, reiniciando la app…', de: 'Rotation erkannt, App wird neu gestartet…',
+        it: 'Rotazione rilevata, riavvio dell\'app…', pt: 'Rotação detetada, a reiniciar a app…', zh: '检测到旋转，正在重启应用…', ar: 'تم اكتشاف الدوران، جارٍ إعادة تشغيل التطبيق…',
     },
     // v4.0.78: avertissement avant le reload automatique d'une liste vide
     'overlay.listEmptyReload': {
