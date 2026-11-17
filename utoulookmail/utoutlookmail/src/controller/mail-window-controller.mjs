@@ -314,23 +314,36 @@ class MailWindowController {
             try {
                 if (!fs.existsSync(AUTH_TOKEN_FILE)) return;
                 const saved = JSON.parse(fs.readFileSync(AUTH_TOKEN_FILE, 'utf8'));
-                if (!saved.name || !saved.value || !saved.domain) return;
-                const url = `https://${saved.domain.replace(/^\./, '')}${saved.path || '/'}`;
-                await ses.cookies.set({
-                    url,
-                    name: saved.name,
-                    value: saved.value,
-                    domain: saved.domain,
-                    path: saved.path || '/',
-                    secure: true,
-                    httpOnly: saved.httpOnly || false,
-                    sameSite: 'no_restriction',
-                    expirationDate: saved.expirationDate || (Math.floor(Date.now() / 1000) + 365 * 86400),
-                });
-                logger.info(`v4.0.45: token restauré depuis ${AUTH_TOKEN_FILE} (${saved.name} sur ${saved.domain})`);
-                // Propager aussi sur les autres domaines Microsoft
-                await this.syncCookiesToLiveCom().catch(() => {});
+                if (!saved.name || !saved.value) return;
+                // v4.0.45: poser le token sur TOUS les domaines Microsoft clés
+                // (pas seulement celui sauvegardé) pour que cloud.microsoft,
+                // live.com, microsoftonline.com le reconnaissent tous.
+                const domains = ['.live.com', 'login.live.com', '.microsoftonline.com',
+                                 'login.microsoftonline.com', '.cloud.microsoft',
+                                 '.office.com', 'outlook.live.com', 'outlook.cloud.microsoft',
+                                 '.microsoft.com', saved.domain].filter(Boolean);
+                let restored = 0;
+                for (const domain of new Set(domains)) {
+                    try {
+                        const host = domain.replace(/^\./, '');
+                        await ses.cookies.set({
+                            url: `https://${host}${saved.path || '/'}`,
+                            name: saved.name,
+                            value: saved.value,
+                            domain,
+                            path: saved.path || '/',
+                            secure: true,
+                            httpOnly: saved.httpOnly || false,
+                            sameSite: 'no_restriction',
+                            expirationDate: saved.expirationDate || (Math.floor(Date.now() / 1000) + 365 * 86400),
+                        });
+                        restored++;
+                    } catch (e) { /* domaine peut rejeter — ignorer */ }
+                }
+                logger.info(`v4.0.45: token restauré depuis auth-token.json (${saved.name} sur ${restored} domaines)`);
                 await ses.cookies.flushStore().catch(() => {});
+                // Propager aussi via le sync existant
+                await this.syncCookiesToLiveCom().catch(() => {});
             } catch (e) { logger.warn('v4.0.45: restore token failed:', e.message); }
         };
 
@@ -894,6 +907,7 @@ class MailWindowController {
         this.setupCSP();
         this.createSplashWindow();
         this.createWindow();
+        this.startCookieFlush(); // v4.0.45: AVANT loadMainUrl — définit restoreAuthToken utilisé par loadMainUrl
         this.loadMainUrl();
         this.setupLoadingIndicators();
         this.setupContextMenu();
@@ -915,7 +929,6 @@ class MailWindowController {
         this.setupOfflineDetection();
         this.startServerMonitor(); // v4.0.3: real in-app server reachability test
         this.startCacheWatcher();
-        this.startCookieFlush();
         this.startObserverHealthCheck();
     }
 
