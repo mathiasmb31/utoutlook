@@ -347,7 +347,8 @@ class MailWindowController {
                 // v4.0.53: ne restaurer QUE les cookies d'auth essentiels — restaurer
                 // les 30 cookies × 4 domaines = header Cookie > 11 Ko, rejeté par
                 // Microsoft (431 Header Too Long) → la requête 2FA n'est jamais envoyée.
-                const CORE_AUTH = /^(__Host-)?MSAAUTH(P)?$|ESTSAUTH/i;
+                // v4.0.58: prefix match — esctx-<id> a un suffixe aléatoire
+                const CORE_AUTH = /^(__Host-)?MSAAUTH(P)?|ESTSAUTH|esctx/i;
                 for (const entry of saved) {
                     if (!entry.name || !entry.value) continue;
                     if (!CORE_AUTH.test(entry.name)) continue; // ignorer esctx, fptctx, tracking, etc.
@@ -396,6 +397,23 @@ class MailWindowController {
             if (!isAuthCookie) return;
             if (!domain.includes('live.com') && !domain.includes('microsoft') &&
                 !domain.includes('office.com') && !domain.includes('outlook')) return;
+            // v4.0.58: un cookie esctx-<id> (ou OParams) est posé À CHAQUE tentative
+            // de login (~800 B chacun) et ils s'accumulent sans jamais être
+            // supprimés → jar de 28 Ko sur .live.com → header Cookie ingérable.
+            // Ne garder que le PLUS RÉCENT par famille et par domaine.
+            if (/^(esctx-.+|OParams\d*)$/i.test(name)) {
+                (async () => {
+                    try {
+                        const fam = name.startsWith('esctx') ? /^esctx-/i : /^OParams/i;
+                        const same = await ses.cookies.get({ domain: cookie.domain });
+                        for (const c of same) {
+                            if (c.name === cookie.name || !fam.test(c.name)) continue;
+                            const u = `${c.secure ? 'https' : 'http'}://${(c.domain || '').replace(/^\./, '')}${c.path || '/'}`;
+                            await ses.cookies.remove(u, c.name).catch(() => {});
+                        }
+                    } catch (e) { /* ignore */ }
+                })();
+            }
             // Sauvegarder dans un fichier JSON (liste de cookies) — seulement depuis login.live.com
             // (évite de sauvegarder les copies sync sur autres domaines)
             if (domain === 'login.live.com' || domain === '.live.com') {
@@ -736,7 +754,9 @@ class MailWindowController {
         // envoyée — régression v4.0.56 qui ne gardait que CORE). CORE_AUTH =
         // repli ultime si même EXTENDED dépasse le seuil.
         const EXTENDED = /^(__Host-|__Secure-)?(MSAAUTH|MSAAUTHP|ESTSAUTH|ESTSAUTHPERSIST|esctx|fptctx2?|PPLState|ChainedAuthProbe|MSPAuth|MSPProf|NAP|ANON|WLSSC|MSPOK|OParams|uaid|ClientId|brcap|buid|fpc|msal\.cache|stsservicecookie)/i;
-        const CORE_AUTH = /^(__Host-|__Secure-)?(MSAAUTH|MSAAUTHP|ESTSAUTH|ESTSAUTHPERSIST|esctx|fptctx2?|PPLState|msal\.cache|stsservicecookie)$/i;
+        // v4.0.58: prefix match (pas d'ancre $) — les vrais noms ont un suffixe
+        // aléatoire (esctx-Ab3xY…, OParams1) et l'ancre $ les ratait tous
+        const CORE_AUTH = /^(__Host-|__Secure-)?(MSAAUTH|MSAAUTHP|ESTSAUTH|ESTSAUTHPERSIST|esctx|fptctx2?|PPLState|msal\.cache|stsservicecookie)/i;
         const MAX_COOKIE_HEADER = 7500; // rester sous la limite serveur de 8 Ko (431) avec marge
         const isMsHost = (h) => h.includes('live.com') || h.includes('microsoft') ||
             h.includes('office.com') || h.includes('office365.com') || h.includes('outlook') ||
@@ -808,9 +828,24 @@ class MailWindowController {
                     cleaned++;
                 }
             }
+            // v4.0.58: dédupliquer esctx-<id> / OParams (un par tentative de login)
+            // — ne garder que le dernier par famille et par domaine
+            const seen = new Map();
+            for (const c of all) {
+                const fam = /^(esctx-.+|OParams\d*)$/i.exec(c.name || '');
+                if (!fam) continue;
+                const key = fam[1].startsWith('esctx') ? `esctx@${c.domain}` : `OParams@${c.domain}`;
+                if (seen.has(key)) {
+                    const old = seen.get(key);
+                    const u = `${old.secure ? 'https' : 'http'}://${(old.domain || '').replace(/^\./, '')}${old.path || '/'}`;
+                    await ses.cookies.remove(u, old.name).catch(() => {});
+                    cleaned++;
+                }
+                seen.set(key, c);
+            }
             if (cleaned > 0) {
                 await ses.cookies.flushStore().catch(() => {});
-                logger.info(`v4.0.56: jar trop gros (${size} B) — ${cleaned} cookies non-essentiels supprimés`);
+                logger.info(`v4.0.58: jar trop gros (${size} B) — ${cleaned} cookies non-essentiels/dupliqués supprimés`);
             }
         } catch (e) { logger.warn('v4.0.56: cleanNonCoreCookies failed:', e.message); }
     }
