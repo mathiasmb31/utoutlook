@@ -74,18 +74,20 @@ else
   RANGE="${LAST_COMMIT}..HEAD"
 fi
 
+# Ligne one-shot (session de débogage) — à VIDER pour les versions suivantes :
+DEBUG_SESSION_NOTE="Sign-in and 2FA work reliably again on the phone: no more login loop after quitting/relaunching, no more \"header too long\" error after the Authenticator approval, and closing the app no longer leaves hidden processes running. A complicated debugging session went into fixing these — thanks for testing each build on the phone."
+
 {
   echo "Version $VERSION — $(date +"%d %B %Y")"
   echo ""
-  echo "Sign-in and 2FA work reliably again on the phone: no more login loop"
-  echo "after quitting/relaunching, no more \"header too long\" error after the"
-  echo "Authenticator approval, and closing the app no longer leaves hidden"
-  echo "processes running. A complicated debugging session went into fixing"
-  echo "these — thanks for testing each build on the phone."
-  echo ""
+  if [ -n "$DEBUG_SESSION_NOTE" ]; then
+    echo "$DEBUG_SESSION_NOTE" | fold -s -w 80
+    echo ""
+  fi
   echo "Changes since $LAST_PUBLISHED:"
   echo ""
-  git log "$RANGE" --format="- %s" 2>/dev/null | sed 's/ — Tests [0-9/]*\. Version [0-9.]*\.//; s/Tests [0-9/]*\. Version [0-9.]*\.//' | head -40
+  # un saut de ligne entre chaque commit pour un rendu lisible partout
+  git log "$RANGE" --format="- %s%n" 2>/dev/null | sed 's/ — Tests [0-9/]*\. Version [0-9.]*\.//; s/Tests [0-9/]*\. Version [0-9.]*\.//' | head -60
   echo ""
   echo "Built and tested by Mathias — code written by Vibe, reviewed and controlled by Mathias."
 } > "$KIT/whatsnew.txt"
