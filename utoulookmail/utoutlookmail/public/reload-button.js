@@ -176,7 +176,35 @@
         }, true);
     }
 
+    // v4.0.114: préserver le choix de l'utilisateur concernant le volet de
+    // navigation à travers les rechargements de page (rotation, watchdog).
+    // Outlook remet le menu visible à chaque reload ; on mémorise son état
+    // dans localStorage et on le réapplique dès le chargement suivant.
+    const NAV_KEY = 'utoutlook-nav-hidden';
+
+    const applyNavState = () => {
+        let hidden = false;
+        try { hidden = localStorage.getItem(NAV_KEY) === '1'; } catch { /* ignore */ }
+        document.documentElement.classList.toggle('utoutlook-hide-nav', hidden);
+    };
+
+    const watchNavToggle = () => {
+        document.addEventListener('click', (e) => {
+            const b = e.target && e.target.closest &&
+                e.target.closest('button[aria-label], [role="button"][aria-label]');
+            const lbl = (b && b.getAttribute('aria-label')) || '';
+            if (!/volet de navigation|navigation pane|menu/i.test(lbl)) return;
+            // Laisser Outlook appliquer le toggle avant de lire l'état.
+            setTimeout(() => {
+                const nav = document.querySelector('[data-app-section="NavigationPane"]');
+                const hidden = !nav || !nav.offsetParent;
+                try { localStorage.setItem(NAV_KEY, hidden ? '1' : '0'); } catch { /* ignore */ }
+            }, 300);
+        }, true);
+    };
+
     const start = () => {
+        applyNavState(); // v4.0.114: réappliquer avant tout rendu
         ensure();
         // Outlook peut retirer nos noeuds : on se réajoute si la barre disparaît.
         if (!window.__utoutlookAppActionsObs && document.body) {
@@ -187,6 +215,7 @@
         if (!window.__utoutlookAppActionsTimer) {
             window.__utoutlookAppActionsTimer = setInterval(ensure, 3000);
         }
+        watchNavToggle(); // v4.0.114: mémoriser les taps sur le bouton du volet
     };
 
     if (document.readyState === 'loading') {
