@@ -2012,3 +2012,12 @@ test('v4.0.111: roue de relance — watchdog 20s même si le ping échoue', asyn
     assert.ok(cmd.includes('watchdog timeout (20s)') && cmd.includes('-ge 20'),
         'relaunch wheel must have an unconditional 20s timeout (v4.0.111)');
 });
+
+test('v4.0.112: roue de relance — dégradé vert vers orange', async () => {
+    const fs = await import('node:fs');
+    const qml = fs.readFileSync(path.resolve(__dirname, '../../qml/relaunch.qml'), 'utf-8');
+    assert.ok(qml.includes('var green = [61, 220, 132]') && qml.includes('var orange = [233, 84, 32]'),
+        'relaunch wheel must interpolate green to orange (v4.0.112)');
+    assert.ok(qml.includes('for (var i = 0; i < segments; i++)'),
+        'relaunch wheel must draw a gradient arc in segments (v4.0.112)');
+});
