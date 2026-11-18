@@ -5,7 +5,10 @@ import QtQuick.Window 2.2
 // pendant la splash Lomiri. Aucun texte (i18n non concerné) : juste une barre
 // de progression orange animée, en pur QtQuick (Controls ne se rend pas sous
 // qmlscene sur Ubuntu Touch — voir relaunch.qml).
-ApplicationWindow {
+// v4.0.108: Window (QtQuick.Window) et NON ApplicationWindow (QtQuick.Controls)
+// — ApplicationWindow n'existe pas sous qmlscene sur Ubuntu Touch
+// ("ApplicationWindow is not a type" dans startup-qml.log).
+Window {
     visible: true
     flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
     visibility: Window.FullScreen
