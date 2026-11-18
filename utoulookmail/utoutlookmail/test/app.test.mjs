@@ -2045,3 +2045,16 @@ test('v4.0.114/115: volet masqué reste masqué, seul un clic peut le rouvrir', 
     assert.ok(button.includes('if (hidden && navStableCount >= 2) storeNavState(true)'),
         'automatic observation must only remember hidden state (v4.0.115)');
 });
+
+test('v4.0.116: quit propre — app.quit() au lieu de app.exit(0) brutal', async () => {
+    const fs = await import('node:fs');
+    const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
+    const start = main.indexOf('    async cleanupAndExit() {');
+    const body = main.slice(start, main.indexOf('\n    createControllers()', start));
+    assert.ok(body.includes('app.quit()'),
+        'cleanupAndExit must use graceful app.quit() (v4.0.116)');
+    assert.ok(!body.includes('app.exit(0);\n    }'),
+        'cleanupAndExit must not end with a hard app.exit(0) (v4.0.116)');
+    assert.ok(body.includes('hardExitTimer') && body.includes('3000'),
+        'a 3s safety timer must force exit if graceful quit hangs (v4.0.116)');
+});
