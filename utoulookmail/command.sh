@@ -206,6 +206,12 @@ function verify_prospect_life() {
 		# et un heartbeat peut passer entre les deux.
 		launchtry=1
 		clientalive=1
+		# v4.0.105: l'app est vivante → fermer la barre de progression
+		if [ -n "${STARTUP_QML_PID}" ]; then
+			kill "${STARTUP_QML_PID}" 2>/dev/null || true
+			wait "${STARTUP_QML_PID}" 2>/dev/null || true
+			STARTUP_QML_PID=""
+		fi
 		touch ${lock}
 		# v4.0.69: app bien lancée — retirer du tiroir de notifications les
 		# messages transitoires (welcome, veuillez patienter, etc.)
@@ -273,6 +279,12 @@ function close_command() {
 	# v4.0.14: embed wrapper PID so the app only honors OUR close flag
 	echo "closed:${UTOUTLOOK_WRAPPER_PID}" >"${UTOUTLOOK_EXITCOMMAND}"
 	utoutlook_notify "$(utoutlook_t 'shell.goodbye')"
+	# v4.0.105: tuer la barre de démarrage si l'app ferme avant qu'elle ne se ferme
+	if [ -n "${STARTUP_QML_PID}" ]; then
+		kill "${STARTUP_QML_PID}" 2>/dev/null || true
+		wait "${STARTUP_QML_PID}" 2>/dev/null || true
+		STARTUP_QML_PID=""
+	fi
 	# v4.0.91: tuer aussi l'écran de relance (roue) s'il est encore affiché
 	if [ -n "${RELAUNCH_QML_PID}" ]; then
 		kill "${RELAUNCH_QML_PID}" 2>/dev/null || true
@@ -333,6 +345,8 @@ export exitclient="${UTOUTLOOK_EXITCLIENT}"
 export rotationflag="${UTOUTLOOK_ROTATIONFLAG}"
 RELAUNCH_QML_PID=""
 RELAUNCH_QML_SHOWN_AT=0
+# v4.0.105: écran de démarrage (barre de progression) superposé à la splash Lomiri
+STARTUP_QML_PID=""
 export killedclient="${UTOUTLOOK_KILLEDCLIENT}"
 export filelifefollow="${UTOUTLOOK_FILELIFE}"
 export exitcommand="${UTOUTLOOK_EXITCOMMAND}"
@@ -564,6 +578,14 @@ echo "----------------------------------------------------------------------"
 
 echo "----------------------------------------------------------------------"
 launch_prospect
+
+# v4.0.105: barre de progression plein écran superposée à la splash Lomiri.
+# Lancée APRÈS launch_prospect (son cleanup interne tue tout qmlscene résiduel)
+# et fermée dès que l'app répond au socket (voir verify_prospect_life).
+qmlscene "${WD}"/qml/startup.qml > "${UTOUTLOOK_CONFIG_DIR}/startup-qml.log" 2>&1 &
+STARTUP_QML_PID=$!
+echo "startup progress screen shown (qml pid ${STARTUP_QML_PID})"
+
 sleep_int 15
 while true; do
 	sleep_int 3
