@@ -1,7 +1,8 @@
 import QtQuick 2.9
 import QtQuick.Window 2.2
 
-ApplicationWindow {
+// v4.0.108: Window au lieu de ApplicationWindow (Controls absent sous qmlscene)
+Window {
     visible: true
     flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
     visibility: Window.FullScreen
