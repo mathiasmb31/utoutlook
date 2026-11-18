@@ -1956,4 +1956,10 @@ test('v4.0.99: roue de relance réactivée + zombies du wrapper récupérés', a
         'wrapper must wait() its qmlscene child after SIGKILL (v4.0.99)');
     assert.ok((cmd.match(/wait "\$\{RELAUNCH_QML_PID\}"/g) || []).length >= 2,
         'wrapper must wait() the relaunch wheel after both kill paths (v4.0.99)');
+
+    const splash = fs.readFileSync(path.resolve(__dirname, '../../qml/startup.qml'), 'utf-8');
+    assert.ok(splash.includes('NumberAnimation') && splash.includes('#E95420'),
+        'startup.qml must show an animated orange progress bar (v4.0.105)');
+    assert.ok(cmd.includes('qml/startup.qml') && cmd.includes('STARTUP_QML_PID'),
+        'wrapper must launch and close the startup progress screen (v4.0.105)');
 });
