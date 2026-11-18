@@ -623,4 +623,16 @@ while true; do
 		echo "relaunch screen closed — client is back"
 	fi
 
+	# v4.0.111: FILET DE SÉCURITÉ — si le ping socket reste faux (python3 -c
+	# bloqué par AppArmor dans le wrapper, ou instance fantôme qui répond à
+	# moitié), la roue restait affichée indéfiniment. On la ferme au bout de
+	# 20 s maximum, même sans ping : mieux vaut masquer la roue que bloquer
+	# l'utilisateur sur un écran figé.
+	if [ -n "${RELAUNCH_QML_PID}" ] && kill -0 "${RELAUNCH_QML_PID}" 2>/dev/null && [ $((_now - ${RELAUNCH_QML_SHOWN_AT:-0})) -ge 20 ]; then
+		kill "${RELAUNCH_QML_PID}" 2>/dev/null || true
+		wait "${RELAUNCH_QML_PID}" 2>/dev/null || true
+		RELAUNCH_QML_PID=""
+		echo "relaunch screen closed — watchdog timeout (20s) — client is back"
+	fi
+
 done
