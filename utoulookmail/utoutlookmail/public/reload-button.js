@@ -218,7 +218,13 @@
     };
 
     const watchNavToggle = () => {
+        // v4.0.119: Outlook rejoue parfois un clic PROGRAMMATIQUE sur le bouton
+        // du volet au chargement pour restaurer son état -> isTrusted=false.
+        // Seul un vrai tap utilisateur (isTrusted=true) peut ouvrir le menu.
+        const armedAt = Date.now();
         document.addEventListener('click', (e) => {
+            if (!e.isTrusted) return;
+            if (Date.now() - armedAt < 2500) return; // restauration au chargement
             const b = e.target && e.target.closest &&
                 e.target.closest('button[aria-label], [role="button"][aria-label]');
             const lbl = (b && b.getAttribute('aria-label')) || '';

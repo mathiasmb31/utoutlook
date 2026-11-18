@@ -2573,6 +2573,10 @@ class MailWindowController {
                 if (!window.__utoutlookNavYield) {
                     window.__utoutlookNavYield = true;
                     document.addEventListener('click', (ev) => {
+                        // v4.0.119: ignorer les clics programmatiques d'Outlook
+                        // (restauration d'état au chargement) — seul un vrai tap
+                        // utilisateur doit lever notre masque.
+                        if (!ev.isTrusted) return;
                         const b = ev.target.closest && ev.target.closest('button[aria-label], [role="button"][aria-label]');
                         const lbl = (b && b.getAttribute('aria-label')) || '';
                         // v4.0.118: pas le simple mot « menu » (barre d'outils)
