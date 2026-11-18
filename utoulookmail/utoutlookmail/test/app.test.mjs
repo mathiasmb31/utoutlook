@@ -1928,3 +1928,23 @@ test('v4.0.95: bouton « Recharger les messages » injecté, câblé IPC et i18n
         }
     }
 });
+
+test('v4.0.99: roue de relance réactivée + zombies du wrapper récupérés', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    const ctrl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+
+    // Le flag de rotation doit être réécrit par Electron (plus de quit au pivot).
+    assert.ok(ctrl.includes('fs.writeFileSync(ROTATION_RELAUNCH_FILE'),
+        'controller must write the rotation flag for the wrapper (v4.0.99)');
+    // Le wrapper doit afficher la roue même quand l'app est vivante.
+    assert.ok(cmd.includes('rotation relaunch screen shown (app still alive'),
+        'wrapper must show the wheel without waiting for a dead heartbeat (v4.0.99)');
+    // wait après chaque kill de child (CLIENT_PID, QML_PID, RELAUNCH_QML_PID).
+    assert.ok((cmd.match(/wait "\$\{CLIENT_PID\}"/g) || []).length >= 1,
+        'wrapper must wait() its client child after SIGKILL (v4.0.99)');
+    assert.ok((cmd.match(/wait "\$\{QML_PID\}"/g) || []).length >= 1,
+        'wrapper must wait() its qmlscene child after SIGKILL (v4.0.99)');
+    assert.ok((cmd.match(/wait "\$\{RELAUNCH_QML_PID\}"/g) || []).length >= 2,
+        'wrapper must wait() the relaunch wheel after both kill paths (v4.0.99)');
+});
