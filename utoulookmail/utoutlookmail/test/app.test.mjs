@@ -2037,6 +2037,7 @@ test('v4.0.113: repaints — ne plus basculer le volet de navigation', async () 
 test('v4.0.114/115: volet masqué reste masqué, seul un clic peut le rouvrir', async () => {
     const fs = await import('node:fs');
     const button = fs.readFileSync(path.resolve(__dirname, '../public/reload-button.js'), 'utf-8');
+    const controller = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
     assert.ok(button.includes("localStorage.getItem(NAV_KEY)") && button.includes('utoutlook-hide-nav'),
         'nav visibility must be restored from localStorage after reload (v4.0.114)');
     assert.ok(button.includes('watchNavToggle') && button.includes('localStorage.setItem(NAV_KEY'),
@@ -2044,6 +2045,15 @@ test('v4.0.114/115: volet masqué reste masqué, seul un clic peut le rouvrir', 
     // v4.0.115: l'observation automatique ne mémorise QUE le masquage.
     assert.ok(button.includes('if (hidden && navStableCount >= 2) storeNavState(true)'),
         'automatic observation must only remember hidden state (v4.0.115)');
+    // v4.0.118: syncNavState must actually run, new key, default = hidden.
+    assert.ok(button.includes('syncNavState(); // v4.0.118'),
+        'syncNavState must be called from the periodic ensure() (v4.0.118)');
+    assert.ok(button.includes("const NAV_KEY = 'utoutlook-nav-pref'") &&
+              button.includes("pref !== 'open'"),
+        'new pref key with hidden-by-default must be used (v4.0.118)');
+    assert.ok(!/volet de navigation\|navigation pane\|menu/i.test(button) &&
+              !controller.includes('/volet de navigation|navigation pane|menu/i'),
+        'generic "menu" label must not reopen the pane (v4.0.118)');
 });
 
 test('v4.0.116: quit propre — app.quit() au lieu de app.exit(0) brutal', async () => {

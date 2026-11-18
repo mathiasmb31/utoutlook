@@ -160,6 +160,7 @@
         // v4.0.103: barre entière masquée tant que la liste n'est pas chargée.
         bar.style.display = onMailPage() && listReady() ? 'flex' : 'none';
         unhideList(); // v4.0.98: garder la liste visible après les re-render SPA
+        syncNavState(); // v4.0.118: mémoriser un masquage automatique (paysage)
     };
 
     // Filet de sécurité : attraper les clics en capture, avant le SPA Outlook.
@@ -180,12 +181,15 @@
     // navigation à travers les rechargements de page (rotation, watchdog).
     // Outlook remet le menu visible à chaque reload ; on mémorise son état
     // dans localStorage et on le réapplique dès le chargement suivant.
-    const NAV_KEY = 'utoutlook-nav-hidden';
-
+    const NAV_KEY = 'utoutlook-nav-pref'; // v4.0.118: nouvelle clé (l'ancienne
+    // 'utoutlook-nav-hidden' gardait des valeurs "0" périmées des versions
+    // précédentes → le menu était réouvert en permanence).
+    // Règle : PAR DÉFAUT masqué ; seul un clic explicite sur le bouton du
+    // volet peut passer à 'open'.
     const applyNavState = () => {
-        let hidden = false;
-        try { hidden = localStorage.getItem(NAV_KEY) === '1'; } catch { /* ignore */ }
-        document.documentElement.classList.toggle('utoutlook-hide-nav', hidden);
+        let pref = null;
+        try { pref = localStorage.getItem(NAV_KEY); } catch { /* ignore */ }
+        document.documentElement.classList.toggle('utoutlook-hide-nav', pref !== 'open');
     };
 
     // v4.0.115: mémoriser l'état DU MOMENT OÙ IL EST MASQUÉ, quelle que soit
@@ -195,7 +199,7 @@
     let lastNavHidden = null;
     let navStableCount = 0;
     const storeNavState = (hidden) => {
-        try { localStorage.setItem(NAV_KEY, hidden ? '1' : '0'); } catch { /* ignore */ }
+        try { localStorage.setItem(NAV_KEY, hidden ? 'hidden' : 'open'); } catch { /* ignore */ }
     };
     const syncNavState = () => {
         const nav = document.querySelector('[data-app-section="NavigationPane"]');
@@ -218,7 +222,9 @@
             const b = e.target && e.target.closest &&
                 e.target.closest('button[aria-label], [role="button"][aria-label]');
             const lbl = (b && b.getAttribute('aria-label')) || '';
-            if (!/volet de navigation|navigation pane|menu/i.test(lbl)) return;
+            // v4.0.118: ne pas matcher le simple mot « menu » — la barre
+            // d'outils Outlook a des boutons « Menu » qui rouvraient le volet.
+            if (!/volet de navigation|navigation pane|masquer le volet|afficher le volet|hide navigation|show navigation/i.test(lbl)) return;
             // Laisser Outlook appliquer le toggle avant de lire l'état.
             setTimeout(() => {
                 const nav = document.querySelector('[data-app-section="NavigationPane"]');
