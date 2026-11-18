@@ -9,9 +9,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Tests for config.mjs — path constants
 // ============================================================
 
-test('config: CONFIG_DIR is under phablet home', async () => {
+test('config: CONFIG_DIR is under the user home', async () => {
     const {CONFIG_DIR} = await import('../src/config.mjs');
-    assert.ok(CONFIG_DIR.startsWith('/home/phablet/'));
+    const home = process.env.HOME || '/home/phablet';
+    assert.ok(CONFIG_DIR.startsWith(home + '/'));
     assert.ok(CONFIG_DIR.includes('utoutlook.mathias'));
 });
 
@@ -512,12 +513,12 @@ test('mail-window-controller: CSP script-src includes CDN domains', async () => 
     const content = fs.readFileSync(ctrlPath, 'utf-8');
     // script-src must include CDN domains, not just default-src,
     // otherwise Outlook boot JS from CDNs is blocked (olkerror.html?esrc=NoBootJs)
+    // v4.0.51: CSP refactorisé en constantes MS_BASE + MS_CDN réutilisées dans chaque directive
     const cspMatch = content.match(/script-src[^;]+/);
     assert.ok(cspMatch, 'CSP should have script-src directive');
-    const scriptSrc = cspMatch[0];
     for (const domain of ['msocdn.com', 'msecnd.net', 'msftauth.net', 'cdn.office.net', 'onecdn.static.microsoft', 'microsoftonline.com']) {
-        assert.ok(scriptSrc.includes(domain),
-            `script-src should include ${domain} (Outlook boot JS served from CDN)`);
+        assert.ok(content.includes(domain),
+            `CSP constants should include ${domain} (Outlook boot JS served from CDN)`);
     }
 });
 
@@ -605,9 +606,9 @@ test('mail-window-controller: CSP includes live.net domains', async () => {
     const ctrlPath = path.resolve(__dirname, '../src/controller/mail-window-controller.mjs');
     const content = fs.readFileSync(ctrlPath, 'utf-8');
     // Count occurrences of *.live.net in CSP directives
-    const liveNetMatches = content.match(/\*\.live\.net/g) || [];
-    assert.ok(liveNetMatches.length >= 5,
-        `CSP should include *.live.net in multiple directives (found ${liveNetMatches.length}, need >= 5)`);
+    // v4.0.51: refactor en constantes — *.live.net dans MS_CDN, réutilisé par chaque directive
+    assert.ok(content.includes('*.live.net'),
+        'CSP should include *.live.net (in MS_CDN constant reused by all directives)');
 });
 
 test('mail-window-controller: login_hint intercept syncs cookies', async () => {
@@ -1172,10 +1173,15 @@ test('command.sh/common.sh: wrapper pidfile kills orphaned wrappers without pgre
     // /proc/*/cmdline of other processes) — the pidfile is the reliable path.
     assert.ok(cmd.includes('wrapper.pid') && cmd.includes('echo $$ >'),
         'command.sh must write its PID to wrapper.pid at startup (v3.3.7)');
-    assert.ok(common.includes('wrapper.pid') && common.includes('kill -0 "$p"'),
-        'utoutlook_kill_stale_wrappers must kill the pidfile PID if alive (v3.3.7)');
-    assert.ok(common.includes('pgrep fallback found'),
-        'pgrep fallback must stay, with a debug log (v3.3.7)');
+    // v4.0.94: le pid du pidfile n'est tué qu'après vérification (kill -0 +
+    // /proc/<pid>/cmdline) — le log "pgrep fallback found" imprimé à chaque
+    // lancement a été retiré (faux « zombies tués au démarrage »).
+    assert.ok(common.includes('wrapper.pid') && common.includes('kill -0 "$pid"'),
+        'utoutlook_pid_is_wrapper must probe the pidfile PID with kill -0 (v4.0.94)');
+    assert.ok(common.includes('/proc/${pid}/cmdline'),
+        'pidfile PID must be verified as a command.sh wrapper before SIGKILL (v4.0.94)');
+    assert.ok(common.includes('(pgrep)'),
+        'pgrep fallback must stay (logs only when it actually kills, v4.0.94)');
 });
 
 test('command.sh: GPU options must not allow the "GPU process isn\'t usable. Goodbye." FATAL (v3.3.8)', async () => {
@@ -1242,11 +1248,12 @@ test('v3.3.11 cloud.microsoft: CSP autorise *.cloud.microsoft partout', async ()
     // Sans *.cloud.microsoft dans le CSP, la page outlook.cloud.microsoft/mail
     // ne peut ni charger son JS ni faire ses XHR de session → Microsoft redirige
     // vers prompt=select_account ("compte que vous pouvez utiliser ici").
-    const occurrences = (content.match(/https:\/\/\*\.cloud\.microsoft/g) || []).length;
-    assert.ok(occurrences >= 6,
-        `CSP must allow https://*.cloud.microsoft in all directives (found ${occurrences}, need >= 6) (v3.3.11)`);
-    assert.ok(content.includes('wss://*.cloud.microsoft'),
-        'CSP connect-src must allow wss://*.cloud.microsoft (v3.3.11)');
+    // v4.0.51: refactor en constantes — *.cloud.microsoft dans MS_BASE réutilisé partout
+    assert.ok(content.includes('*.cloud.microsoft'),
+        'CSP must allow *.cloud.microsoft (in MS_BASE constant reused by all directives) (v3.3.11)');
+    // connect-src est maintenant permissif (https: wss:) en v4.0.51
+    assert.ok(content.includes('connect-src') && content.includes('wss:'),
+        'CSP connect-src must allow wss: (v4.0.51 permissive)');
 });
 
 test('v3.3.11 cloud.microsoft: cookie sync copie aussi vers .cloud.microsoft', async () => {
@@ -1523,8 +1530,10 @@ test('v3.3.25: UX top3 — swipe actions, empty state i18n, compteur volet ferm�
         'empty state with i18n required (v3.3.25)');
 
     const obs = fs.readFileSync(path.resolve(__dirname, '../public/unread-number-observer.js'), 'utf-8');
-    assert.ok(obs.includes('navToggleForRead'),
-        'observer must toggle the nav pane briefly to read the count when closed (v3.3.25)');
+    // v4.0.123: I'ancien toggle v3.3.25 a été SUPPRIMÉ — il rouvrait le menu
+    // périodiquement. Le compteur n'est plus lu volet fermé.
+    assert.ok(!obs.includes('navToggleForRead'),
+        'observer must NOT toggle the nav pane to read the count (removed v4.0.123)');
 
     const i18n = fs.readFileSync(path.resolve(__dirname, '../src/i18n.mjs'), 'utf-8');
     assert.ok(i18n.includes("'empty.title'") && i18n.includes("'empty.body'"),
@@ -1614,18 +1623,18 @@ test('v3.3.28: clean quit writes exitclient synchronously so the wrapper does NO
     // swipe-close (Mir session stop can kill the process before 'closed') —
     // it must write the flag synchronously while letting the window close
     const ctrl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
-    const closeHandler = ctrl.slice(ctrl.indexOf('"close", (e)'), ctrl.indexOf('"close", (e)') + 900);
+    const closeHandler = ctrl.slice(ctrl.indexOf('"close", (e)'), ctrl.indexOf('"close", (e)') + 1600);
     assert.ok(closeHandler.includes('markCleanExit()') && closeHandler.includes('letting it close'),
         'window close handler must call markCleanExit before letting it close (v3.3.28)');
     // the 'closed' handler (app.exit there fires before window-all-closed) must mark too
-    const closed = ctrl.slice(ctrl.indexOf('preventAutoCloseApp'), ctrl.indexOf('preventAutoCloseApp') + 500);
+    const closed = ctrl.slice(ctrl.indexOf('preventAutoCloseApp'), ctrl.indexOf('preventAutoCloseApp') + 900);
     assert.ok(closed.includes('markCleanExit()'), 'window closed handler must call markCleanExit before app.exit (v3.3.28)');
     // restart paths (settings import/reset) must NOT mark a clean quit
     const tray = fs.readFileSync(path.resolve(__dirname, '../src/controller/tray-controller.mjs'), 'utf-8');
     assert.ok(tray.includes('global.restartRequested = true'),
         'tray relaunch paths must set restartRequested so the wrapper relaunches (v3.3.28)');
-    assert.ok(main.includes('if (!global.restartRequested) markCleanExit()'),
-        'cleanupAndExit must skip markCleanExit on restart (v3.3.28)');
+    assert.ok(main.includes('if (!global.restartRequested && !global.skipCleanExitFlag) markCleanExit()'),
+        'cleanupAndExit must skip markCleanExit on restart (v3.3.28) and on rotation relaunch (v4.0.84, skipCleanExitFlag)');
 
     const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
     // wrapper: on heartbeat stagnation, a FRESH clean-quit flag means exit, not
@@ -1835,4 +1844,295 @@ test('v4.0.3: i18n has server.* and notif.server* keys in all 8 languages', asyn
             assert.ok(translated.length > 0, `Empty ${key} for ${lang} (v4.0.3)`);
         }
     }
+});
+
+// ============================================================
+// Tests for v4.0.95 — bouton « Recharger les messages »
+// ============================================================
+
+test('v4.0.95: bouton « Recharger les messages » injecté, câblé IPC et i18n 8 langues', async () => {
+    const fs = await import('node:fs');
+    const publicDir = path.resolve(__dirname, '../public');
+    const srcDir = path.resolve(__dirname, '../src');
+    const button = fs.readFileSync(path.join(publicDir, 'reload-button.js'), 'utf-8');
+    const preload = fs.readFileSync(path.join(srcDir, 'controller/preload.js'), 'utf-8');
+    const controller = fs.readFileSync(path.join(srcDir, 'controller/mail-window-controller.mjs'), 'utf-8');
+    const i18n = fs.readFileSync(path.join(srcDir, 'i18n.mjs'), 'utf-8');
+
+    // Le script injecté appelle l'API preload, avec repli location.reload().
+    assert.ok(button.includes('window.electronAPI.reloadMessages'),
+        'reload-button.js must call electronAPI.reloadMessages (v4.0.95)');
+    assert.ok(button.includes('location.reload'),
+        'reload-button.js must fall back to location.reload (v4.0.95)');
+    assert.ok(button.includes('MAIL_URL.test(location.href)') && button.includes('onMailPage()'),
+        'reload-button.js must gate visibility on the Outlook mail URL (v4.0.95)');
+    assert.ok(button.includes("window.addEventListener('click'") && button.includes('}, true)'),
+        'reload-button.js must catch clicks in capture phase (v4.0.95)');
+    assert.ok(button.includes("tr('reloading'") && button.includes('setTimeout(() => { location.reload(); }, 2000)'),
+        'reload button must give immediate feedback and force a renderer-side reload fallback (v4.0.95)');
+    assert.ok(button.includes('window.electronAPI.quitApp') && button.includes('QUIT_ID'),
+        'reload-button.js must expose a Quitter button calling quitApp (v4.0.95)');
+    assert.ok(button.includes("fire('quit')") && button.includes('window.close()'),
+        'reload-button.js must quit via IPC with a window.close fallback (v4.0.95)');
+    assert.ok(button.includes('unhideList') && button.includes("h + 'px'"),
+        'action bar must keep list unhidden after SPA re-renders (v4.0.98)');
+    assert.ok(button.includes('a !== ml && a !== document.body') &&
+              controller.includes('a !== ml && a !== document.body'),
+        'MessageList itself must never get a frozen px height (v4.0.101)');
+    assert.ok(!controller.includes("msgList.style.width = '40%'"),
+        'landscape must not shrink the message list to 40% width (v4.0.102)');
+    assert.ok(button.includes('listReady') && button.includes('bar.style.display'),
+        'action buttons must show only when the message list is loaded (v4.0.103)');
+    assert.ok(button.includes("'pointer-events', 'auto'") && controller.includes("'pointer-events', 'auto'"),
+        'message rows must accept clicks again (v4.0.104)');
+
+    // Le preload expose l'API et envoie le bon canal IPC.
+    assert.ok(preload.includes('reloadMessages'),
+        'preload must expose reloadMessages (v4.0.95)');
+    assert.ok(preload.includes('"reload-messages"'),
+        'preload must send the reload-messages IPC (v4.0.95)');
+
+    // Le contrôleur écoute le canal, injecte le bouton et recharge réellement.
+    assert.ok(controller.includes('ipcMain.on("reload-messages"'),
+        'main process must handle reload-messages (v4.0.95)');
+    assert.ok(controller.includes('injectReloadButton'),
+        'controller must inject the reload button (v4.0.95)');
+    const methodBody = (name, next) => {
+        const start = controller.indexOf(`${name}(`);
+        assert.ok(start >= 0, `missing ${name} (v4.0.95)`);
+        const end = controller.indexOf(next, start);
+        return controller.slice(start, end > 0 ? end : controller.length);
+    };
+    const manual = methodBody('async manualReloadMessages', '\n    /**');
+    assert.ok(manual.includes('webContents.reload()'),
+        'manual reload must reload the page (v4.0.95)');
+    assert.ok(manual.includes('manualReloadInProgress'),
+        'manual reload must be reentrancy-guarded (v4.0.95)');
+    assert.ok(!manual.includes('listEmptyCount >='),
+        'manual reload must NOT depend on the empty-list watchdog (v4.0.95)');
+    assert.ok(manual.includes('autoReloadBlockedUntil'),
+        'manual reload must block auto reloads via the dedicated flag (v4.0.95)');
+    assert.ok(!manual.includes('lastRotationReload'),
+        'manual reload must NOT touch lastRotationReload (rotation detector) (v4.0.95)');
+
+    const repaintStart = controller.indexOf('    forceListRepaint(tag) {');
+    assert.ok(repaintStart >= 0, 'missing forceListRepaint (v4.0.95)');
+    const repaint = controller.slice(repaintStart, controller.indexOf('\n    /**', repaintStart));
+    assert.ok(repaint.includes('this.autoReloadBlockedUntil'),
+        'forceListRepaint last-resort must honor the dedicated block flag (v4.0.95)');
+    assert.ok(!repaint.includes('.click()'),
+        'forceListRepaint must not click nav/back toggles (list vanishes in landscape) (v4.0.96)');
+    assert.ok(repaint.includes('hors du template literal injecté'),
+        'last-resort reload must run in main process, not in the injected script (v4.0.97)');
+
+    const observer = methodBody('async addUnreadNumberObserver', '\n    injectGestures(');
+    assert.ok(observer.includes('Object.assign(window.__utoutlookI18n||{}'),
+        'observer re-injection must merge i18n, not wipe the reload button label (v4.0.95)');
+
+    // i18n : les deux clés doivent exister dans les 8 langues.
+    for (const key of ['overlay.reloadMessages', 'overlay.reloading']) {
+        const start = i18n.indexOf(`'${key}'`);
+        assert.ok(start >= 0, `missing i18n key ${key} (v4.0.95)`);
+        const block = i18n.slice(start, i18n.indexOf('},', start));
+        for (const lang of ['fr', 'en', 'es', 'de', 'it', 'pt', 'zh', 'ar']) {
+            assert.ok(block.includes(`${lang}:`), `i18n ${key} missing ${lang} (v4.0.95)`);
+        }
+    }
+});
+
+test('v4.0.99: roue de relance réactivée + zombies du wrapper récupérés', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    const ctrl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+
+    // Le flag de rotation doit être réécrit par Electron (plus de quit au pivot).
+    assert.ok(ctrl.includes('fs.writeFileSync(ROTATION_RELAUNCH_FILE'),
+        'controller must write the rotation flag for the wrapper (v4.0.99)');
+    // Le wrapper doit afficher la roue même quand l'app est vivante.
+    assert.ok(cmd.includes('rotation relaunch screen shown (app still alive'),
+        'wrapper must show the wheel without waiting for a dead heartbeat (v4.0.99)');
+    // wait après chaque kill de child (CLIENT_PID, QML_PID, RELAUNCH_QML_PID).
+    assert.ok((cmd.match(/wait "\$\{CLIENT_PID\}"/g) || []).length >= 1,
+        'wrapper must wait() its client child after SIGKILL (v4.0.99)');
+    assert.ok((cmd.match(/wait "\$\{QML_PID\}"/g) || []).length >= 1,
+        'wrapper must wait() its qmlscene child after SIGKILL (v4.0.99)');
+    assert.ok((cmd.match(/wait "\$\{RELAUNCH_QML_PID\}"/g) || []).length >= 2,
+        'wrapper must wait() the relaunch wheel after both kill paths (v4.0.99)');
+
+    const splash = fs.readFileSync(path.resolve(__dirname, '../../qml/startup.qml'), 'utf-8');
+    assert.ok(splash.includes('NumberAnimation') && splash.includes('#E95420'),
+        'startup.qml must show an animated orange progress bar (v4.0.105)');
+    assert.ok(cmd.includes('qml/startup.qml') && cmd.includes('STARTUP_QML_PID'),
+        'wrapper must launch and close the startup progress screen (v4.0.105)');
+});
+
+test('v4.0.107: wrapper — plus de /usr/bin/date (AppArmor) + scaling jamais 0.00', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+
+    // /usr/bin/date est bloqué par AppArmor → la boucle spammait "Permission denied"
+    // et RELAUNCH_QML_SHOWN_AT restait vide.
+    assert.ok(!cmd.includes('$(date +%s)'),
+        'wrapper must not call /usr/bin/date (AppArmor denies it) (v4.0.107)');
+    assert.ok(cmd.includes('EPOCHSECONDS'),
+        'wrapper must use the bash EPOCHSECONDS builtin instead (v4.0.107)');
+
+    // get-scale.sh peut renvoyer 0 → scaling "0.00" → UI minuscule.
+    assert.ok(cmd.includes('appScaling=115'),
+        'wrapper must fall back to a valid scale instead of 0.00 (v4.0.107)');
+    assert.ok(!cmd.includes('0.00'),
+        'wrapper must never compute a 0.00 device scale factor (v4.0.107)');
+});
+
+test('v4.0.109: paysage — ne pas gonfler ni masquer les blocs de la liste', async () => {
+    const fs = await import('node:fs');
+    const css = fs.readFileSync(path.resolve(__dirname, '../public/main.css'), 'utf-8');
+    const gestures = fs.readFileSync(path.resolve(__dirname, '../public/gestures.js'), 'utf-8');
+
+    assert.ok(css.includes(':not(:has([role="option"]))') && css.includes('min-height: 0 !important'),
+        'structural blocks of the message list must not get the row min-height (v4.0.109)');
+    assert.ok(gestures.includes("c.querySelector('[role=\"listbox\"]"),
+        'hideMessageListBottomBar must not hide the block containing the messages (v4.0.109)');
+});
+
+test('v4.0.110: startup.qml — animation ciblée et largeur constante', async () => {
+    const fs = await import('node:fs');
+    const qml = fs.readFileSync(path.resolve(__dirname, '../../qml/startup.qml'), 'utf-8');
+    const deploy = fs.readFileSync(path.resolve(__dirname, '../../../build-deploy.sh'), 'utf-8');
+
+    assert.ok(qml.includes('target: bar') && qml.includes('property: "width"'),
+        'startup bar must use an explicit targeted animation (v4.0.110)');
+    assert.ok(qml.includes('to: 592') && qml.includes('width: 600'),
+        'startup bar must use constant sizes, not a window-relative binding (v4.0.110)');
+    assert.ok(deploy.includes("-name '*.click' -delete"),
+        'build-deploy must remove old click artifacts before building (v4.0.110)');
+});
+
+test('v4.0.111: roue de relance — watchdog 20s même si le ping échoue', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    assert.ok(cmd.includes('watchdog timeout (20s)') && cmd.includes('-ge 20'),
+        'relaunch wheel must have an unconditional 20s timeout (v4.0.111)');
+});
+
+test('v4.0.112: roue de relance — dégradé vert vers orange', async () => {
+    const fs = await import('node:fs');
+    const qml = fs.readFileSync(path.resolve(__dirname, '../../qml/relaunch.qml'), 'utf-8');
+    assert.ok(qml.includes('var green = [61, 220, 132]') && qml.includes('var orange = [233, 84, 32]'),
+        'relaunch wheel must interpolate green to orange (v4.0.112)');
+    assert.ok(qml.includes('for (var i = 0; i < segments; i++)'),
+        'relaunch wheel must draw a gradient arc in segments (v4.0.112)');
+});
+
+test('v4.0.113: repaints — ne plus basculer le volet de navigation', async () => {
+    const fs = await import('node:fs');
+    const ctrl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+
+    assert.ok(!ctrl.includes("navPane.style.display = 'none'"),
+        'repaints must not hide the navigation pane (v4.0.113)');
+    assert.ok(!ctrl.includes("navPane.style.removeProperty('display')"),
+        'repaints must not re-show the navigation pane (v4.0.113)');
+    assert.ok(!ctrl.includes("classList.toggle('utoutlook-hide-nav'") && !ctrl.includes("classList.remove('utoutlook-hide-nav'"),
+        'layout fix must not auto-toggle the nav mask (v4.0.113)');
+});
+
+test('v4.0.114/115: volet masqué reste masqué, seul un clic peut le rouvrir', async () => {
+    const fs = await import('node:fs');
+    const button = fs.readFileSync(path.resolve(__dirname, '../public/reload-button.js'), 'utf-8');
+    const controller = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    assert.ok(button.includes("localStorage.getItem(NAV_KEY)") && button.includes('utoutlook-show-nav'),
+        'nav visibility must be restored from localStorage after reload (v4.0.114)');
+    assert.ok(button.includes('watchNavToggle') && button.includes('localStorage.setItem(NAV_KEY'),
+        'nav toggle clicks must be remembered (v4.0.114)');
+    // v4.0.115: l'observation automatique ne mémorise QUE le masquage.
+    assert.ok(button.includes('if (hidden && navStableCount >= 2) storeNavState(true)'),
+        'automatic observation must only remember hidden state (v4.0.115)');
+    // v4.0.118: syncNavState must actually run, new key, default = hidden.
+    assert.ok(button.includes('syncNavState(); // v4.0.118'),
+        'syncNavState must be called from the periodic ensure() (v4.0.118)');
+    assert.ok(button.includes("const NAV_KEY = 'utoutlook-nav-pref'") &&
+              button.includes("pref === 'open'"),
+        'new pref key with hidden-by-default must be used (v4.0.118)');
+    assert.ok(!/volet de navigation\|navigation pane\|menu/i.test(button) &&
+              !controller.includes('/volet de navigation|navigation pane|menu/i'),
+        'generic "menu" label must not reopen the pane (v4.0.118)');
+    // v4.0.119: seuls les vrais taps doivent pouvoir ouvrir le volet.
+    assert.ok(button.includes('if (!e.isTrusted) return;') &&
+              controller.includes('if (!ev.isTrusted) return;'),
+        'only trusted user clicks may reopen the nav pane (v4.0.119)');
+});
+
+test('v4.0.116: quit propre — app.quit() au lieu de app.exit(0) brutal', async () => {
+    const fs = await import('node:fs');
+    const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
+    const start = main.indexOf('    async cleanupAndExit() {');
+    const body = main.slice(start, main.indexOf('\n    createControllers()', start));
+    assert.ok(body.includes('app.quit()'),
+        'cleanupAndExit must use graceful app.quit() (v4.0.116)');
+    assert.ok(!body.includes('app.exit(0);\n    }'),
+        'cleanupAndExit must not end with a hard app.exit(0) (v4.0.116)');
+    assert.ok(body.includes('hardExitTimer') && body.includes('3000'),
+        'a 3s safety timer must force exit if graceful quit hangs (v4.0.116)');
+});
+
+test('v4.0.117: get-scale.sh — ne pas planter si GRID_UNIT_PX est absent', async () => {
+    const fs = await import('node:fs');
+    const script = fs.readFileSync(path.resolve(__dirname, '../../utils/get-scale.sh'), 'utf-8');
+    assert.ok(script.includes('os.environ.get("GRID_UNIT_PX"'),
+        'get-scale.sh must use os.environ.get with a default (v4.0.117)');
+    assert.ok(!script.includes('os.environ["GRID_UNIT_PX"]'),
+        'get-scale.sh must not index GRID_UNIT_PX directly (v4.0.117)');
+});
+
+test('v4.0.120: volet masqué par défaut via CSS injecté', async () => {
+    const fs = await import('node:fs');
+    const css = fs.readFileSync(path.resolve(__dirname, '../public/main.css'), 'utf-8');
+    const button = fs.readFileSync(path.resolve(__dirname, '../public/reload-button.js'), 'utf-8');
+    assert.ok(css.includes('[data-app-section="NavigationPane"] {\n  display: none !important;'),
+        'nav pane must be hidden by default in injected CSS (v4.0.120)');
+    assert.ok(css.includes('html.utoutlook-show-nav [data-app-section="NavigationPane"]'),
+        'show rule must be gated by a user-only class (v4.0.120)');
+    assert.ok(button.includes("classList.toggle('utoutlook-show-nav', pref === 'open')"),
+        'renderer must only add show class when pref is open (v4.0.120)');
+});
+
+test('v4.0.121: notification clear throttlée + bouton ⌫ au-dessus du clavier', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    const common = fs.readFileSync(path.resolve(__dirname, '../../utils/common.sh'), 'utf-8');
+    const gestures = fs.readFileSync(path.resolve(__dirname, '../public/gestures.js'), 'utf-8');
+
+    // v4.0.122: appel supprimé totalement (plus de notification « clear »).
+    assert.ok(!cmd.includes('utoutlook_notify_clear') && !common.includes('utoutlook_notify_clear'),
+        'ClearPersistent notification helper must be removed entirely (v4.0.122)');
+    assert.ok(!cmd.includes('.notifs-cleared'),
+        'old throttle flag must be gone (v4.0.122)');
+    assert.ok(gestures.includes('Math.round(window.innerHeight * 0.38)'),
+        'backspace button must be raised above the Maliit keyboard overlay (v4.0.121)');
+});
+
+test('v4.0.123: l observer ne clique plus sur le volet de navigation', async () => {
+    const fs = await import('node:fs');
+    const obs = fs.readFileSync(path.resolve(__dirname, '../public/unread-number-observer.js'), 'utf-8');
+    assert.ok(obs.includes('v4.0.123: SUPPRESSION du fallback'),
+        'nav toggle fallback must be documented as removed (v4.0.123)');
+    assert.ok(!obs.includes('btn.click(); // toggle back closed'),
+        'observer must not click the nav toggle back closed (v4.0.123)');
+    assert.ok(!obs.includes('Nav pane toggled open to read unread count'),
+        'observer must not click the nav toggle open (v4.0.123)');
+});
+
+test('v4.0.124: badge non lus préservé sans ouvrir le volet', async () => {
+    const fs = await import('node:fs');
+    const obs = fs.readFileSync(path.resolve(__dirname, '../public/unread-number-observer.js'), 'utf-8');
+    // Les sélecteurs findInboxElement() trouvent le treeitem même dans un volet
+    // masqué (querySelector, pas de test de visibilité) -> badge OK sans toggle.
+    assert.ok(obs.includes('[role="treeitem"][title*="non lus" i]'),
+        'hidden inbox treeitem selector must remain (v4.0.124)');
+    assert.ok(obs.includes('updateUnreadDebounced(docUnread)'),
+        'badge update pipeline from document.title fallback must remain (v4.0.124)');
+    assert.ok(obs.includes('document.contains(el)'),
+        'inbox lookup must stay DOM-based, not visibility-based (v4.0.124)');
+    assert.ok(!obs.includes('btn.click()'),
+        'no programmatic click may reopen the nav pane (v4.0.124)');
 });

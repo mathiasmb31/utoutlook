@@ -1,0 +1,75 @@
+Version 4.0.41 — 17 novembre 2026
+
+Sign-in and 2FA work reliably again on the phone: no more login loop after 
+quitting/relaunching, no more "header too long" error after the Authenticator 
+approval, no more empty message list after rotating the screen, and closing the 
+app no longer leaves hidden processes running. A very difficult debugging 
+session went into fixing these — thanks for testing each build on the phone.
+
+Tested on Fairphone 5 (FP5) with Ubuntu Touch framework 24.04 — no guarantee on other models.
+Thanks for your feedback! :)
+
+Changes since 4.0.40:
+
+- fixv4.0.41 lost token
+
+- utoutlook 4.0.93 : relaunch.qml en Window.FullScreen (Screen.width au niveau Window donnait une fenetre 0x0 invisible) + log qmlscene vers relaunch-qml.log + delai min 5 s avant fermeture de la roue
+
+- utoutlook 4.0.92 : fix syntaxe import JS dans les ecrans QML (.import -> import) — qmlscene rejetait '.import' (Expected token numeric literal), relaunch.qml et nonetwork.qml ne s'affichaient plus
+
+- utoutlook 4.0.91 : ecran plein ecran 'relance en cours (changement d'orientation)' avec roue qui tourne apres un pivot — affiche par le wrapper (qmlscene relaunch.qml, i18n 8 langues) quand l'app quitte pour une rotation (flag rotation-relaunch), ferme des que le nouvel app repond sur le socket
+
+- utoutlook 4.0.90 : delai de grace 2 s dans le wrapper apres la mort des vieux process (evite le crash GPU error_code=1002 au relancement) + quit post-rotation differe a 2 s au lieu de 800 ms
+
+- utoutlook 4.0.89 : watchdog clavier (toutes les 3 s, restaure le focus si document.hasFocus() est false) + blur du champ actif AVANT le quit post-rotation pour fermer proprement Maliit
+
+- utoutlook 4.0.88 : reveil du clavier virtuel (Maliit) apres chargement de la page mail — focus fenetre + cycle blur/focus renderer a 0.5/1.5/3/6 s (apres une relance post-rotation le clavier n'envoyait plus de touches)
+
+- utoutlook 4.0.87 : notification systeme (D-Bus, persistante) a la relance apres rotation, en plus du toast qui disparaissait en 1,5 s
+
+- utoutlook 4.0.86 : bloque le quit apres rotation tant que la liste des messages n'est pas atteinte (mailListReady) + cle de detection rotation sur l'orientation seule (sans la taille fenetre, qui change au demarrage 612x1350->612x1298 et provoquait une fausse rotation)
+
+- utoutlook 4.0.85 : fix sortie immediate au demarrage — le poller prenait un changement de TAILLE de fenetre pour une rotation (612x1350 -> 612x1298 au lancement) et quittait 800 ms plus tard ; les handlers close/closed écrivaient exitclient meme avec skipCleanExitFlag donc le wrapper ne relançait pas
+
+- fix(test-rapide.sh): quoting des commandes adb (awk zombies, URL socket, token, MSAAUTH) — les \" internes casse le shell du device
+
+- utoutlook 4.0.84 : relance complete de l'app apres rotation (fix liste vide 0x0) + toast 'rotation detectee, relance application' i18n 8 langues
+
+- chore(test-rapide.sh): affiche le nombre de zombies (ps stat=Z) et de process utoutlook AVANT le kill
+
+- fix(v4.0.83): fixMailLayout() appelé 2 s après CHAQUE did-finish-load (pas seulement au repaint) — répare la listbox 0x0 (ancêtres display:none -> flex, prouvé device : options 0->112 px) ET masque le volet de nav par classe CSS, donc aussi après le reload post-rotation qui recréait la page avec liste vide. closeNavIfCovering délègue à fixMailLayout. 
+
+- fix(v4.0.82): le masque CSS du volet de navigation ne bloque plus l'utilisateur — un clic sur le bouton du volet (aria-label volet de navigation / navigation pane / menu) lève le masque (listener délégué en capture, installé une fois). 
+
+- fix(v4.0.81): deux vrais mécanismes, prouvés sur le DOM du device. (1) Le volet de nav ne se ferme plus par clic (bouton toggle -> boucle qui le rouvre) mais par classe CSS déterministe html.utoutlook-hide-nav. (2) La listbox rendue 0x0 après resize est débloquée en forçant display:flex sur ses ancêtres masqués (options 0 px -> 112 px, mesuré). Watchdog et fallback reload comptent désormais les lignes avec hauteur > 0 (pas seulement présentes dans le DOM). 
+
+- chore(openstore-prepare.sh): whatsnew — ajout 'Tested on Fairphone 5 (FP5) with Ubuntu Touch framework 24.04 — no guarantee on other models.' + 'Thanks for your feedback! :)'
+
+- fix(v4.0.80): cause racine du pivot trouvée — sur UT/Wayland screen.size ne change pas au pivot (612x1350) mais la fenêtre passe en 1350x576 ; handleDisplayChange faisait setBounds en 612x1350 (portrait) même en landscape → fenêtre écrasée en géométrie portrait sur une surface landscape → lignes de la liste rendues en 0x0 (visuellement liste vide, volet de nav ne couvrant qu'une partie). setBounds respecte maintenant l'orientation courante de la fenêtre (swap w/h si landscape). 
+
+- fix(v4.0.79): après le reload (notamment post-rotation), Outlook démarrait avec le volet de navigation ouvert à la place de la liste. Nouveau closeNavIfCovering() appelé 2 s après chaque did-finish-load : clique sur « Masquer le volet de navigation » si le volet recouvre la liste (ou en paysage). Sélecteurs vérifiés sur le DOM réel du device. 
+
+- chore(openstore-prepare.sh): whatsnew one-shot — 'A very difficult debugging session went into fixing these' + mention du fix liste vide après rotation
+
+- fix(v4.0.78): watchdog 'liste vide' — mesure sur device : après pivot la MessageList existe (611x1103) mais ne rend AUCUNE ligne (virtualisation), le volet de nav n'était pas en cause. Nouveau watchdog toutes les 15 s : si page mail + 0 ligne pendant 2 contrôles → reload (garde-fou 60 s). Couvre pivot, refresh et chargement initial incomplet. Allègement : un seul repaint par détection (suppression du second à +1 s). 
+
+- fix(v4.0.77): pivots rapides A→B→A — le poller passait à 500 ms et garde un historique des 4 derniers états d'écran : même un aller-retour complet en moins d'un tick est détecté (état intermédiaire) et déclenche toast + repaint (+ reload de secours si besoin). 
+
+- feat(v4.0.76): toast « Changement d'orientation… » (i18n 8 langues, clé overlay.rotation) affiché en bas d'écran pendant 1,5 s quand le poller détecte un pivot — l'utilisateur voit que l'app agit (repaint/reload). 
+
+- fix(v4.0.75): reload de secours après pivot — si la liste des messages est toujours invisible 1,2 s après le repaint (nav + reflow), on recharge la page entière (le splash enveloppe Outlook est bref). Garde-fou anti-boucle: max 1 reload / 30 s (lastRotationReload). 
+
+- fix(v4.0.74): pull-to-refresh — le bouton « Synchroniser les e-mails envoyés et reçus » existe mais est dans le ruban replié (offsetParent null) donc le test de visibilité sautait le clic. On clique maintenant dès que le bouton est trouvé (vérifié sur le DOM du device). 
+
+- fix(v4.0.73): le clic sur « Masquer le volet de navigation » ne se déclenchait qu'en paysage — au retour en portrait le menu restait ouvert et cachait la liste. Le volet est maintenant fermé dès qu'il recouvre la liste (NavigationPane visible + MessageList non visible), dans les deux orientations. 
+
+- fix(v4.0.72): après pivot en paysage, le volet de navigation restait ouvert (liste cachée). Le repaint clique maintenant sur le vrai bouton « Masquer le volet de navigation » (détecté via data-app-section=NavigationPane visible + innerWidth>innerHeight), en plus du bouton retour. Sélecteurs vérifiés sur le DOM réel du device. 
+
+- fix(v4.0.71): le pull-to-refresh n'était que visuel (barre bleue, aucun rechargement) — au relâchement au-delà de 70 %, on clique maintenant sur le vrai bouton refresh/sync d'Outlook web s'il est visible (sans recharger la page, pour éviter le splash enveloppe). 
+
+- feat(v4.0.70): nettoyage du tiroir de notifications — nouveau mode 'notify --clear' (Postal ClearPersistent avec tag vide = toutes les notifs persistantes de l'app) ; le wrapper l'appelle une fois l'app bien lancée (heartbeat vivant) pour retirer les messages transitoires (welcome, veuillez patienter, etc.). 
+
+- fix(v4.0.69): le message d'attente de fermeture (shell.pleaseWait) n'était notifié qu'une fois — il disparaissait en quelques secondes alors que l'attente dure jusqu'à 15 s. Renotification à chaque itération de la boucle d'attente (toutes les 3 s). Version 4.0.69.
+
+
+Built and tested by Mathias — code written by Vibe, reviewed and controlled by Mathias.

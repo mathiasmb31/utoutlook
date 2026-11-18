@@ -1,0 +1,2 @@
+#!/bin/sh
+mkdir -p "${HOME}/.config/utoutlook.mathias" "${HOME}/.config/utoutlook.mathias/data" "${HOME}/.config/utoutlook.mathias/Prospect Mail/"

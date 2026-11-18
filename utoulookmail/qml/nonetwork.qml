@@ -2,7 +2,7 @@ import QtQuick 2.9
 import QtQuick.Window 2.2
 import QtQuick.Controls 2.2
 import QtQuick.Layouts 1.3
-.import "/tmp/utoutlook-qml-i18n.js" as QmlI18n
+import "/tmp/utoutlook-qml-i18n.js" as QmlI18n
 
 ApplicationWindow {
     visible: true

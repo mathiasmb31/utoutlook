@@ -5,14 +5,22 @@
 
 #include <unistd.h>        // chdir
 #include <sys/stat.h>      // mkdir
+#include <string.h>
 
-#define PATH "/home/phablet/.config/utoutlook.mathias"
-#define PATH2 "/home/phablet/.config/utoutlook.mathias/data"
-#define PATH3 "/home/phablet/.config/utoutlook.mathias/FIRSTINSTALL/"
+static char PATH[4096], PATH2[4096], PATH3[4096];
 
-int main() 
+static void build_paths(void) {
+    const char *home = getenv("HOME");
+    if (!home || !*home) home = "/home/phablet";
+    snprintf(PATH,  sizeof(PATH),  "%s/.config/utoutlook.mathias", home);
+    snprintf(PATH2, sizeof(PATH2), "%s/.config/utoutlook.mathias/data", home);
+    snprintf(PATH3, sizeof(PATH3), "%s/.config/utoutlook.mathias/FIRSTINSTALL/", home);
+}
+
+int main()
 	{
     int c;
+    build_paths();
 	
     if ( mkdir( PATH, 0755 ) != 0 ) {
         fprintf( stderr, "Impossible de créer le dossier %s : \n", PATH );

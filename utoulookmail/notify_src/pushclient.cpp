@@ -180,6 +180,26 @@ bool PushClient::hasTag(const QString &tag)
     return m_tags.contains(tag);
 }
 
+// v4.0.69: clear all persistent notifications of this app (empty tag = all)
+bool PushClient::clearAll()
+{
+    QDBusMessage message = QDBusMessage::createMethodCall(POSTAL_SERVICE,
+                                                          makePath(PUSH_APP_ID, POSTAL_PATH_PREFIX),
+                                                          POSTAL_IFACE,
+                                                          "ClearPersistent");
+    message << PUSH_APP_ID;
+    message << QString();  // empty tag = all messages of the app
+
+    QDBusMessage reply = m_conn.call(message, QDBus::Block, DBUS_TIMEOUT_MS);
+    if (reply.type() == QDBusMessage::ErrorMessage) {
+        qDebug() << "[CLEAR-ALL ERROR] " << reply.errorMessage();
+        return false;
+    }
+    qDebug() << "[CLEAR-ALL SUCCESS] All persistent notifications removed";
+    m_tags.clear();
+    return true;
+}
+
 bool PushClient::clearPersistent(const QString &tag)
 {
     if (m_tags.contains(tag)) {
