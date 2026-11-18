@@ -2380,17 +2380,20 @@ class MailWindowController {
                 const ml = document.querySelector('[data-app-section="MessageList"]');
                 const lb = ml && ml.querySelector('[role="listbox"]');
                 if (lb) {
+                    // v4.0.100: les conteneurs internes ont height:0 / opacity:0 /
+                    // overflow:hidden — un height:100% ne résout rien quand le
+                    // parent est à 0. On impose une HAUTEUR EN PX calculée depuis
+                    // MessageList sur toute la chaîne jusqu'au listbox.
+                    const h = Math.max(200, Math.round(ml.getBoundingClientRect().height) - 10);
                     let a = lb;
                     while (a && a !== document.body) {
-                        const s = getComputedStyle(a);
-                        // v4.0.98: Outlook masque la liste avec display:none ET/OU
-                        // visibility:hidden sur ses conteneurs internes (paysage).
-                        // Ancien test display seul + sans !important → options 0 px.
-                        if (s.display === 'none' || s.visibility === 'hidden') {
-                            a.style.setProperty('display', 'flex', 'important');
-                            a.style.setProperty('visibility', 'visible', 'important');
-                            if (!a.style.height || s.height === '0px') a.style.setProperty('height', '100%', 'important');
-                        }
+                        a.style.setProperty('display', 'flex', 'important');
+                        a.style.setProperty('visibility', 'visible', 'important');
+                        a.style.setProperty('opacity', '1', 'important');
+                        a.style.setProperty('height', h + 'px', 'important');
+                        a.style.setProperty('min-height', h + 'px', 'important');
+                        a.style.setProperty('max-height', 'none', 'important');
+                        a.style.setProperty('overflow', 'visible', 'important');
                         if (a === ml) break; // ne pas toucher à l'UI extérieure
                         a = a.parentElement;
                     }
@@ -2519,17 +2522,20 @@ class MailWindowController {
                 const ml = document.querySelector('[data-app-section="MessageList"]');
                 const lb = ml && ml.querySelector('[role="listbox"]');
                 if (lb) {
+                    // v4.0.100: les conteneurs internes ont height:0 / opacity:0 /
+                    // overflow:hidden — un height:100% ne résout rien quand le
+                    // parent est à 0. On impose une HAUTEUR EN PX calculée depuis
+                    // MessageList sur toute la chaîne jusqu'au listbox.
+                    const h = Math.max(200, Math.round(ml.getBoundingClientRect().height) - 10);
                     let a = lb;
                     while (a && a !== document.body) {
-                        const s = getComputedStyle(a);
-                        // v4.0.98: Outlook masque la liste avec display:none ET/OU
-                        // visibility:hidden sur ses conteneurs internes (paysage).
-                        // Ancien test display seul + sans !important → options 0 px.
-                        if (s.display === 'none' || s.visibility === 'hidden') {
-                            a.style.setProperty('display', 'flex', 'important');
-                            a.style.setProperty('visibility', 'visible', 'important');
-                            if (!a.style.height || s.height === '0px') a.style.setProperty('height', '100%', 'important');
-                        }
+                        a.style.setProperty('display', 'flex', 'important');
+                        a.style.setProperty('visibility', 'visible', 'important');
+                        a.style.setProperty('opacity', '1', 'important');
+                        a.style.setProperty('height', h + 'px', 'important');
+                        a.style.setProperty('min-height', h + 'px', 'important');
+                        a.style.setProperty('max-height', 'none', 'important');
+                        a.style.setProperty('overflow', 'visible', 'important');
                         if (a === ml) break; // ne pas toucher à l'UI extérieure
                         a = a.parentElement;
                     }

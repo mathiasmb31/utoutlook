@@ -75,14 +75,18 @@
         const ml = document.querySelector('[data-app-section="MessageList"]');
         const lb = ml && ml.querySelector('[role="listbox"]');
         if (!lb) return;
+        // v4.0.100: hauteur PX explicite (un height:100% reste à 0 si le parent
+        // est à 0) + opacity/overflow forcés sur toute la chaîne interne.
+        const h = Math.max(200, Math.round(ml.getBoundingClientRect().height) - 10);
         let a = lb;
         while (a && a !== document.body) {
-            const s = getComputedStyle(a);
-            if (s.display === 'none' || s.visibility === 'hidden') {
-                a.style.setProperty('display', 'flex', 'important');
-                a.style.setProperty('visibility', 'visible', 'important');
-                if (!a.style.height || s.height === '0px') a.style.setProperty('height', '100%', 'important');
-            }
+            a.style.setProperty('display', 'flex', 'important');
+            a.style.setProperty('visibility', 'visible', 'important');
+            a.style.setProperty('opacity', '1', 'important');
+            a.style.setProperty('height', h + 'px', 'important');
+            a.style.setProperty('min-height', h + 'px', 'important');
+            a.style.setProperty('max-height', 'none', 'important');
+            a.style.setProperty('overflow', 'visible', 'important');
             if (a === ml) break;
             a = a.parentElement;
         }
