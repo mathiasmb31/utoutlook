@@ -1872,6 +1872,8 @@ test('v4.0.95: bouton « Recharger les messages » injecté, câblé IPC et i18n
         'reload-button.js must expose a Quitter button calling quitApp (v4.0.95)');
     assert.ok(button.includes("fire('quit')") && button.includes('window.close()'),
         'reload-button.js must quit via IPC with a window.close fallback (v4.0.95)');
+    assert.ok(button.includes('unhideList') && button.includes("s.visibility === 'hidden'"),
+        'action bar must keep list unhidden after SPA re-renders (v4.0.98)');
 
     // Le preload expose l'API et envoie le bon canal IPC.
     assert.ok(preload.includes('reloadMessages'),

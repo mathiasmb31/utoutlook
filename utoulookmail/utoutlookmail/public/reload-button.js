@@ -68,6 +68,26 @@
         if (btn.getAttribute('aria-label') !== text) btn.setAttribute('aria-label', text);
     };
 
+    // v4.0.98: Outlook ré-applique display:none / visibility:hidden sur les
+    // conteneurs INTERNES de la liste après ses re-render (typique en paysage).
+    // On force chaque ancêtre concerné jusqu'à MessageList, avec !important.
+    const unhideList = () => {
+        const ml = document.querySelector('[data-app-section="MessageList"]');
+        const lb = ml && ml.querySelector('[role="listbox"]');
+        if (!lb) return;
+        let a = lb;
+        while (a && a !== document.body) {
+            const s = getComputedStyle(a);
+            if (s.display === 'none' || s.visibility === 'hidden') {
+                a.style.setProperty('display', 'flex', 'important');
+                a.style.setProperty('visibility', 'visible', 'important');
+                if (!a.style.height || s.height === '0px') a.style.setProperty('height', '100%', 'important');
+            }
+            if (a === ml) break;
+            a = a.parentElement;
+        }
+    };
+
     const ensure = () => {
         if (!document.body) return;
         let bar = document.getElementById(BAR_ID);
@@ -115,6 +135,7 @@
         // Recharger utile seulement sur la page mail ; Quitter toujours disponible.
         reload.style.display = onMailPage() ? '' : 'none';
         quit.style.display = '';
+        unhideList(); // v4.0.98: garder la liste visible après les re-render SPA
     };
 
     // Filet de sécurité : attraper les clics en capture, avant le SPA Outlook.
