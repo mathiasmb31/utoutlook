@@ -2366,10 +2366,25 @@ class MailWindowController {
                 // orientations (pivot aller ET retour) — sinon au retour en portrait
                 // le menu de gauche reste ouvert et la liste reste cachée.
                 const navCoversList = navPane && navPane.offsetParent && (!msgList || !msgList.offsetParent);
-                if (navCoversList || (navPane && navPane.offsetParent && window.innerWidth > window.innerHeight)) {
-                    const hideBtn = Array.from(document.querySelectorAll('button[aria-label], [role="button"][aria-label]'))
-                        .find(b => /masquer le volet de navigation|^hide the navigation pane$/i.test((b.getAttribute('aria-label') || '').trim()));
-                    if (hideBtn) hideBtn.click();
+                const isLandscape = window.innerWidth > window.innerHeight;
+                if (navCoversList || (navPane && navPane.offsetParent && isLandscape)) {
+                    // v4.0.94: en paysage, le volet de nav recouvre la liste et le
+                    // bouton "Masquer" a parfois un autre libellé — on essaie
+                    // plusieurs patterns, puis on masque le volet en CSS en
+                    // dernier recours, et on force les dimensions de la liste.
+                    const hideBtn = Array.from(document.querySelectorAll('button[aria-label], [role="button"][aria-label], button[title]'))
+                        .find(b => /masquer le volet de navigation|hide the navigation pane|hide navigation|masquer le menu|collapse|réduire|menu/i.test((b.getAttribute('aria-label') || b.getAttribute('title') || '').trim()));
+                    if (hideBtn) { hideBtn.click(); setTimeout(() => { try { hideBtn.click(); } catch (e) {} }, 300); }
+                    if (isLandscape && navPane && navPane.offsetParent) {
+                        navPane.style.display = 'none';
+                    }
+                    if (msgList) {
+                        msgList.style.display = 'flex';
+                        msgList.style.visibility = 'visible';
+                        msgList.style.height = '100%';
+                        if (isLandscape && !msgList.style.width) msgList.style.width = '40%';
+                        msgList.style.minWidth = '280px';
+                    }
                 }
                 const back = document.querySelector('[aria-label*="back" i], [aria-label*="retour" i], [aria-label*="précédent" i], [data-automation-id*="back" i], [class*="backArrow"], [class*="closeNav"]');
                 if (back && back.offsetParent) { back.click(); }
