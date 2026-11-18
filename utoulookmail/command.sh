@@ -66,6 +66,22 @@ function launch_prospect() {
 		exit 0
 	fi
 	export APPDIR=${WD}/bin/App/
+
+	# v4.0.106: afficher la barre de progression MAINTENANT — juste après le
+	# cleanup ci-dessus (qui tue les vieux qmlscene) et AVANT l'attente du
+	# service de notifications (jusqu'à 15 s) et le démarrage d'Electron.
+	# L'ancien emplacement (après launch_prospect) était trop tard : la splash
+	# Lomiri était déjà passée. On ferme d'abord une barre précédente éventuelle
+	# (relaunch) pour ne pas en empiler plusieurs.
+	if [ -n "${STARTUP_QML_PID}" ]; then
+		kill "${STARTUP_QML_PID}" 2>/dev/null || true
+		wait "${STARTUP_QML_PID}" 2>/dev/null || true
+		STARTUP_QML_PID=""
+	fi
+	qmlscene "${WD}"/qml/startup.qml > "${UTOUTLOOK_CONFIG_DIR}/startup-qml.log" 2>&1 &
+	STARTUP_QML_PID=$!
+	echo "startup progress screen shown (qml pid ${STARTUP_QML_PID})"
+
 	# Wait for notification service to be ready before sending welcome
 	# (D-Bus Postal may not be up yet on first launch / boot)
 	utoutlook_wait_notifications 15
@@ -578,13 +594,8 @@ echo "----------------------------------------------------------------------"
 
 echo "----------------------------------------------------------------------"
 launch_prospect
-
-# v4.0.105: barre de progression plein écran superposée à la splash Lomiri.
-# Lancée APRÈS launch_prospect (son cleanup interne tue tout qmlscene résiduel)
-# et fermée dès que l'app répond au socket (voir verify_prospect_life).
-qmlscene "${WD}"/qml/startup.qml > "${UTOUTLOOK_CONFIG_DIR}/startup-qml.log" 2>&1 &
-STARTUP_QML_PID=$!
-echo "startup progress screen shown (qml pid ${STARTUP_QML_PID})"
+# v4.0.106: la barre est maintenant lancée DANS launch_prospect, avant
+# l'attente notifications — ici on ne fait rien de plus.
 
 sleep_int 15
 while true; do
