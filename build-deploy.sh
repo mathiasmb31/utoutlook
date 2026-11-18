@@ -14,6 +14,13 @@ VERSION="${1:-$(grep '"version"' utoulookmail/utoutlookmail/package.json | head 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
+# v4.0.110: supprimer les anciens .click du dossier de build AVANT de
+# reconstruire. clickable garde toutes les versions (103 fichiers, ~10 Go ici)
+# et ne prends que le plus récent — nettoyer évite l'encombrement. Les .click
+# de livraison/ ne sont PAS touchés (ils sont committés localement).
+echo "=== Nettoyage des anciens .click de build ==="
+find "$ROOT/utoulookmail/build" -type f -name '*.click' -delete 2>/dev/null || true
+
 echo "=== Build utoutlook $VERSION ==="
 cd utoulookmail/utoutlookmail
 rm -rf dist/linux-arm64-unpacked

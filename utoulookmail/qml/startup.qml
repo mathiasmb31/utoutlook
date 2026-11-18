@@ -17,7 +17,10 @@ Window {
     Rectangle {
         id: track
         anchors.centerIn: parent
-        width: Math.min(parent.width * 0.7, 600)
+        // v4.0.110: largeur CONSTANTE — `Math.min(parent.width*0.7, 600)`
+        // vaut 0 au démarrage (fenêtre pas encore dimensionnée), ce qui
+        // donnait `to: -8` et une barre invisible.
+        width: 600
         height: 8
         radius: 4
         color: "#2a2a3a"
@@ -27,15 +30,20 @@ Window {
             height: parent.height
             radius: parent.radius
             color: "#E95420"
-            width: 0
+            width: 1
+        }
 
-            NumberAnimation on width {
-                from: 0
-                to: track.width
-                duration: 1200
-                loops: Animation.Infinite
-                running: true
-            }
+        // v4.0.110: une animation CIBLÉE explicite (target/property) — le
+        // value source « NumberAnimation on width » + le width:0 explicite
+        // se battent sous Qt 5.15/qmlscene : la barre restait invisible.
+        NumberAnimation {
+            target: bar
+            property: "width"
+            from: 1
+            to: 592
+            duration: 1100
+            loops: Animation.Infinite
+            running: true
         }
     }
 }
