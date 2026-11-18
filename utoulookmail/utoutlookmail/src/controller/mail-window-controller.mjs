@@ -2377,15 +2377,21 @@ class MailWindowController {
                 // v4.0.81: débloquer la listbox rendue 0x0 après un resize — remonter
                 // depuis la listbox et forcer display:flex sur tout ancêtre masqué
                 // (méthode prouvée sur le device : options 0 px -> 112 px).
-                const lb = document.querySelector('[data-app-section="MessageList"] [role="listbox"]');
+                const ml = document.querySelector('[data-app-section="MessageList"]');
+                const lb = ml && ml.querySelector('[role="listbox"]');
                 if (lb) {
                     let a = lb;
                     while (a && a !== document.body) {
-                        if (getComputedStyle(a).display === 'none') {
-                            a.style.display = 'flex';
-                            a.style.visibility = 'visible';
-                            if (!a.style.height) a.style.height = '100%';
+                        const s = getComputedStyle(a);
+                        // v4.0.98: Outlook masque la liste avec display:none ET/OU
+                        // visibility:hidden sur ses conteneurs internes (paysage).
+                        // Ancien test display seul + sans !important → options 0 px.
+                        if (s.display === 'none' || s.visibility === 'hidden') {
+                            a.style.setProperty('display', 'flex', 'important');
+                            a.style.setProperty('visibility', 'visible', 'important');
+                            if (!a.style.height || s.height === '0px') a.style.setProperty('height', '100%', 'important');
                         }
+                        if (a === ml) break; // ne pas toucher à l'UI extérieure
                         a = a.parentElement;
                     }
                 }
@@ -2510,15 +2516,21 @@ class MailWindowController {
         this.win.webContents.executeJavaScript(`
             (() => {
                 // (a) débloquer la listbox 0x0
-                const lb = document.querySelector('[data-app-section="MessageList"] [role="listbox"]');
+                const ml = document.querySelector('[data-app-section="MessageList"]');
+                const lb = ml && ml.querySelector('[role="listbox"]');
                 if (lb) {
                     let a = lb;
                     while (a && a !== document.body) {
-                        if (getComputedStyle(a).display === 'none') {
-                            a.style.display = 'flex';
-                            a.style.visibility = 'visible';
-                            if (!a.style.height) a.style.height = '100%';
+                        const s = getComputedStyle(a);
+                        // v4.0.98: Outlook masque la liste avec display:none ET/OU
+                        // visibility:hidden sur ses conteneurs internes (paysage).
+                        // Ancien test display seul + sans !important → options 0 px.
+                        if (s.display === 'none' || s.visibility === 'hidden') {
+                            a.style.setProperty('display', 'flex', 'important');
+                            a.style.setProperty('visibility', 'visible', 'important');
+                            if (!a.style.height || s.height === '0px') a.style.setProperty('height', '100%', 'important');
                         }
+                        if (a === ml) break; // ne pas toucher à l'UI extérieure
                         a = a.parentElement;
                     }
                 }
