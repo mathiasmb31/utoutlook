@@ -2414,8 +2414,10 @@ class MailWindowController {
                         msgList.style.display = 'flex';
                         msgList.style.visibility = 'visible';
                         msgList.style.height = '100%';
-                        if (isLandscape && !msgList.style.width) msgList.style.width = '40%';
-                        msgList.style.minWidth = '280px';
+                        // v4.0.102: ne plus imposer 40 % de largeur — c'était
+                        // une contrainte d'un ancien layout qui réduisait la
+                        // liste à une colonne étroite en paysage. Outlook gère
+                        // lui-même ses colonnes ; on ne touche qu'à la visibilité.
                     }
                 } else if (msgList && !isLandscape) {
                     msgList.style.removeProperty('width');

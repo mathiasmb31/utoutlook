@@ -1877,6 +1877,8 @@ test('v4.0.95: bouton « Recharger les messages » injecté, câblé IPC et i18n
     assert.ok(button.includes('a !== ml && a !== document.body') &&
               controller.includes('a !== ml && a !== document.body'),
         'MessageList itself must never get a frozen px height (v4.0.101)');
+    assert.ok(!controller.includes("msgList.style.width = '40%'"),
+        'landscape must not shrink the message list to 40% width (v4.0.102)');
 
     // Le preload expose l'API et envoie le bon canal IPC.
     assert.ok(preload.includes('reloadMessages'),
