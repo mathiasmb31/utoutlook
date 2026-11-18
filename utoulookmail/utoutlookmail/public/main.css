@@ -484,6 +484,16 @@ input[type="text"],
 
 /* Paneaux latéraux arrondis */
 [data-app-section="FolderPane"],
+/* v4.0.120: le volet de navigation est MASQUÉ PAR DÉFAUT par le CSS injecté
+   (donc dès la création du document — plus de flash visuel au chargement).
+   Seul un vrai tap utilisateur ajoute la classe html.utoutlook-show-nav. */
+[data-app-section="NavigationPane"] {
+  display: none !important;
+}
+html.utoutlook-show-nav [data-app-section="NavigationPane"] {
+  display: flex !important;
+}
+
 [data-app-section="NavigationPane"],
 [class*="folderPane" i],
 [class*="navigationPane" i] {
@@ -718,6 +728,18 @@ body [class*="fui-"]:not([class*="icon" i]):not([class*="FontIcon" i]) {
   padding: 10px 8px !important;
   margin: 2px 4px !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.10) !important;
+}
+
+/* v4.0.109: le nouveau DOM Outlook met 4 BLOCS STRUCTURELS (barre
+   Prioritaire/Autres, barre du dossier, en-têtes De/Objet/Reçu, liste) comme
+   enfants DIRECTS de [aria-label="Liste des messages"]. La règle ci-dessus
+   leur donnait à chacun 72px + padding → ~93px chacun, ne laissant que
+   113px à la vraie liste (messages invisibles en paysage). On neutralise
+   UNIQUEMENT les blocs qui ne contiennent pas de lignes de message. */
+[role="complementary"][aria-label="Liste des messages"] > div:not(:has([role="option"])):not(:has([role="listitem"])) {
+  min-height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
 }
 [aria-label="Liste des messages"] > div:hover {
   background-color: rgba(233, 84, 32, 0.08) !important;

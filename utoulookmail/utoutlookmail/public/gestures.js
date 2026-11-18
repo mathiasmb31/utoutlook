@@ -122,7 +122,13 @@
     const positionBsButton = (b) => {
         const vv = window.visualViewport;
         const kb = vv ? Math.max(0, window.innerHeight - vv.height - (vv.offsetTop || 0)) : 0;
-        b.style.bottom = (kb + 14) + 'px';
+        // v4.0.121: sous Lomiri/Wayland le clavier Maliit est un overlay et
+        // visualViewport NE RÉTRÉCIT PAS toujours → kb=0 → le bouton restait
+        // à 14 px du bas, caché par le clavier pendant la saisie du login.
+        // Si le clavier n'est pas mesurable, on le place à 38 % de la hauteur
+        // (au-dessus de l'overlay), sinon juste au-dessus du clavier mesuré.
+        const bottom = kb > 0 ? (kb + 20) : Math.round(window.innerHeight * 0.38);
+        b.style.bottom = bottom + 'px';
     };
     const ensureBsButton = () => {
         if (!LOGIN_HOSTS_RE.test(location.hostname)) return;
@@ -442,6 +448,11 @@
             for (const c of pane.children) {
                 if (c.getAttribute('role') === 'alert') continue;
                 if (c.hasAttribute('data-utoutlook-hidden')) continue;
+                // v4.0.109: en paysage la VRAIE liste est le dernier enfant,
+                // collé au bas de l'écran — l'ancien test le masquait, puis
+                // notre barre d'actions le ré-affichait en boucle. Ne jamais
+                // masquer un bloc qui contient les messages.
+                if (c.querySelector('[role="listbox"], [role="option"], [role="listitem"]')) continue;
                 const r = c.getBoundingClientRect();
                 // enfant direct du volet, collé au bas de la fenêtre (marge indicateur ~14 px), moitié basse
                 if (r.height > 30 && r.bottom >= window.innerHeight - 30 && r.top > window.innerHeight / 2) {
@@ -578,8 +589,13 @@
             if (currentScale > 0.7) {
                 // NE PAS faire window.location.reload() — cela déclenche
                 // le splash screen d'Outlook web (enveloppe bleue plein
-                // écran qui tourne). La barre bleue est purement visuelle.
-                console.log('[gestures] Pull-to-refresh detected (visual only, no reload)');
+                // écran qui tourne). À la place on clique sur le VRAI bouton
+                // refresh d'Outlook (sync de la boîte) s'il est présent.
+                console.log('[gestures] Pull-to-refresh → clic bouton refresh Outlook');
+                // v4.0.74: ne PAS tester offsetParent — le bouton sync est dans le
+                // ruban replié (offsetParent null / vis=false) mais .click() fonctionne.
+                const btn = document.querySelector('[aria-label*="synchroniser" i], [aria-label*="refresh" i], [aria-label*="actualiser" i], [data-automation-id*="refresh" i], [data-automation-id*="sync" i], [class*="refreshButton"]');
+                if (btn) btn.click();
                 pullIndicator.style.transform = 'scaleX(1)';
                 setTimeout(() => {
                     if (pullIndicator) pullIndicator.style.transform = 'scaleX(0)';

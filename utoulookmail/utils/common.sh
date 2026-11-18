@@ -6,8 +6,8 @@
 # ============================================================
 
 # --- Path constants ---
-export UTOUTLOOK_CONFIG_DIR="/home/phablet/.config/utoutlook.mathias"
-export UTOUTLOOK_CACHE_DIR="/home/phablet/.cache/utoutlook.mathias"
+export UTOUTLOOK_CONFIG_DIR="${HOME}/.config/utoutlook.mathias"
+export UTOUTLOOK_CACHE_DIR="${HOME}/.cache/utoutlook.mathias"
 export UTOUTLOOK_DATA_DIR="${UTOUTLOOK_CONFIG_DIR}/data"
 export UTOUTLOOK_PID_FILE="${UTOUTLOOK_DATA_DIR}/__prospect.pid"
 export UTOUTLOOK_LANG_FILE="${UTOUTLOOK_CONFIG_DIR}/lang"
@@ -19,6 +19,8 @@ export UTOUTLOOK_LOCKSOCK="${UTOUTLOOK_CONFIG_DIR}/prospect-mail/SingletonSocket
 
 # IPC flag files
 export UTOUTLOOK_EXITCLIENT="${UTOUTLOOK_CONFIG_DIR}/exitclient"
+# v4.0.91: flag écrit par l'app juste avant de quitter pour une rotation
+export UTOUTLOOK_ROTATIONFLAG="${UTOUTLOOK_CONFIG_DIR}/rotation-relaunch"
 export UTOUTLOOK_KILLEDCLIENT="${UTOUTLOOK_CONFIG_DIR}/killedmail"
 export UTOUTLOOK_FILELIFE="${UTOUTLOOK_CONFIG_DIR}/follow"
 export UTOUTLOOK_EXITCOMMAND="${UTOUTLOOK_CONFIG_DIR}/close"
@@ -166,6 +168,17 @@ utoutlook_t() {
 				ar) echo "لا توجد شبكة !!" ;;
 				*)  echo "PAS DE RÉSEAU !!" ;;
 			esac ;;
+		"qml.relaunch")
+			case "${lang}" in
+				en) echo "Relaunching (orientation change)…" ;;
+				es) echo "Reiniciando (cambio de orientación)…" ;;
+				de) echo "Neu starten (Orientierungswechsel)…" ;;
+				it) echo "Riavvio (cambio di orientazione)…" ;;
+				pt) echo "A reiniciar (mudança de orientação)…" ;;
+				zh) echo "正在重启（方向改变）…" ;;
+				ar) echo "جارٍ إعادة التشغيل (تغيير الاتجاه)…" ;;
+				*)  echo "Relance en cours (changement d'orientation)…" ;;
+			esac ;;
 		"qml.exitTimeout")
 			case "${lang}" in
 				en) echo "Timeout speaking with outlook server. This is not really a problem — you can launch the client once more ;)" ;;
@@ -189,6 +202,7 @@ utoutlook_write_qml_i18n() {
 	{
 		echo "var NO_NETWORK = \"$(utoutlook_t 'qml.noNetwork' | sed 's/\\/\\\\/g; s/"/\\"/g')\";"
 		echo "var EXIT_TIMEOUT = \"$(utoutlook_t 'qml.exitTimeout' | sed 's/\\/\\\\/g; s/"/\\"/g')\";"
+		echo "var RELAUNCH = \"$(utoutlook_t 'qml.relaunch' | sed 's/\\/\\\\/g; s/"/\\"/g')\";"
 	} > "${f}" 2>/dev/null || true
 }
 
@@ -307,22 +321,36 @@ utoutlook_kill_stale_wrappers() {
 	# so the pidfile branch below no longer fires for the previous wrapper —
 	# the previous wrapper self-exits via the pidfile check in
 	# verify_prospect_life, and the pgrep fallback SIGKILLs it here.
+	# v4.0.94: no noisy logging when there is nothing to kill — the old
+	# "killing stale wrapper"/"pgrep fallback found" lines printed at EVERY
+	# launch (stale pidfile from a dead previous run) made it look like
+	# zombies were being killed on a fresh start. Also: verify via /proc cmdline
+	# that the pid really is a command.sh wrapper before SIGKILL — a recycled
+	# pid (pid reuse) could otherwise kill an innocent process.
+	utoutlook_pid_is_wrapper() {
+		local pid="$1"
+		[ -n "$pid" ] || return 1
+		kill -0 "$pid" 2>/dev/null || return 1
+		"${UTOUTLOOK_BIN}/grep" -q 'command\.sh' "/proc/${pid}/cmdline" 2>/dev/null
+	}
 	if [ -f "$pidfile" ]; then
 		p=$("${UTOUTLOOK_BIN}/cat" "$pidfile" 2>/dev/null | "${UTOUTLOOK_BIN}/tr" -d '[:space:]')
-		if [ -n "$p" ] && [ "$p" != "$self" ] && [ "$p" != "$parent" ] && kill -0 "$p" 2>/dev/null; then
+		if [ -n "$p" ] && [ "$p" != "$self" ] && [ "$p" != "$parent" ] && utoutlook_pid_is_wrapper "$p"; then
 			echo "killing stale wrapper pid=$p (from pidfile)"
 			kill -9 "$p" 2>/dev/null || true
 		fi
 	fi
-	# Fallback: pgrep scan (may be restricted by AppArmor — logged for diagnosis).
-	# Match both absolute and relative ("./bin/command.sh") cmdlines of orphans.
+	# Fallback: pgrep scan (may be restricted by AppArmor — silent unless it
+	# actually kills something).
 	local found
 	found=$("${UTOUTLOOK_BIN}/pgrep" -f '^/bin/bash .*bin/command\.sh' 2>/dev/null)
-	echo "pgrep fallback found: ${found:-none} (self=$self)"
 	for p in $found; do
 		[ "$p" = "$self" ] && continue
 		[ "$p" = "$parent" ] && continue
-		kill -9 "$p" 2>/dev/null || true
+		if utoutlook_pid_is_wrapper "$p"; then
+			echo "killing stale wrapper pid=$p (pgrep)"
+			kill -9 "$p" 2>/dev/null || true
+		fi
 	done
 }
 

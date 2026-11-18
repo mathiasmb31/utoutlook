@@ -54,6 +54,37 @@ const T = {
         fr: 'Chargement...', en: 'Loading...', es: 'Cargando...', de: 'Laden...',
         it: 'Caricamento...', pt: 'Carregando...', zh: '加载中...', ar: 'جارٍ التحميل...',
     },
+    // v4.0.40: voile blanc « veuillez patienter » pendant le resync d'une boucle 2FA
+    'resync.pleaseWait': {
+        fr: 'Veuillez patienter...', en: 'Please wait...', es: 'Espera...', de: 'Bitte warten...',
+        it: 'Attendi...', pt: 'Aguarde...', zh: '请稍候...', ar: 'الرجاء الانتظار...',
+    },
+    // v4.0.76: toast affiché quand un changement d'orientation est détecté
+    // v4.0.84: précise que l'application va être relancée après le pivot
+    'overlay.rotation': {
+        fr: 'Rotation détectée, relance de l\'application…', en: 'Rotation detected, relaunching app…', es: 'Rotación detectada, reiniciando la app…', de: 'Rotation erkannt, App wird neu gestartet…',
+        it: 'Rotazione rilevata, riavvio dell\'app…', pt: 'Rotação detetada, a reiniciar a app…', zh: '检测到旋转，正在重启应用…', ar: 'تم اكتشاف الدوران، جارٍ إعادة تشغيل التطبيق…',
+    },
+    // v4.0.87: titre de la notification système envoyée à la relance après rotation
+    'overlay.rotationNotifyTitle': {
+        fr: 'UtOutlook', en: 'UtOutlook', es: 'UtOutlook', de: 'UtOutlook',
+        it: 'UtOutlook', pt: 'UtOutlook', zh: 'UtOutlook', ar: 'UtOutlook',
+    },
+    // v4.0.78: avertissement avant le reload automatique d'une liste vide
+    'overlay.listEmptyReload': {
+        fr: 'Liste vide — rechargement de la page…', en: 'Empty list — reloading page…', es: 'Lista vacía — recargando…', de: 'Liste leer — Seite wird neu geladen…',
+        it: 'Elenco vuoto — ricaricamento…', pt: 'Lista vazia — recarregando…', zh: '列表为空 — 正在重新加载…', ar: 'القائمة فارغة — جارٍ إعادة التحميل…',
+    },
+    // v4.0.95: bouton « recharger les messages » en bas de la liste (rechargement manuel)
+    'overlay.reloadMessages': {
+        fr: 'Recharger les messages', en: 'Reload messages', es: 'Recargar mensajes', de: 'Nachrichten neu laden',
+        it: 'Ricarica messaggi', pt: 'Recarregar mensagens', zh: '重新加载邮件', ar: 'إعادة تحميل الرسائل',
+    },
+    // v4.0.95: toast affiché pendant le rechargement manuel déclenché par le bouton
+    'overlay.reloading': {
+        fr: 'Rechargement…', en: 'Reloading…', es: 'Recargando…', de: 'Wird neu geladen…',
+        it: 'Ricaricamento…', pt: 'A recarregar…', zh: '正在重新加载…', ar: 'جارٍ إعادة التحميل…',
+    },
     'common.cancel': {
         fr: 'Annuler', en: 'Cancel', es: 'Cancelar', de: 'Abbrechen',
         it: 'Annulla', pt: 'Cancelar', zh: '取消', ar: 'إلغاء',

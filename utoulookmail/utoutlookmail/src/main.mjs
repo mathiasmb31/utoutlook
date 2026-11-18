@@ -344,7 +344,8 @@ class ProspectMail {
         // async cookie flushes below — a SIGKILL during the flush must not
         // lose the flag (the wrapper would relaunch a deliberately quit app).
         // Skipped when the quit is a restart (settings import/reset).
-        if (!global.restartRequested) markCleanExit();
+        // v4.0.84: skipCleanExitFlag = relance volontaire après rotation (le wrapper doit relancer l'app)
+        if (!global.restartRequested && !global.skipCleanExitFlag) markCleanExit();
         heartbeatExiting = true;
         clearInterval(heartbeatInterval);
         stopSocketServer();
@@ -374,7 +375,19 @@ class ProspectMail {
         // v3.3.28: clean-quit flag already written synchronously at the top
         // of cleanupAndExit (before the awaits). keptmail kept for compat.
         try { fs.writeFileSync(KILLED_CLIENT_FILE, 'quitclient'); } catch (e) { /* ignore */ }
-        app.exit(0);
+
+        // v4.0.116: QUIT PROPRE au lieu de app.exit(0). L'arrêt brutal tuait
+        // Electron sans laisser les fenêtres se fermer ni les sous-process
+        // Chromium se récupérer (impression de "quit viol brutal"). app.quit()
+        // déclenche before-quit → notre handler voit isQuitting=true et ne
+        // réentre pas dans cleanupAndExit. Filet de sécurité : si Electron
+        // bloque sur un beforeunload, on force après 3 s.
+        const hardExitTimer = setTimeout(() => {
+            logger.warn('Graceful quit took too long — forcing exit');
+            app.exit(0);
+        }, 3000);
+        if (typeof hardExitTimer.unref === 'function') hardExitTimer.unref();
+        app.quit();
     }
 
     createControllers() {

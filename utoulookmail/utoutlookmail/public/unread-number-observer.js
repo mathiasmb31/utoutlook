@@ -273,8 +273,6 @@ const observeUnreadHandlers = {
           debug(`Unread read from document.title: ${docUnread} ("${docTitle.substring(0, 60)}")`);
           // Feed the same pipeline as a real inbox read: reuse by faking a
           // minimal path — simplest is to handle it inline below.
-          state.navToggleForRead = null;
-          state.navToggleCount = 0;
           // Inline handling equivalent to the found-inbox path for the count.
           const prev = state.lastUnreadCount;
           if (docUnread === 0 && prev > 0) {
@@ -308,42 +306,16 @@ const observeUnreadHandlers = {
           }
           return true;
         }
-        // v3.3.25: the inbox treeitem only exists when the navigation pane is
-        // open. Fallback: toggle it open for one check, read the count on the
-        // next tick, then toggle it back — invisible for the user.
-        // v4.0.4: capped (max 3 toggles per episode + 60s cooldown) — an
-        // uncapped toggle loop (click → mutation → observer → check → click)
-        // re-renders the Outlook DOM forever and freezes the renderer.
-        const nowMs = Date.now();
-        if (state.navToggleCooldownUntil && nowMs < state.navToggleCooldownUntil) {
-          debug('Nav pane toggle on cooldown — skipping check');
-          return false;
-        }
-        if (!state.navToggleForRead) {
-          state.navToggleCount = (state.navToggleCount || 0) + 1;
-          if (state.navToggleCount > 3) {
-            state.navToggleCooldownUntil = nowMs + 60000;
-            state.navToggleCount = 0;
-            debug('Nav pane toggle limit reached (3) — cooldown 60s');
-            return false;
-          }
-          const btn = [...document.querySelectorAll('button,[role="button"]')]
-            .find(b => /volet de navigation|navigation pane/i.test(b.getAttribute('aria-label') || ''));
-          if (btn) {
-            state.navToggleForRead = btn;
-            btn.click();
-            debug('Nav pane toggled open to read unread count');
-          }
-        } else {
-          const btn = state.navToggleForRead;
-          state.navToggleForRead = null;
-          if (btn && document.contains(btn)) btn.click(); // toggle back closed
-          debug('Nav pane toggled back closed');
-        }
+        // v4.0.123: SUPPRESSION du fallback qui cliquait sur le bouton du
+        // volet de navigation pour lire le compteur de non lus. Ce toggle
+        // (3 fois puis cooldown 60 s) rouvrait le menu « toutes les quelques
+        // secondes » — bien visible pour l'utilisateur, contrairement au
+        // commentaire d'origine qui le croyait invisible. Le compteur n'est
+        // simplement pas disponible quand le volet est fermé : c'est le prix
+        // à payer pour que le menu reste masqué comme demandé.
         debug('Inbox element not found or disconnected — skipping check');
         return false;
       }
-      state.navToggleForRead = null; // inbox found — make sure pane state is clean
       // Update reference for future checks
       inboxElement = currentInbox;
 

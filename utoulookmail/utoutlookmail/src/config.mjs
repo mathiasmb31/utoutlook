@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 import {fileURLToPath} from 'node:url';
 
 // ============================================================
@@ -7,7 +8,10 @@ import {fileURLToPath} from 'node:url';
 // All hardcoded paths in the app should reference these.
 // ============================================================
 
-const PHABLET_HOME = '/home/phablet';
+// v4.0.37: use the real home directory — /home/phablet on Ubuntu Touch,
+// $HOME/<user> on a desktop (clickable desktop / PC). Fallback keeps the
+// old behavior if HOME is unset.
+const PHABLET_HOME = process.env.HOME || os.homedir() || '/home/phablet';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // --- Ubuntu Touch click app directories ---
@@ -19,6 +23,9 @@ export const DATA_DIR = path.join(CONFIG_DIR, 'data');
 // --- Inter-process communication files (heartbeat, lifecycle) ---
 export const HEARTBEAT_FILE = path.join(CONFIG_DIR, 'follow');
 export const EXIT_CLIENT_FILE = path.join(CONFIG_DIR, 'exitclient');
+// v4.0.91: flag écrit juste avant le quit post-rotation — le wrapper l'utilise
+// pour afficher l'écran « relance en cours » au lieu de la notif générique.
+export const ROTATION_RELAUNCH_FILE = path.join(CONFIG_DIR, 'rotation-relaunch');
 export const KILLED_CLIENT_FILE = path.join(CONFIG_DIR, 'killedmail');
 export const CLOSE_FLAG_FILE = path.join(CONFIG_DIR, 'close');
 export const INIT_FLAG_FILE = path.join(CONFIG_DIR, 'init');
