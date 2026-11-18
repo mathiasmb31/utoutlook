@@ -2575,7 +2575,8 @@ class MailWindowController {
                     document.addEventListener('click', (ev) => {
                         const b = ev.target.closest && ev.target.closest('button[aria-label], [role="button"][aria-label]');
                         const lbl = (b && b.getAttribute('aria-label')) || '';
-                        if (/volet de navigation|navigation pane|menu/i.test(lbl)) {
+                        // v4.0.118: pas le simple mot « menu » (barre d'outils)
+                        if (/volet de navigation|navigation pane|masquer le volet|afficher le volet|hide navigation|show navigation/i.test(lbl)) {
                             document.documentElement.classList.remove('utoutlook-hide-nav');
                         }
                     }, true);
