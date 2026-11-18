@@ -2058,3 +2058,12 @@ test('v4.0.116: quit propre — app.quit() au lieu de app.exit(0) brutal', async
     assert.ok(body.includes('hardExitTimer') && body.includes('3000'),
         'a 3s safety timer must force exit if graceful quit hangs (v4.0.116)');
 });
+
+test('v4.0.117: get-scale.sh — ne pas planter si GRID_UNIT_PX est absent', async () => {
+    const fs = await import('node:fs');
+    const script = fs.readFileSync(path.resolve(__dirname, '../../utils/get-scale.sh'), 'utf-8');
+    assert.ok(script.includes('os.environ.get("GRID_UNIT_PX"'),
+        'get-scale.sh must use os.environ.get with a default (v4.0.117)');
+    assert.ok(!script.includes('os.environ["GRID_UNIT_PX"]'),
+        'get-scale.sh must not index GRID_UNIT_PX directly (v4.0.117)');
+});

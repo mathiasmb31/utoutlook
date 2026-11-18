@@ -50,7 +50,7 @@ def get_lcd_density() -> int:
   
   return lcd_density
 
-def scalingdevidor(GRID_PX : int = int(os.environ["GRID_UNIT_PX"])) -> int: 
+def scalingdevidor(GRID_PX : int = int(os.environ.get("GRID_UNIT_PX", "16"))) -> int: 
   if GRID_PX >= 21: # seems to be what most need if above or at 21 grid px
     return 8
   elif GRID_PX <= 16: # this one i know because my phone is 16 so if it seems weird don't worry it works.
@@ -62,7 +62,7 @@ def scalingdevidor(GRID_PX : int = int(os.environ["GRID_UNIT_PX"])) -> int:
 #### GLOBAL VARIABLES
 scaling = 2
 if get_lcd_density() == 0:
-  scaling = str(int(round(105*float(os.environ["GRID_UNIT_PX"])/scalingdevidor()))) 
+  scaling = str(int(round(105*float(os.environ.get("GRID_UNIT_PX", "16"))/scalingdevidor())))
 else:
   scaling = str(int(round(float(get_lcd_density()/173)*100,0)))
 
