@@ -2580,20 +2580,25 @@ class MailWindowController {
                         this.sendUbportsNotification(t('overlay.rotationNotifyTitle'), t('overlay.rotation'));
                         this.lastRotationReload = now;
                         setTimeout(() => {
-                            if (this.win && !this.win.isDestroyed()) {
-                                logger.info('v4.0.84: relance complète de l\'app après rotation');
-                                // v4.0.89: fermer le clavier virtuel AVANT de quitter —
-                                // sinon Maliit reste ouvert sur une fenêtre morte et
-                                // ne se réveille plus après la relance.
-                                this.win.webContents.executeJavaScript(
-                                    'if (document.activeElement && document.activeElement.blur) document.activeElement.blur()'
-                                ).catch(() => {});
-                                global.skipCleanExitFlag = true; // pas de exitclient -> le wrapper relance
-                                // v4.0.91: flag pour que le wrapper affiche l'écran « relance en cours »
-                                try { fs.writeFileSync(ROTATION_RELAUNCH_FILE, String(Date.now())); } catch (e) {}
-                                app.exit(0);
-                            }
-                        }, 2000); // v4.0.90: 2 s (au lieu de 800 ms) pour laisser le wrapper nettoyer avant la relance
+                            // v4.0.94: plus de app.exit(0) après rotation — le quit
+                            // complet + relance par le wrapper provoquait des crashs
+                            // (uncaughtException setProgressBar/webContents of null,
+                            // 5 erreurs/60s -> exit(1)) et des SingletonLock laissés
+                            // par l'ancienne instance qui empêchaient la nouvelle de
+                            // démarrer. forceListRepaint (v4.0.66/4.0.81) résout déjà
+                            // la liste vide 0x0 : un simple reload + repaint suffit.
+                            if (!this.win || this.win.isDestroyed()) return;
+                            logger.info('v4.0.94: rotation — reload page + repaint liste (quit complet supprimé)');
+                            // v4.0.89: fermer le clavier virtuel avant le reload —
+                            // sinon Maliit reste ouvert sur une page rechargée.
+                            this.win.webContents.executeJavaScript(
+                                'if (document.activeElement && document.activeElement.blur) document.activeElement.blur()'
+                            ).catch(() => {});
+                            this.win.reload();
+                            const repaintSoon = () => this.forceListRepaint('post-rotation');
+                            setTimeout(repaintSoon, 1000);
+                            setTimeout(repaintSoon, 3000);
+                        }, 1000);
                     }
                 }
             } catch (e) { /* ignore */ }
