@@ -2034,11 +2034,14 @@ test('v4.0.113: repaints — ne plus basculer le volet de navigation', async () 
         'layout fix must not auto-toggle the nav mask (v4.0.113)');
 });
 
-test('v4.0.114: état du volet de navigation préservé après reload', async () => {
+test('v4.0.114/115: volet masqué reste masqué, seul un clic peut le rouvrir', async () => {
     const fs = await import('node:fs');
     const button = fs.readFileSync(path.resolve(__dirname, '../public/reload-button.js'), 'utf-8');
     assert.ok(button.includes("localStorage.getItem(NAV_KEY)") && button.includes('utoutlook-hide-nav'),
         'nav visibility must be restored from localStorage after reload (v4.0.114)');
     assert.ok(button.includes('watchNavToggle') && button.includes('localStorage.setItem(NAV_KEY'),
         'nav toggle clicks must be remembered (v4.0.114)');
+    // v4.0.115: l'observation automatique ne mémorise QUE le masquage.
+    assert.ok(button.includes('if (hidden && navStableCount >= 2) storeNavState(true)'),
+        'automatic observation must only remember hidden state (v4.0.115)');
 });

@@ -188,6 +188,31 @@
         document.documentElement.classList.toggle('utoutlook-hide-nav', hidden);
     };
 
+    // v4.0.115: mémoriser l'état DU MOMENT OÙ IL EST MASQUÉ, quelle que soit
+    // l'origine du masquage (clic utilisateur OU layout responsive d'Outlook
+    // en paysage). Deux relevés consécutifs identiques évitent d'enregistrer
+    // un état transitoire pendant un re-render SPA.
+    let lastNavHidden = null;
+    let navStableCount = 0;
+    const storeNavState = (hidden) => {
+        try { localStorage.setItem(NAV_KEY, hidden ? '1' : '0'); } catch { /* ignore */ }
+    };
+    const syncNavState = () => {
+        const nav = document.querySelector('[data-app-section="NavigationPane"]');
+        const hidden = !nav || !nav.offsetParent;
+        if (hidden === lastNavHidden) {
+            navStableCount += 1;
+            // v4.0.115: ne mémoriser QUE le masquage. Un re-render SPA ou un
+            // reload peut ré-afficher le volet tout seul — on ne doit jamais
+            // enregistrer cet état « ouvert » automatiquement : seul un clic
+            // manuel (voir watchNavToggle) peut le réouvrir durablement.
+            if (hidden && navStableCount >= 2) storeNavState(true);
+        } else {
+            lastNavHidden = hidden;
+            navStableCount = 1;
+        }
+    };
+
     const watchNavToggle = () => {
         document.addEventListener('click', (e) => {
             const b = e.target && e.target.closest &&
@@ -198,7 +223,9 @@
             setTimeout(() => {
                 const nav = document.querySelector('[data-app-section="NavigationPane"]');
                 const hidden = !nav || !nav.offsetParent;
-                try { localStorage.setItem(NAV_KEY, hidden ? '1' : '0'); } catch { /* ignore */ }
+                lastNavHidden = hidden;
+                navStableCount = 2;
+                storeNavState(hidden);
             }, 300);
         }, true);
     };
