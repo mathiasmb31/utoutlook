@@ -86,6 +86,21 @@ function launch_prospect() {
 
 function verify_prospect_life() {
 
+	# v4.0.99: depuis v4.0.94 la rotation ne fait plus quitter l'app (reload
+	# simple) — le heartbeat ne meurt donc plus et l'ancien affichage de la roue
+	# (uniquement dans la branche « heartbeat dead ») ne se declenchait jamais.
+	# On detecte desormais le flag frais ecrit par Electron des la rotation,
+	# meme si l'app est toujours vivante. La roue est fermee en bas de boucle
+	# des que le socket repond (avec un minimum de 5 s d'affichage).
+	if [ -f "${rotationflag}" ] && utoutlook_flag_fresh "${rotationflag}" \
+	   && [ -z "${RELAUNCH_QML_PID}" ]; then
+		"${WD}"/bin/rm -f "${rotationflag}" 2>/dev/null || true
+		qmlscene "${WD}"/qml/relaunch.qml > "${UTOUTLOOK_CONFIG_DIR}/relaunch-qml.log" 2>&1 &
+		RELAUNCH_QML_PID=$!
+		RELAUNCH_QML_SHOWN_AT=$(date +%s)
+		echo "rotation relaunch screen shown (app still alive, qml pid ${RELAUNCH_QML_PID})"
+	fi
+
 	# v3.3.10: si un wrapper plus récent a pris la main (pidfile != $$), on sort
 	# proprement — sinon deux wrappers de versions différentes se relancent
 	# l'app l'un contre l'autre en boucle (vu à l'upgrade 3.3.9→3.3.10).
@@ -261,6 +276,7 @@ function close_command() {
 	# v4.0.91: tuer aussi l'écran de relance (roue) s'il est encore affiché
 	if [ -n "${RELAUNCH_QML_PID}" ]; then
 		kill "${RELAUNCH_QML_PID}" 2>/dev/null || true
+		wait "${RELAUNCH_QML_PID}" 2>/dev/null || true # v4.0.99: récupérer le zombie
 		RELAUNCH_QML_PID=""
 	fi
 	# v4.0.58: tuer ACTIVEMENT notre fils prospect-mail — ne pas compter sur le
@@ -275,10 +291,12 @@ function close_command() {
 			_w=$((_w + 1))
 		done
 		kill -9 "${CLIENT_PID}" 2>/dev/null || true
+		wait "${CLIENT_PID}" 2>/dev/null || true # v4.0.99: récupérer le zombie
 	fi
 	# v4.0.58: idem pour un éventuel qmlscene nonetwork.qml lancé par ce wrapper
 	if [ -n "${QML_PID}" ] && kill -0 "${QML_PID}" 2>/dev/null; then
 		kill -9 "${QML_PID}" 2>/dev/null || true
+		wait "${QML_PID}" 2>/dev/null || true # v4.0.99: récupérer le zombie
 	fi
 	"${UTOUTLOOK_BIN}/pkill" -9 qmlscene 2>/dev/null || true
 	# v4.0.37: closing is done — remove the flag so the next launch is accepted
@@ -556,6 +574,7 @@ while true; do
 	_now=$(date +%s)
 	if [ -n "${RELAUNCH_QML_PID}" ] && kill -0 "${RELAUNCH_QML_PID}" 2>/dev/null && utoutlook_socket_ping && [ $((_now - ${RELAUNCH_QML_SHOWN_AT:-0})) -ge 5 ]; then
 		kill "${RELAUNCH_QML_PID}" 2>/dev/null || true
+		wait "${RELAUNCH_QML_PID}" 2>/dev/null || true # v4.0.99: récupérer le zombie
 		RELAUNCH_QML_PID=""
 		echo "relaunch screen closed — client is back"
 	fi

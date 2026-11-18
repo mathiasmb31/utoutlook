@@ -2620,6 +2620,11 @@ class MailWindowController {
                 // (détecte A→B→A rapide) ; intervalle 500 ms pour la réactivité.
                 if (!this.recentDisplayKeys.includes(keyOriented)) {
                     this.lastRotationTime = Date.now(); // v4.0.78: pour le watchdog liste vide
+                    // v4.0.99: réécrire le flag de rotation pour le wrapper —
+                    // depuis v4.0.94 l'app ne quitte plus au pivot, donc le
+                    // wrapper ne voyait jamais de mort de heartbeat et la roue
+                    // (relaunch.qml) n'était plus affichée.
+                    try { fs.writeFileSync(ROTATION_RELAUNCH_FILE, String(Date.now())); } catch (e) { /* ignore */ }
                     this.recentDisplayKeys.push(keyOriented);
                     if (this.recentDisplayKeys.length > 4) this.recentDisplayKeys.shift();
                     logger.info(`v4.0.85: rotation détectée (${key}) — setBounds${this.mailListReady ? ' + toast + relance différée 800 ms' : ' (liste pas encore atteinte : PAS de quit)'}`);
