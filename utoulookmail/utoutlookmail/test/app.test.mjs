@@ -2021,3 +2021,15 @@ test('v4.0.112: roue de relance — dégradé vert vers orange', async () => {
     assert.ok(qml.includes('for (var i = 0; i < segments; i++)'),
         'relaunch wheel must draw a gradient arc in segments (v4.0.112)');
 });
+
+test('v4.0.113: repaints — ne plus basculer le volet de navigation', async () => {
+    const fs = await import('node:fs');
+    const ctrl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+
+    assert.ok(!ctrl.includes("navPane.style.display = 'none'"),
+        'repaints must not hide the navigation pane (v4.0.113)');
+    assert.ok(!ctrl.includes("navPane.style.removeProperty('display')"),
+        'repaints must not re-show the navigation pane (v4.0.113)');
+    assert.ok(!ctrl.includes("classList.toggle('utoutlook-hide-nav'"),
+        'layout fix must not auto-toggle the nav mask (v4.0.113)');
+});

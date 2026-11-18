@@ -2412,27 +2412,16 @@ class MailWindowController {
                 }
                 const list = document.querySelector('[class*="listView"], [class*="messageList"], [role="main"]');
                 if (list) { list.scrollTop = 0; list.scrollTop = 1; list.scrollTop = 0; forceReflow(); }
-                const navPane = document.querySelector('[data-app-section="NavigationPane"]');
+                // v4.0.113: ne PLUS toucher au volet de navigation ici. Les
+                // repaints post-rotation (+0/1,5/2/5/8 s) alternaient
+                // display:none (paysage) et removeProperty (portrait) :
+                // le menu réapparaissait par séquences. Outlook
+                // gère son volet lui-même ; on ne corrige que la liste.
                 const msgList = document.querySelector('[data-app-section="MessageList"]');
-                const navCoversList = navPane && navPane.offsetParent && (!msgList || !msgList.offsetParent);
-                const isLandscape = window.innerWidth > window.innerHeight;
-                if (navCoversList || (navPane && navPane.offsetParent && isLandscape)) {
-                    // v4.0.96: aucun clic sur les toggles volet/retour (-list
-                    // disparaissait 1-2 s après le pivot). Styles directs, idempotents.
-                    if (navPane && navPane.offsetParent) navPane.style.display = 'none';
-                    if (msgList) {
-                        msgList.style.display = 'flex';
-                        msgList.style.visibility = 'visible';
-                        msgList.style.height = '100%';
-                        // v4.0.102: ne plus imposer 40 % de largeur — c'était
-                        // une contrainte d'un ancien layout qui réduisait la
-                        // liste à une colonne étroite en paysage. Outlook gère
-                        // lui-même ses colonnes ; on ne touche qu'à la visibilité.
-                    }
-                } else if (msgList && !isLandscape) {
-                    msgList.style.removeProperty('width');
-                    msgList.style.removeProperty('min-width');
-                    if (navPane) navPane.style.removeProperty('display');
+                if (msgList) {
+                    msgList.style.display = 'flex';
+                    msgList.style.visibility = 'visible';
+                    msgList.style.height = '100%';
                 }
             })()
         `).catch(() => {});
@@ -2576,14 +2565,9 @@ class MailWindowController {
                     st.textContent = 'html.utoutlook-hide-nav [data-app-section="NavigationPane"]{display:none !important;}';
                     document.head.appendChild(st);
                 }
-                const navPane = document.querySelector('[data-app-section="NavigationPane"]');
-                const msgList = document.querySelector('[data-app-section="MessageList"]');
-                const navVisible = navPane && navPane.offsetParent;
-                // v4.0.97: ne masquer le volet QUE s'il recouvre réellement la
-                // liste. L'ancien test « || paysage » masquait le volet dès que
-                // la fenêtre était large, ce qui faisait disparaître la liste
-                // 1-2 s après le pivot (le masque CSS englobait son conteneur).
-                const covers = navVisible && (!msgList || !msgList.offsetParent);
+                // v4.0.113: le masque CSS n'est plus piloté automatiquement
+                // (clignotement du menu après rotation). On garde l'écouteur
+                // pour lever le masque si un ancien état l'avait posé.
                 // v4.0.82: le masque CSS ne doit pas bloquer l'utilisateur — s'il
                 // clique sur le bouton du volet de navigation, on lève le masque.
                 if (!window.__utoutlookNavYield) {
@@ -2596,7 +2580,6 @@ class MailWindowController {
                         }
                     }, true);
                 }
-                document.documentElement.classList.toggle('utoutlook-hide-nav', !!covers);
             })()
         `).catch(() => {});
     }
