@@ -1992,3 +1992,16 @@ test('v4.0.109: paysage — ne pas gonfler ni masquer les blocs de la liste', as
     assert.ok(gestures.includes("c.querySelector('[role=\"listbox\"]"),
         'hideMessageListBottomBar must not hide the block containing the messages (v4.0.109)');
 });
+
+test('v4.0.110: startup.qml — animation ciblée et largeur constante', async () => {
+    const fs = await import('node:fs');
+    const qml = fs.readFileSync(path.resolve(__dirname, '../../qml/startup.qml'), 'utf-8');
+    const deploy = fs.readFileSync(path.resolve(__dirname, '../../../build-deploy.sh'), 'utf-8');
+
+    assert.ok(qml.includes('target: bar') && qml.includes('property: "width"'),
+        'startup bar must use an explicit targeted animation (v4.0.110)');
+    assert.ok(qml.includes('to: 592') && qml.includes('width: 600'),
+        'startup bar must use constant sizes, not a window-relative binding (v4.0.110)');
+    assert.ok(deploy.includes("-name '*.click' -delete"),
+        'build-deploy must remove old click artifacts before building (v4.0.110)');
+});
