@@ -2562,7 +2562,9 @@ class MailWindowController {
                 if (!document.getElementById('utoutlook-nav-hide-css')) {
                     const st = document.createElement('style');
                     st.id = 'utoutlook-nav-hide-css';
-                    st.textContent = 'html.utoutlook-hide-nav [data-app-section="NavigationPane"]{display:none !important;}';
+                    // v4.0.120: le masque par défaut est dans main.css ; ici
+                    // on ajoute seulement la règle d'affichage sur vrai tap.
+                    st.textContent = 'html.utoutlook-show-nav [data-app-section="NavigationPane"]{display:flex !important;}';
                     document.head.appendChild(st);
                 }
                 // v4.0.113: le masque CSS n'est plus piloté automatiquement
@@ -2581,7 +2583,7 @@ class MailWindowController {
                         const lbl = (b && b.getAttribute('aria-label')) || '';
                         // v4.0.118: pas le simple mot « menu » (barre d'outils)
                         if (/volet de navigation|navigation pane|masquer le volet|afficher le volet|hide navigation|show navigation/i.test(lbl)) {
-                            document.documentElement.classList.remove('utoutlook-hide-nav');
+                            document.documentElement.classList.add('utoutlook-show-nav');
                         }
                     }, true);
                 }
