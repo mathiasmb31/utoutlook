@@ -648,6 +648,11 @@ class MailWindowController {
                 if (!/outlook\.(live|office|office365|cloud\.microsoft)\.com\/mail/.test(url)) { this.listEmptyCount = 0; return; }
                 const empty = await this.win.webContents.executeJavaScript(`
                     (() => {
+                        // v4.0.94: ne JAMAIS conclure "vide" pendant le chargement —
+                        // la liste est à 0 px tant que readyState != complete, ce
+                        // qui provoquait des reloads en boucle (liste jamais
+                        // réaffichée, même en portrait).
+                        if (document.readyState !== 'complete') return false;
                         const ml = document.querySelector('[data-app-section="MessageList"]');
                         if (!ml) return false; // pas de liste du tout = autre vue
                         // v4.0.94: une liste rendue 0x0 (offsetParent null après un
