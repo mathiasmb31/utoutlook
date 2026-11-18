@@ -1530,8 +1530,10 @@ test('v3.3.25: UX top3 — swipe actions, empty state i18n, compteur volet ferm�
         'empty state with i18n required (v3.3.25)');
 
     const obs = fs.readFileSync(path.resolve(__dirname, '../public/unread-number-observer.js'), 'utf-8');
-    assert.ok(obs.includes('navToggleForRead'),
-        'observer must toggle the nav pane briefly to read the count when closed (v3.3.25)');
+    // v4.0.123: I'ancien toggle v3.3.25 a été SUPPRIMÉ — il rouvrait le menu
+    // périodiquement. Le compteur n'est plus lu volet fermé.
+    assert.ok(!obs.includes('navToggleForRead'),
+        'observer must NOT toggle the nav pane to read the count (removed v4.0.123)');
 
     const i18n = fs.readFileSync(path.resolve(__dirname, '../src/i18n.mjs'), 'utf-8');
     assert.ok(i18n.includes("'empty.title'") && i18n.includes("'empty.body'"),
@@ -2107,4 +2109,15 @@ test('v4.0.121: notification clear throttlée + bouton ⌫ au-dessus du clavier'
         'old throttle flag must be gone (v4.0.122)');
     assert.ok(gestures.includes('Math.round(window.innerHeight * 0.38)'),
         'backspace button must be raised above the Maliit keyboard overlay (v4.0.121)');
+});
+
+test('v4.0.123: l observer ne clique plus sur le volet de navigation', async () => {
+    const fs = await import('node:fs');
+    const obs = fs.readFileSync(path.resolve(__dirname, '../public/unread-number-observer.js'), 'utf-8');
+    assert.ok(obs.includes('v4.0.123: SUPPRESSION du fallback'),
+        'nav toggle fallback must be documented as removed (v4.0.123)');
+    assert.ok(!obs.includes('btn.click(); // toggle back closed'),
+        'observer must not click the nav toggle back closed (v4.0.123)');
+    assert.ok(!obs.includes('Nav pane toggled open to read unread count'),
+        'observer must not click the nav toggle open (v4.0.123)');
 });
