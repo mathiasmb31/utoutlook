@@ -442,6 +442,11 @@
             for (const c of pane.children) {
                 if (c.getAttribute('role') === 'alert') continue;
                 if (c.hasAttribute('data-utoutlook-hidden')) continue;
+                // v4.0.109: en paysage la VRAIE liste est le dernier enfant,
+                // collé au bas de l'écran — l'ancien test le masquait, puis
+                // notre barre d'actions le ré-affichait en boucle. Ne jamais
+                // masquer un bloc qui contient les messages.
+                if (c.querySelector('[role="listbox"], [role="option"], [role="listitem"]')) continue;
                 const r = c.getBoundingClientRect();
                 // enfant direct du volet, collé au bas de la fenêtre (marge indicateur ~14 px), moitié basse
                 if (r.height > 30 && r.bottom >= window.innerHeight - 30 && r.top > window.innerHeight / 2) {
