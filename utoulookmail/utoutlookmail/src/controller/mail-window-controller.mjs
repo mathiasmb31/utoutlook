@@ -2386,7 +2386,10 @@ class MailWindowController {
                     // MessageList sur toute la chaîne jusqu'au listbox.
                     const h = Math.max(200, Math.round(ml.getBoundingClientRect().height) - 10);
                     let a = lb;
-                    while (a && a !== document.body) {
+                    // v4.0.101: ne JAMAIS figer MessageList lui-même en px —
+                    // sinon une valeur calculée pendant un état transitoire de
+                    // rotation (200 px) reste gravée et la liste ne grandit plus.
+                    while (a && a !== ml && a !== document.body) {
                         a.style.setProperty('display', 'flex', 'important');
                         a.style.setProperty('visibility', 'visible', 'important');
                         a.style.setProperty('opacity', '1', 'important');
@@ -2394,7 +2397,6 @@ class MailWindowController {
                         a.style.setProperty('min-height', h + 'px', 'important');
                         a.style.setProperty('max-height', 'none', 'important');
                         a.style.setProperty('overflow', 'visible', 'important');
-                        if (a === ml) break; // ne pas toucher à l'UI extérieure
                         a = a.parentElement;
                     }
                 }
@@ -2528,7 +2530,10 @@ class MailWindowController {
                     // MessageList sur toute la chaîne jusqu'au listbox.
                     const h = Math.max(200, Math.round(ml.getBoundingClientRect().height) - 10);
                     let a = lb;
-                    while (a && a !== document.body) {
+                    // v4.0.101: ne JAMAIS figer MessageList lui-même en px —
+                    // sinon une valeur calculée pendant un état transitoire de
+                    // rotation (200 px) reste gravée et la liste ne grandit plus.
+                    while (a && a !== ml && a !== document.body) {
                         a.style.setProperty('display', 'flex', 'important');
                         a.style.setProperty('visibility', 'visible', 'important');
                         a.style.setProperty('opacity', '1', 'important');
@@ -2536,7 +2541,6 @@ class MailWindowController {
                         a.style.setProperty('min-height', h + 'px', 'important');
                         a.style.setProperty('max-height', 'none', 'important');
                         a.style.setProperty('overflow', 'visible', 'important');
-                        if (a === ml) break; // ne pas toucher à l'UI extérieure
                         a = a.parentElement;
                     }
                 }

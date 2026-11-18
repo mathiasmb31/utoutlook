@@ -1874,6 +1874,9 @@ test('v4.0.95: bouton « Recharger les messages » injecté, câblé IPC et i18n
         'reload-button.js must quit via IPC with a window.close fallback (v4.0.95)');
     assert.ok(button.includes('unhideList') && button.includes("h + 'px'"),
         'action bar must keep list unhidden after SPA re-renders (v4.0.98)');
+    assert.ok(button.includes('a !== ml && a !== document.body') &&
+              controller.includes('a !== ml && a !== document.body'),
+        'MessageList itself must never get a frozen px height (v4.0.101)');
 
     // Le preload expose l'API et envoie le bon canal IPC.
     assert.ok(preload.includes('reloadMessages'),

@@ -79,7 +79,9 @@
         // est à 0) + opacity/overflow forcés sur toute la chaîne interne.
         const h = Math.max(200, Math.round(ml.getBoundingClientRect().height) - 10);
         let a = lb;
-        while (a && a !== document.body) {
+        // v4.0.101: exclure MessageList — figer son height en px pendant un
+        // état transitoire de rotation l'empêcherait de se redimensionner.
+        while (a && a !== ml && a !== document.body) {
             a.style.setProperty('display', 'flex', 'important');
             a.style.setProperty('visibility', 'visible', 'important');
             a.style.setProperty('opacity', '1', 'important');
@@ -87,7 +89,6 @@
             a.style.setProperty('min-height', h + 'px', 'important');
             a.style.setProperty('max-height', 'none', 'important');
             a.style.setProperty('overflow', 'visible', 'important');
-            if (a === ml) break;
             a = a.parentElement;
         }
     };
