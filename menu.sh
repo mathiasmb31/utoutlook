@@ -11,7 +11,7 @@ desc() {
     run.sh)                echo "Lance l'app buildée localement sans install click" ;;
     git-auto.sh)           echo "Workflow git : status / commit / push / pr / newfix / livraison <version> (voir --help)" ;;
     bump-version.sh)       echo "Sync la version dans manifest.json + package.json : ./bump-version.sh <X.Y.Z>" ;;
-    check.sh)              echo "Toutes les vérifications pre-commit : syntaxe scripts + src, tests, grep XXXX, grep i18n" ;;
+    check.sh)              echo "Toutes les vérifications pre-commit : syntaxe scripts/JS + versions + lint + tests + grep XXXX + i18n" ;;
     watch-log.sh)          echo "Tail live des logs de l'app sur le device (filtres: error|loop|page|cookie|2fa|wrapper)" ;;
     openstore-prepare.sh)  echo "Prépare le kit de publication OpenStore (whatsnew auto depuis git, metadata, screenshots) — AUCUN upload sans OK explicite" ;;
     install-python-deps.sh) echo "Installe les dépendances python du projet" ;;

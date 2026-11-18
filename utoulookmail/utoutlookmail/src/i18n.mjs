@@ -75,6 +75,16 @@ const T = {
         fr: 'Liste vide — rechargement de la page…', en: 'Empty list — reloading page…', es: 'Lista vacía — recargando…', de: 'Liste leer — Seite wird neu geladen…',
         it: 'Elenco vuoto — ricaricamento…', pt: 'Lista vazia — recarregando…', zh: '列表为空 — 正在重新加载…', ar: 'القائمة فارغة — جارٍ إعادة التحميل…',
     },
+    // v4.0.95: bouton « recharger les messages » en bas de la liste (rechargement manuel)
+    'overlay.reloadMessages': {
+        fr: 'Recharger les messages', en: 'Reload messages', es: 'Recargar mensajes', de: 'Nachrichten neu laden',
+        it: 'Ricarica messaggi', pt: 'Recarregar mensagens', zh: '重新加载邮件', ar: 'إعادة تحميل الرسائل',
+    },
+    // v4.0.95: toast affiché pendant le rechargement manuel déclenché par le bouton
+    'overlay.reloading': {
+        fr: 'Rechargement…', en: 'Reloading…', es: 'Recargando…', de: 'Wird neu geladen…',
+        it: 'Ricaricamento…', pt: 'A recarregar…', zh: '正在重新加载…', ar: 'جارٍ إعادة التحميل…',
+    },
     'common.cancel': {
         fr: 'Annuler', en: 'Cancel', es: 'Cancelar', de: 'Abbrechen',
         it: 'Annulla', pt: 'Cancelar', zh: '取消', ar: 'إلغاء',

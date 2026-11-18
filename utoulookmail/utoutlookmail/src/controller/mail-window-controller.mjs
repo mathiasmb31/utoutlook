@@ -74,6 +74,11 @@ class MailWindowController {
         this.serverFailCount = 0; // v4.0.3: consecutive failed server checks
         this.serverWasUnreachable = false; // v4.0.3: server overlay currently shown
         this.observerWasActive = false; // true once observer connected at least once
+        // v4.0.95: blocage CIBLÉ des reloads automatiques pendant l'action du
+        // bouton « Recharger les messages ». Ne PAS réutiliser lastRotationReload
+        // (servi par le détecteur de pivot) : un clic ne doit pas désactiver la
+        // gestion de rotation pendant 20 s.
+        this.autoReloadBlockedUntil = 0;
         // Multi-account: each account has its own config and session partition
         this.accountConfig = accountConfig;
         this.accountId = accountConfig?.id || 'default';
@@ -1551,7 +1556,10 @@ class MailWindowController {
             this.loginPage++;
             // v4.0.79: après un (re)chargement, fermer le volet de navigation s'il
             // recouvre la liste (arrive après le reload post-rotation)
-            setTimeout(() => this.fixMailLayout(), 2000); // v4.0.83: répare la listbox 0x0 aussi après reload
+            // v4.0.95: réinjecte aussi le bouton « Recharger les messages » après
+            // le chargement complet (dom-ready peut passer avant que le body SPA
+            // ne soit remplacé / que la page mail ne soit réellement affichée).
+            setTimeout(() => { this.fixMailLayout(); this.injectReloadButton(); }, 2000);
             const url = this.win.webContents.getURL();
             logger.info(`Page loaded #${this.loginPage}: ${url}`);
 
@@ -1907,6 +1915,12 @@ class MailWindowController {
                 this.reloadWindow();
             }
         });
+        // v4.0.95: bouton « Recharger les messages » en bas de la liste
+        ipcMain.on("reload-messages", (event) => {
+            if (this.win && event.sender === this.win.webContents) {
+                this.manualReloadMessages();
+            }
+        });
         // v3.3.66: first-install — wipe ALL session data from the main process.
         // The in-page clear (document.cookie/localStorage) only reaches the current
         // origin, and syncCookiesToLiveCom() would re-copy surviving cookies to the
@@ -2102,6 +2116,7 @@ class MailWindowController {
             this.injectStyles().catch(() => {});
             this.addUnreadNumberObserver().catch(() => {});
             this.injectGestures();
+            this.injectReloadButton(); // v4.0.95: bouton « Recharger les messages »
             // v3.3.21: no theme variants — make sure no stale dark-mode class remains
             this.win.webContents.executeJavaScript(
                 `document.documentElement.classList.remove('dark-mode');`
@@ -2116,6 +2131,7 @@ class MailWindowController {
             this.injectStyles().catch(() => {});
             this.addUnreadNumberObserver().catch(() => {});
             this.injectGestures();
+            this.injectReloadButton(); // v4.0.95: bouton « Recharger les messages »
         });
 
         // Intercept login_hint redirect and sync cookies (hotfix #7c):
@@ -2408,6 +2424,10 @@ class MailWindowController {
                     `).then((listHidden) => {
                         if (!listHidden) return;
                         const now = Date.now();
+                        // v4.0.95: un rechargement manuel en cours bloque ce
+                        // « dernier recours » auto (flag dédié, sans toucher à
+                        // lastRotationReload utilisé par le détecteur de pivot).
+                        if (this.autoReloadBlockedUntil && now < this.autoReloadBlockedUntil) return;
                         if (this.lastRotationReload && now - this.lastRotationReload < 30000) return;
                         this.lastRotationReload = now;
                         logger.warn('v4.0.75: liste toujours invisible après repaint — reload de la page');
@@ -2901,8 +2921,12 @@ class MailWindowController {
         // executeJavaScript returns a Promise — catch rejections to avoid
         // unhandled rejections when the page is navigating or not ready.
         try {
+            // v4.0.95: FUSIONNER (ne pas remplacer) — sinon une ré-injection
+            // de l'observer (did-stop-loading / health check) écrase les clés
+            // de gestures.js et du bouton « Recharger les messages » → libellé
+            // retombé en anglais hardcodé quelques secondes après le chargement.
             await this.win.webContents.executeJavaScript(
-                `window.__utoutlookI18n = ${i18nJson};\n` +
+                `window.__utoutlookI18n = Object.assign(window.__utoutlookI18n||{}, ${i18nJson});\n` +
                 getClientFile("unread-number-observer.js")
             );
         } catch (err) {
@@ -2929,6 +2953,67 @@ class MailWindowController {
         ).catch(() => {
             // gestures.js may not exist yet or page not ready, ignore
         });
+    }
+
+    /**
+     * v4.0.95: injecte le bouton « Recharger les messages » en bas de la liste
+     * (secours manuel quand la rotation casse l'affichage). Libellé passé via
+     * window.__utoutlookI18n, comme gestures.js.
+     */
+    injectReloadButton() {
+        if (!this.win || this.win.isDestroyed()) return;
+        let script;
+        try {
+            script = getClientFile("reload-button.js");
+        } catch (err) {
+            // Fichier absent d'un asar plus ancien : ne pas casser le dom-ready.
+            logger.warn('v4.0.95: reload-button.js introuvable — bouton non injecté', err.message);
+            return;
+        }
+        const tr = getAllTranslations();
+        const i18nJson = JSON.stringify({
+            reloadMessages: tr['overlay.reloadMessages'],
+        });
+        this.win.webContents.executeJavaScript(
+            `window.__utoutlookI18n = Object.assign(window.__utoutlookI18n||{}, ${i18nJson});\n` + script
+        ).catch(() => {
+            // page not ready — sera réinjecté au prochain dom-ready / navigation
+        });
+    }
+
+    /**
+     * v4.0.95: rechargement manuel demandé par le bouton en bas de la liste.
+     * Action utilisateur : on tente d'abord une réparation douce (fix layout +
+     * repaint), puis on RECHARGE TOUJOURS la page — le bouton doit rafraîchir
+     * les mails, pas seulement réparer une liste 0x0. Pas de garde-fou 30 s :
+     * un clic est toujours honoré. Les reloads auto sont bloqués via un flag
+     * DÉDIÉ (pas lastRotationReload, qui reste au détecteur de rotation).
+     */
+    async manualReloadMessages() {
+        if (!this.win || this.win.isDestroyed() || this.manualReloadInProgress) return;
+        this.manualReloadInProgress = true;
+        try {
+            logger.info('v4.0.95: rechargement manuel des messages (bouton en bas de liste)');
+            this.showToast(t('overlay.reloading'));
+            this.listEmptyCount = 0; // le watchdog ne doit pas conclure en parallèle
+            this.lastListReload = Date.now(); // watchdog: pas de reload auto avant 60 s
+            // Bloque le « dernier recours » auto de forceListRepaint (1,2 s)
+            // pendant 5 s : la décision appartient à cette action, mais le
+            // détecteur de rotation garde toute sa logique (20 s) intacte.
+            this.autoReloadBlockedUntil = Date.now() + 5000;
+            this.fixMailLayout();
+            this.forceListRepaint('manual');
+            // Laisse le repaint s'appliquer avant de recharger (feedback visuel).
+            await new Promise(r => setTimeout(r, 600));
+            if (!this.win || this.win.isDestroyed()) return;
+            const url = this.win.webContents.getURL();
+            // Ne jamais recharger une page non HTTP(S) (about:, file:).
+            if (!/^https?:/i.test(url)) return;
+            logger.info('v4.0.95: rechargement de la page demandé par le bouton');
+            this.win.webContents.reload();
+        } finally {
+            this.manualReloadInProgress = false;
+        }
     }
 
     /**
