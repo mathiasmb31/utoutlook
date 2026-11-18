@@ -2360,6 +2360,10 @@ class MailWindowController {
         if (!this.win || this.win.isDestroyed()) return;
         logger.info(`v4.0.66: repaint liste (${tag})`);
         this.injectStyles().catch(() => {});
+        // Script INJECTÉ : uniquement du code renderer (document / window).
+        // v4.0.97: le bloc « dernier recours » était à l'intérieur de ce template
+        // literal et référençait this.win / logger (process principal) → TypeError
+        // à chaque repaint, script tronqué, aucune réparation de layout appliquée.
         this.win.webContents.executeJavaScript(`
             (() => {
                 const forceReflow = () => {
@@ -2387,27 +2391,14 @@ class MailWindowController {
                 }
                 const list = document.querySelector('[class*="listView"], [class*="messageList"], [role="main"]');
                 if (list) { list.scrollTop = 0; list.scrollTop = 1; list.scrollTop = 0; forceReflow(); }
-                // v4.0.68/4.0.72: après un pivot, Outlook bascule en layout « étroit » et
-                // ouvre le volet de navigation à la place de la liste. En paysage
-                // (largeur > hauteur) on clique sur « Masquer le volet de navigation ».
                 const navPane = document.querySelector('[data-app-section="NavigationPane"]');
                 const msgList = document.querySelector('[data-app-section="MessageList"]');
-                // v4.0.73: fermer le volet dès qu'il recouvre la liste, dans LES DEUX
-                // orientations (pivot aller ET retour) — sinon au retour en portrait
-                // le menu de gauche reste ouvert et la liste reste cachée.
                 const navCoversList = navPane && navPane.offsetParent && (!msgList || !msgList.offsetParent);
                 const isLandscape = window.innerWidth > window.innerHeight;
                 if (navCoversList || (navPane && navPane.offsetParent && isLandscape)) {
-                    // v4.0.96: PLUS AUCUN CLIC SUR LES BOUTONS « MASQUER LE VOLET »
-                    // OU « RETOUR ». Ce sont des TOGGLES : en paysage, le clic
-                    // rouvrait le volet ou ramenait au dossier, et la liste
-                    // disparaissait 1 à 2 s après le pivot (repaints à 1,5 s / 2 s).
-                    // On impose directement les styles — idempotent, sans effet
-                    // de bord — ; fixMailLayout() gère déjà le masque CSS du
-                    // volet et le rend la main à l'utilisateur au clic.
-                    if (navPane && navPane.offsetParent) {
-                        navPane.style.display = 'none';
-                    }
+                    // v4.0.96: aucun clic sur les toggles volet/retour (-list
+                    // disparaissait 1-2 s après le pivot). Styles directs, idempotents.
+                    if (navPane && navPane.offsetParent) navPane.style.display = 'none';
                     if (msgList) {
                         msgList.style.display = 'flex';
                         msgList.style.visibility = 'visible';
@@ -2416,39 +2407,34 @@ class MailWindowController {
                         msgList.style.minWidth = '280px';
                     }
                 } else if (msgList && !isLandscape) {
-                    // Retour en portrait : on retire les contraintes posées en
-                    // paysage pour ne pas figer la liste à 40 % de largeur.
                     msgList.style.removeProperty('width');
                     msgList.style.removeProperty('min-width');
                     if (navPane) navPane.style.removeProperty('display');
                 }
-                // v4.0.75: dernier recours — si la liste n'est TOUJOURS pas visible
-                // après le repaint, recharger la page entière (le splash enveloppe
-                // d'Outlook est bref). Garde-fou: max 1 reload / 30 s.
-                setTimeout(() => {
-                    if (!this.win || this.win.isDestroyed()) return;
-                    this.win.webContents.executeJavaScript(`
-                        (() => {
-                            const ml = document.querySelector('[data-app-section="MessageList"]');
-                            // v4.0.81: une option peut exister mais faire 0 px de haut
-                            const o = ml && ml.querySelector('[role="option"], [role="listitem"], [class*="listItem"]');
-                            return !(o && o.getBoundingClientRect().height > 0);
-                        })()
-                    `).then((listHidden) => {
-                        if (!listHidden) return;
-                        const now = Date.now();
-                        // v4.0.95: un rechargement manuel en cours bloque ce
-                        // « dernier recours » auto (flag dédié, sans toucher à
-                        // lastRotationReload utilisé par le détecteur de pivot).
-                        if (this.autoReloadBlockedUntil && now < this.autoReloadBlockedUntil) return;
-                        if (this.lastRotationReload && now - this.lastRotationReload < 30000) return;
-                        this.lastRotationReload = now;
-                        logger.warn('v4.0.75: liste toujours invisible après repaint — reload de la page');
-                        this.win.webContents.reload();
-                    }).catch(() => {});
-                }, 1200);
             })()
         `).catch(() => {});
+
+        // v4.0.75: dernier recours — vérification CÔTÉ PROCESS PRINCIPAL,
+        // hors du template literal injecté (this.win, logger, flags).
+        setTimeout(() => {
+            if (!this.win || this.win.isDestroyed()) return;
+            this.win.webContents.executeJavaScript(`
+                (() => {
+                    const ml = document.querySelector('[data-app-section="MessageList"]');
+                    const o = ml && ml.querySelector('[role="option"], [role="listitem"], [class*="listItem"]');
+                    return !(o && o.getBoundingClientRect().height > 0);
+                })()
+            `).then((listHidden) => {
+                if (!listHidden) return;
+                const now = Date.now();
+                // v4.0.95: flag dédié, sans toucher au détecteur de rotation.
+                if (this.autoReloadBlockedUntil && now < this.autoReloadBlockedUntil) return;
+                if (this.lastRotationReload && now - this.lastRotationReload < 30000) return;
+                this.lastRotationReload = now;
+                logger.warn('v4.0.75: liste toujours invisible après repaint — reload de la page');
+                this.win.webContents.reload();
+            }).catch(() => {});
+        }, 1200);
     }
 
     /**
@@ -2549,7 +2535,11 @@ class MailWindowController {
                 const navPane = document.querySelector('[data-app-section="NavigationPane"]');
                 const msgList = document.querySelector('[data-app-section="MessageList"]');
                 const navVisible = navPane && navPane.offsetParent;
-                const covers = navVisible && (!msgList || !msgList.offsetParent || window.innerWidth > window.innerHeight);
+                // v4.0.97: ne masquer le volet QUE s'il recouvre réellement la
+                // liste. L'ancien test « || paysage » masquait le volet dès que
+                // la fenêtre était large, ce qui faisait disparaître la liste
+                // 1-2 s après le pivot (le masque CSS englobait son conteneur).
+                const covers = navVisible && (!msgList || !msgList.offsetParent);
                 // v4.0.82: le masque CSS ne doit pas bloquer l'utilisateur — s'il
                 // clique sur le bouton du volet de navigation, on lève le masque.
                 if (!window.__utoutlookNavYield) {

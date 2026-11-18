@@ -1909,6 +1909,8 @@ test('v4.0.95: bouton « Recharger les messages » injecté, câblé IPC et i18n
         'forceListRepaint last-resort must honor the dedicated block flag (v4.0.95)');
     assert.ok(!repaint.includes('.click()'),
         'forceListRepaint must not click nav/back toggles (list vanishes in landscape) (v4.0.96)');
+    assert.ok(repaint.includes('hors du template literal injecté'),
+        'last-resort reload must run in main process, not in the injected script (v4.0.97)');
 
     const observer = methodBody('async addUnreadNumberObserver', '\n    injectGestures(');
     assert.ok(observer.includes('Object.assign(window.__utoutlookI18n||{}'),
