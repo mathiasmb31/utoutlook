@@ -2121,3 +2121,18 @@ test('v4.0.123: l observer ne clique plus sur le volet de navigation', async () 
     assert.ok(!obs.includes('Nav pane toggled open to read unread count'),
         'observer must not click the nav toggle open (v4.0.123)');
 });
+
+test('v4.0.124: badge non lus préservé sans ouvrir le volet', async () => {
+    const fs = await import('node:fs');
+    const obs = fs.readFileSync(path.resolve(__dirname, '../public/unread-number-observer.js'), 'utf-8');
+    // Les sélecteurs findInboxElement() trouvent le treeitem même dans un volet
+    // masqué (querySelector, pas de test de visibilité) -> badge OK sans toggle.
+    assert.ok(obs.includes('[role="treeitem"][title*="non lus" i]'),
+        'hidden inbox treeitem selector must remain (v4.0.124)');
+    assert.ok(obs.includes('updateUnreadDebounced(docUnread)'),
+        'badge update pipeline from document.title fallback must remain (v4.0.124)');
+    assert.ok(obs.includes('document.contains(el)'),
+        'inbox lookup must stay DOM-based, not visibility-based (v4.0.124)');
+    assert.ok(!obs.includes('btn.click()'),
+        'no programmatic click may reopen the nav pane (v4.0.124)');
+});
