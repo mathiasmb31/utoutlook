@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     setAccentColor: (color) => ipcRenderer.send("set-accent-color", color),
     // Reload the page (used by offline.html)
     reload: () => ipcRenderer.send("reload"),
+    // v4.0.95: bouton « Recharger les messages » en bas de la liste — rechargement manuel
+    reloadMessages: () => ipcRenderer.send("reload-messages"),
     // First install: wipe all session data (cookies, storage, cache) — v3.3.66
     // invoke (not send): main process shows a native confirm dialog, returns true if wiped
     firstInstall: () => ipcRenderer.invoke("first-install"),

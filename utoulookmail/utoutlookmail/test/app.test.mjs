@@ -1173,10 +1173,15 @@ test('command.sh/common.sh: wrapper pidfile kills orphaned wrappers without pgre
     // /proc/*/cmdline of other processes) — the pidfile is the reliable path.
     assert.ok(cmd.includes('wrapper.pid') && cmd.includes('echo $$ >'),
         'command.sh must write its PID to wrapper.pid at startup (v3.3.7)');
-    assert.ok(common.includes('wrapper.pid') && common.includes('kill -0 "$p"'),
-        'utoutlook_kill_stale_wrappers must kill the pidfile PID if alive (v3.3.7)');
-    assert.ok(common.includes('pgrep fallback found'),
-        'pgrep fallback must stay, with a debug log (v3.3.7)');
+    // v4.0.94: le pid du pidfile n'est tué qu'après vérification (kill -0 +
+    // /proc/<pid>/cmdline) — le log "pgrep fallback found" imprimé à chaque
+    // lancement a été retiré (faux « zombies tués au démarrage »).
+    assert.ok(common.includes('wrapper.pid') && common.includes('kill -0 "$pid"'),
+        'utoutlook_pid_is_wrapper must probe the pidfile PID with kill -0 (v4.0.94)');
+    assert.ok(common.includes('/proc/${pid}/cmdline'),
+        'pidfile PID must be verified as a command.sh wrapper before SIGKILL (v4.0.94)');
+    assert.ok(common.includes('(pgrep)'),
+        'pgrep fallback must stay (logs only when it actually kills, v4.0.94)');
 });
 
 test('command.sh: GPU options must not allow the "GPU process isn\'t usable. Goodbye." FATAL (v3.3.8)', async () => {
@@ -1835,6 +1840,79 @@ test('v4.0.3: i18n has server.* and notif.server* keys in all 8 languages', asyn
             const translated = t(key);
             assert.ok(translated !== key, `Missing ${key} for ${lang} (v4.0.3)`);
             assert.ok(translated.length > 0, `Empty ${key} for ${lang} (v4.0.3)`);
+        }
+    }
+});
+
+// ============================================================
+// Tests for v4.0.95 — bouton « Recharger les messages »
+// ============================================================
+
+test('v4.0.95: bouton « Recharger les messages » injecté, câblé IPC et i18n 8 langues', async () => {
+    const fs = await import('node:fs');
+    const publicDir = path.resolve(__dirname, '../public');
+    const srcDir = path.resolve(__dirname, '../src');
+    const button = fs.readFileSync(path.join(publicDir, 'reload-button.js'), 'utf-8');
+    const preload = fs.readFileSync(path.join(srcDir, 'controller/preload.js'), 'utf-8');
+    const controller = fs.readFileSync(path.join(srcDir, 'controller/mail-window-controller.mjs'), 'utf-8');
+    const i18n = fs.readFileSync(path.join(srcDir, 'i18n.mjs'), 'utf-8');
+
+    // Le script injecté appelle l'API preload, avec repli location.reload().
+    assert.ok(button.includes('window.electronAPI.reloadMessages'),
+        'reload-button.js must call electronAPI.reloadMessages (v4.0.95)');
+    assert.ok(button.includes('location.reload'),
+        'reload-button.js must fall back to location.reload (v4.0.95)');
+    assert.ok(button.includes('MAIL_URL.test(location.href)') && button.includes('onMailPage()'),
+        'reload-button.js must gate visibility on the Outlook mail URL (v4.0.95)');
+    assert.ok(button.includes("window.addEventListener('click'") && button.includes('}, true)'),
+        'reload-button.js must catch clicks in capture phase (v4.0.95)');
+
+    // Le preload expose l'API et envoie le bon canal IPC.
+    assert.ok(preload.includes('reloadMessages'),
+        'preload must expose reloadMessages (v4.0.95)');
+    assert.ok(preload.includes('"reload-messages"'),
+        'preload must send the reload-messages IPC (v4.0.95)');
+
+    // Le contrôleur écoute le canal, injecte le bouton et recharge réellement.
+    assert.ok(controller.includes('ipcMain.on("reload-messages"'),
+        'main process must handle reload-messages (v4.0.95)');
+    assert.ok(controller.includes('injectReloadButton'),
+        'controller must inject the reload button (v4.0.95)');
+    const methodBody = (name, next) => {
+        const start = controller.indexOf(`${name}(`);
+        assert.ok(start >= 0, `missing ${name} (v4.0.95)`);
+        const end = controller.indexOf(next, start);
+        return controller.slice(start, end > 0 ? end : controller.length);
+    };
+    const manual = methodBody('async manualReloadMessages', '\n    /**');
+    assert.ok(manual.includes('webContents.reload()'),
+        'manual reload must reload the page (v4.0.95)');
+    assert.ok(manual.includes('manualReloadInProgress'),
+        'manual reload must be reentrancy-guarded (v4.0.95)');
+    assert.ok(!manual.includes('listEmptyCount >='),
+        'manual reload must NOT depend on the empty-list watchdog (v4.0.95)');
+    assert.ok(manual.includes('autoReloadBlockedUntil'),
+        'manual reload must block auto reloads via the dedicated flag (v4.0.95)');
+    assert.ok(!manual.includes('lastRotationReload'),
+        'manual reload must NOT touch lastRotationReload (rotation detector) (v4.0.95)');
+
+    const repaintStart = controller.indexOf('    forceListRepaint(tag) {');
+    assert.ok(repaintStart >= 0, 'missing forceListRepaint (v4.0.95)');
+    const repaint = controller.slice(repaintStart, controller.indexOf('\n    /**', repaintStart));
+    assert.ok(repaint.includes('this.autoReloadBlockedUntil'),
+        'forceListRepaint last-resort must honor the dedicated block flag (v4.0.95)');
+
+    const observer = methodBody('async addUnreadNumberObserver', '\n    injectGestures(');
+    assert.ok(observer.includes('Object.assign(window.__utoutlookI18n||{}'),
+        'observer re-injection must merge i18n, not wipe the reload button label (v4.0.95)');
+
+    // i18n : les deux clés doivent exister dans les 8 langues.
+    for (const key of ['overlay.reloadMessages', 'overlay.reloading']) {
+        const start = i18n.indexOf(`'${key}'`);
+        assert.ok(start >= 0, `missing i18n key ${key} (v4.0.95)`);
+        const block = i18n.slice(start, i18n.indexOf('},', start));
+        for (const lang of ['fr', 'en', 'es', 'de', 'it', 'pt', 'zh', 'ar']) {
+            assert.ok(block.includes(`${lang}:`), `i18n ${key} missing ${lang} (v4.0.95)`);
         }
     }
 });
