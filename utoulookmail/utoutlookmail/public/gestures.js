@@ -122,7 +122,13 @@
     const positionBsButton = (b) => {
         const vv = window.visualViewport;
         const kb = vv ? Math.max(0, window.innerHeight - vv.height - (vv.offsetTop || 0)) : 0;
-        b.style.bottom = (kb + 14) + 'px';
+        // v4.0.121: sous Lomiri/Wayland le clavier Maliit est un overlay et
+        // visualViewport NE RÉTRÉCIT PAS toujours → kb=0 → le bouton restait
+        // à 14 px du bas, caché par le clavier pendant la saisie du login.
+        // Si le clavier n'est pas mesurable, on le place à 38 % de la hauteur
+        // (au-dessus de l'overlay), sinon juste au-dessus du clavier mesuré.
+        const bottom = kb > 0 ? (kb + 20) : Math.round(window.innerHeight * 0.38);
+        b.style.bottom = bottom + 'px';
     };
     const ensureBsButton = () => {
         if (!LOGIN_HOSTS_RE.test(location.hostname)) return;
