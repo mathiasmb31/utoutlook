@@ -2005,3 +2005,10 @@ test('v4.0.110: startup.qml — animation ciblée et largeur constante', async (
     assert.ok(deploy.includes("-name '*.click' -delete"),
         'build-deploy must remove old click artifacts before building (v4.0.110)');
 });
+
+test('v4.0.111: roue de relance — watchdog 20s même si le ping échoue', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    assert.ok(cmd.includes('watchdog timeout (20s)') && cmd.includes('-ge 20'),
+        'relaunch wheel must have an unconditional 20s timeout (v4.0.111)');
+});
