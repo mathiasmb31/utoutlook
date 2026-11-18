@@ -2399,6 +2399,16 @@ class MailWindowController {
                         a.style.setProperty('overflow', 'visible', 'important');
                         a = a.parentElement;
                     }
+                    // v4.0.104: Outlook met pointer-events:none sur les options
+                    // → les taps atterrissent sur le conteneur, pas sur le mail.
+                    // On réautorise les clics sur les lignes et leurs enfants.
+                    const rows = ml.querySelectorAll('[role="option"], [role="listitem"], [class*="listItem"]');
+                    for (const row of rows) {
+                        row.style.setProperty('pointer-events', 'auto', 'important');
+                        for (const child of row.querySelectorAll('*')) {
+                            child.style.setProperty('pointer-events', 'auto', 'important');
+                        }
+                    }
                 }
                 const list = document.querySelector('[class*="listView"], [class*="messageList"], [role="main"]');
                 if (list) { list.scrollTop = 0; list.scrollTop = 1; list.scrollTop = 0; forceReflow(); }
@@ -2544,6 +2554,16 @@ class MailWindowController {
                         a.style.setProperty('max-height', 'none', 'important');
                         a.style.setProperty('overflow', 'visible', 'important');
                         a = a.parentElement;
+                    }
+                    // v4.0.104: Outlook met pointer-events:none sur les options
+                    // → les taps atterrissent sur le conteneur, pas sur le mail.
+                    // On réautorise les clics sur les lignes et leurs enfants.
+                    const rows = ml.querySelectorAll('[role="option"], [role="listitem"], [class*="listItem"]');
+                    for (const row of rows) {
+                        row.style.setProperty('pointer-events', 'auto', 'important');
+                        for (const child of row.querySelectorAll('*')) {
+                            child.style.setProperty('pointer-events', 'auto', 'important');
+                        }
                     }
                 }
                 // (b) volet de navigation

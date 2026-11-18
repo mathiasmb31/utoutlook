@@ -20,6 +20,17 @@
         (window.__utoutlookI18n && window.__utoutlookI18n[key]) || fallback;
     const onMailPage = () => MAIL_URL.test(location.href);
 
+    // v4.0.103: les boutons n'apparaissent que quand la LISTE DES MESSAGES est
+    // réellement chargée et visible — pas seulement sur une URL /mail (page
+    // de login, splash Outlook, chargement en cours ou liste 0x0 excluent).
+    const listReady = () => {
+        const ml = document.querySelector('[data-app-section="MessageList"]');
+        if (!ml || !ml.offsetParent) return false;
+        if (ml.getBoundingClientRect().height < 100) return false;
+        const rows = ml.querySelectorAll('[role="option"], [role="listitem"], [class*="listItem"]');
+        return Array.from(rows).some((r) => r.getBoundingClientRect().height > 0);
+    };
+
     const fire = (kind) => {
         const now = Date.now();
         if (now - lastTrigger[kind] < 800) return; // anti-double (capture + bouton)
@@ -91,6 +102,15 @@
             a.style.setProperty('overflow', 'visible', 'important');
             a = a.parentElement;
         }
+        // v4.0.104: réautoriser les taps sur les lignes (Outlook met
+        // pointer-events:none sur les options → clic perdu pour le conteneur).
+        const rows = ml.querySelectorAll('[role="option"], [role="listitem"], [class*="listItem"]');
+        for (const row of rows) {
+            row.style.setProperty('pointer-events', 'auto', 'important');
+            for (const child of row.querySelectorAll('*')) {
+                child.style.setProperty('pointer-events', 'auto', 'important');
+            }
+        }
     };
 
     const ensure = () => {
@@ -137,9 +157,8 @@
 
         setLabel(reload, tr('reloadMessages', 'Reload messages'));
         setLabel(quit, tr('quitApp', 'Quit'));
-        // Recharger utile seulement sur la page mail ; Quitter toujours disponible.
-        reload.style.display = onMailPage() ? '' : 'none';
-        quit.style.display = '';
+        // v4.0.103: barre entière masquée tant que la liste n'est pas chargée.
+        bar.style.display = onMailPage() && listReady() ? 'flex' : 'none';
         unhideList(); // v4.0.98: garder la liste visible après les re-render SPA
     };
 
