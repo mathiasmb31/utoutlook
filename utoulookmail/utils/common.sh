@@ -321,22 +321,36 @@ utoutlook_kill_stale_wrappers() {
 	# so the pidfile branch below no longer fires for the previous wrapper —
 	# the previous wrapper self-exits via the pidfile check in
 	# verify_prospect_life, and the pgrep fallback SIGKILLs it here.
+	# v4.0.94: no noisy logging when there is nothing to kill — the old
+	# "killing stale wrapper"/"pgrep fallback found" lines printed at EVERY
+	# launch (stale pidfile from a dead previous run) made it look like
+	# zombies were being killed on a fresh start. Also: verify via /proc cmdline
+	# that the pid really is a command.sh wrapper before SIGKILL — a recycled
+	# pid (pid reuse) could otherwise kill an innocent process.
+	utoutlook_pid_is_wrapper() {
+		local pid="$1"
+		[ -n "$pid" ] || return 1
+		kill -0 "$pid" 2>/dev/null || return 1
+		"${UTOUTLOOK_BIN}/grep" -q 'command\.sh' "/proc/${pid}/cmdline" 2>/dev/null
+	}
 	if [ -f "$pidfile" ]; then
 		p=$("${UTOUTLOOK_BIN}/cat" "$pidfile" 2>/dev/null | "${UTOUTLOOK_BIN}/tr" -d '[:space:]')
-		if [ -n "$p" ] && [ "$p" != "$self" ] && [ "$p" != "$parent" ] && kill -0 "$p" 2>/dev/null; then
+		if [ -n "$p" ] && [ "$p" != "$self" ] && [ "$p" != "$parent" ] && utoutlook_pid_is_wrapper "$p"; then
 			echo "killing stale wrapper pid=$p (from pidfile)"
 			kill -9 "$p" 2>/dev/null || true
 		fi
 	fi
-	# Fallback: pgrep scan (may be restricted by AppArmor — logged for diagnosis).
-	# Match both absolute and relative ("./bin/command.sh") cmdlines of orphans.
+	# Fallback: pgrep scan (may be restricted by AppArmor — silent unless it
+	# actually kills something).
 	local found
 	found=$("${UTOUTLOOK_BIN}/pgrep" -f '^/bin/bash .*bin/command\.sh' 2>/dev/null)
-	echo "pgrep fallback found: ${found:-none} (self=$self)"
 	for p in $found; do
 		[ "$p" = "$self" ] && continue
 		[ "$p" = "$parent" ] && continue
-		kill -9 "$p" 2>/dev/null || true
+		if utoutlook_pid_is_wrapper "$p"; then
+			echo "killing stale wrapper pid=$p (pgrep)"
+			kill -9 "$p" 2>/dev/null || true
+		fi
 	done
 }
 
