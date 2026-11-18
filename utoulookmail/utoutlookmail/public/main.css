@@ -484,6 +484,16 @@ input[type="text"],
 
 /* Paneaux latéraux arrondis */
 [data-app-section="FolderPane"],
+/* v4.0.120: le volet de navigation est MASQUÉ PAR DÉFAUT par le CSS injecté
+   (donc dès la création du document — plus de flash visuel au chargement).
+   Seul un vrai tap utilisateur ajoute la classe html.utoutlook-show-nav. */
+[data-app-section="NavigationPane"] {
+  display: none !important;
+}
+html.utoutlook-show-nav [data-app-section="NavigationPane"] {
+  display: flex !important;
+}
+
 [data-app-section="NavigationPane"],
 [class*="folderPane" i],
 [class*="navigationPane" i] {

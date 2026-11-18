@@ -2030,7 +2030,7 @@ test('v4.0.113: repaints — ne plus basculer le volet de navigation', async () 
         'repaints must not hide the navigation pane (v4.0.113)');
     assert.ok(!ctrl.includes("navPane.style.removeProperty('display')"),
         'repaints must not re-show the navigation pane (v4.0.113)');
-    assert.ok(!ctrl.includes("classList.toggle('utoutlook-hide-nav'"),
+    assert.ok(!ctrl.includes("classList.toggle('utoutlook-hide-nav'") && !ctrl.includes("classList.remove('utoutlook-hide-nav'"),
         'layout fix must not auto-toggle the nav mask (v4.0.113)');
 });
 
@@ -2038,7 +2038,7 @@ test('v4.0.114/115: volet masqué reste masqué, seul un clic peut le rouvrir', 
     const fs = await import('node:fs');
     const button = fs.readFileSync(path.resolve(__dirname, '../public/reload-button.js'), 'utf-8');
     const controller = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
-    assert.ok(button.includes("localStorage.getItem(NAV_KEY)") && button.includes('utoutlook-hide-nav'),
+    assert.ok(button.includes("localStorage.getItem(NAV_KEY)") && button.includes('utoutlook-show-nav'),
         'nav visibility must be restored from localStorage after reload (v4.0.114)');
     assert.ok(button.includes('watchNavToggle') && button.includes('localStorage.setItem(NAV_KEY'),
         'nav toggle clicks must be remembered (v4.0.114)');
@@ -2049,7 +2049,7 @@ test('v4.0.114/115: volet masqué reste masqué, seul un clic peut le rouvrir', 
     assert.ok(button.includes('syncNavState(); // v4.0.118'),
         'syncNavState must be called from the periodic ensure() (v4.0.118)');
     assert.ok(button.includes("const NAV_KEY = 'utoutlook-nav-pref'") &&
-              button.includes("pref !== 'open'"),
+              button.includes("pref === 'open'"),
         'new pref key with hidden-by-default must be used (v4.0.118)');
     assert.ok(!/volet de navigation\|navigation pane\|menu/i.test(button) &&
               !controller.includes('/volet de navigation|navigation pane|menu/i'),
@@ -2080,4 +2080,16 @@ test('v4.0.117: get-scale.sh — ne pas planter si GRID_UNIT_PX est absent', asy
         'get-scale.sh must use os.environ.get with a default (v4.0.117)');
     assert.ok(!script.includes('os.environ["GRID_UNIT_PX"]'),
         'get-scale.sh must not index GRID_UNIT_PX directly (v4.0.117)');
+});
+
+test('v4.0.120: volet masqué par défaut via CSS injecté', async () => {
+    const fs = await import('node:fs');
+    const css = fs.readFileSync(path.resolve(__dirname, '../public/main.css'), 'utf-8');
+    const button = fs.readFileSync(path.resolve(__dirname, '../public/reload-button.js'), 'utf-8');
+    assert.ok(css.includes('[data-app-section="NavigationPane"] {\n  display: none !important;'),
+        'nav pane must be hidden by default in injected CSS (v4.0.120)');
+    assert.ok(css.includes('html.utoutlook-show-nav [data-app-section="NavigationPane"]'),
+        'show rule must be gated by a user-only class (v4.0.120)');
+    assert.ok(button.includes("classList.toggle('utoutlook-show-nav', pref === 'open')"),
+        'renderer must only add show class when pref is open (v4.0.120)');
 });

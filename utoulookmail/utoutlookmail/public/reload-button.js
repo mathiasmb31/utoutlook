@@ -189,7 +189,9 @@
     const applyNavState = () => {
         let pref = null;
         try { pref = localStorage.getItem(NAV_KEY); } catch { /* ignore */ }
-        document.documentElement.classList.toggle('utoutlook-hide-nav', pref !== 'open');
+        // v4.0.120: le CSS masque le volet PAR DÉFAUT ; on ajoute seulement
+        // la classe « show » si l'utilisateur l'a explicitement ouvert.
+        document.documentElement.classList.toggle('utoutlook-show-nav', pref === 'open');
     };
 
     // v4.0.115: mémoriser l'état DU MOMENT OÙ IL EST MASQUÉ, quelle que soit
