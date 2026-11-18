@@ -2398,14 +2398,14 @@ class MailWindowController {
                 const navCoversList = navPane && navPane.offsetParent && (!msgList || !msgList.offsetParent);
                 const isLandscape = window.innerWidth > window.innerHeight;
                 if (navCoversList || (navPane && navPane.offsetParent && isLandscape)) {
-                    // v4.0.94: en paysage, le volet de nav recouvre la liste et le
-                    // bouton "Masquer" a parfois un autre libellé — on essaie
-                    // plusieurs patterns, puis on masque le volet en CSS en
-                    // dernier recours, et on force les dimensions de la liste.
-                    const hideBtn = Array.from(document.querySelectorAll('button[aria-label], [role="button"][aria-label], button[title]'))
-                        .find(b => /masquer le volet de navigation|hide the navigation pane|hide navigation|masquer le menu|collapse|réduire|menu/i.test((b.getAttribute('aria-label') || b.getAttribute('title') || '').trim()));
-                    if (hideBtn) { hideBtn.click(); setTimeout(() => { try { hideBtn.click(); } catch (e) {} }, 300); }
-                    if (isLandscape && navPane && navPane.offsetParent) {
+                    // v4.0.96: PLUS AUCUN CLIC SUR LES BOUTONS « MASQUER LE VOLET »
+                    // OU « RETOUR ». Ce sont des TOGGLES : en paysage, le clic
+                    // rouvrait le volet ou ramenait au dossier, et la liste
+                    // disparaissait 1 à 2 s après le pivot (repaints à 1,5 s / 2 s).
+                    // On impose directement les styles — idempotent, sans effet
+                    // de bord — ; fixMailLayout() gère déjà le masque CSS du
+                    // volet et le rend la main à l'utilisateur au clic.
+                    if (navPane && navPane.offsetParent) {
                         navPane.style.display = 'none';
                     }
                     if (msgList) {
@@ -2415,9 +2415,13 @@ class MailWindowController {
                         if (isLandscape && !msgList.style.width) msgList.style.width = '40%';
                         msgList.style.minWidth = '280px';
                     }
+                } else if (msgList && !isLandscape) {
+                    // Retour en portrait : on retire les contraintes posées en
+                    // paysage pour ne pas figer la liste à 40 % de largeur.
+                    msgList.style.removeProperty('width');
+                    msgList.style.removeProperty('min-width');
+                    if (navPane) navPane.style.removeProperty('display');
                 }
-                const back = document.querySelector('[aria-label*="back" i], [aria-label*="retour" i], [aria-label*="précédent" i], [data-automation-id*="back" i], [class*="backArrow"], [class*="closeNav"]');
-                if (back && back.offsetParent) { back.click(); }
                 // v4.0.75: dernier recours — si la liste n'est TOUJOURS pas visible
                 // après le repaint, recharger la page entière (le splash enveloppe
                 // d'Outlook est bref). Garde-fou: max 1 reload / 30 s.
