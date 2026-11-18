@@ -2054,6 +2054,10 @@ test('v4.0.114/115: volet masqué reste masqué, seul un clic peut le rouvrir', 
     assert.ok(!/volet de navigation\|navigation pane\|menu/i.test(button) &&
               !controller.includes('/volet de navigation|navigation pane|menu/i'),
         'generic "menu" label must not reopen the pane (v4.0.118)');
+    // v4.0.119: seuls les vrais taps doivent pouvoir ouvrir le volet.
+    assert.ok(button.includes('if (!e.isTrusted) return;') &&
+              controller.includes('if (!ev.isTrusted) return;'),
+        'only trusted user clicks may reopen the nav pane (v4.0.119)');
 });
 
 test('v4.0.116: quit propre — app.quit() au lieu de app.exit(0) brutal', async () => {
