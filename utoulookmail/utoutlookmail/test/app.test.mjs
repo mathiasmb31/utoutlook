@@ -1866,6 +1866,12 @@ test('v4.0.95: bouton « Recharger les messages » injecté, câblé IPC et i18n
         'reload-button.js must gate visibility on the Outlook mail URL (v4.0.95)');
     assert.ok(button.includes("window.addEventListener('click'") && button.includes('}, true)'),
         'reload-button.js must catch clicks in capture phase (v4.0.95)');
+    assert.ok(button.includes("tr('reloading'") && button.includes('setTimeout(() => { location.reload(); }, 2000)'),
+        'reload button must give immediate feedback and force a renderer-side reload fallback (v4.0.95)');
+    assert.ok(button.includes('window.electronAPI.quitApp') && button.includes('QUIT_ID'),
+        'reload-button.js must expose a Quitter button calling quitApp (v4.0.95)');
+    assert.ok(button.includes("fire('quit')") && button.includes('window.close()'),
+        'reload-button.js must quit via IPC with a window.close fallback (v4.0.95)');
 
     // Le preload expose l'API et envoie le bon canal IPC.
     assert.ok(preload.includes('reloadMessages'),

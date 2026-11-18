@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     reload: () => ipcRenderer.send("reload"),
     // v4.0.95: bouton « Recharger les messages » en bas de la liste — rechargement manuel
     reloadMessages: () => ipcRenderer.send("reload-messages"),
+    // v4.0.95: bouton « Quitter » — quit propre (clean flag) + sortie du wrapper
+    quitApp: () => ipcRenderer.send("quit-app"),
     // First install: wipe all session data (cookies, storage, cache) — v3.3.66
     // invoke (not send): main process shows a native confirm dialog, returns true if wiped
     firstInstall: () => ipcRenderer.invoke("first-install"),

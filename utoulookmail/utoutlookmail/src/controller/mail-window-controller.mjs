@@ -1921,6 +1921,15 @@ class MailWindowController {
                 this.manualReloadMessages();
             }
         });
+        // v4.0.95: bouton « Quitter » — VRAI quit propre (app.quit() déclenche
+        // before-quit → cleanupAndExit → exitclient + flushed cookies) pour que
+        // le wrapper command.sh voie le flag et s'arrête aussi, sans swipe.
+        ipcMain.on("quit-app", (event) => {
+            if (this.win && event.sender === this.win.webContents) {
+                logger.info('v4.0.95: fermeture demandée par le bouton Quitter');
+                app.quit();
+            }
+        });
         // v3.3.66: first-install — wipe ALL session data from the main process.
         // The in-page clear (document.cookie/localStorage) only reaches the current
         // origin, and syncCookiesToLiveCom() would re-copy surviving cookies to the
@@ -2956,9 +2965,9 @@ class MailWindowController {
     }
 
     /**
-     * v4.0.95: injecte le bouton « Recharger les messages » en bas de la liste
-     * (secours manuel quand la rotation casse l'affichage). Libellé passé via
-     * window.__utoutlookI18n, comme gestures.js.
+     * v4.0.95: injecte la barre d'actions en bas de l'écran : « Recharger les
+     * messages » (secours liste 0x0) et « Quitter » (vrai quit, wrapper inclus).
+     * Libellés passés via window.__utoutlookI18n, comme gestures.js.
      */
     injectReloadButton() {
         if (!this.win || this.win.isDestroyed()) return;
@@ -2973,6 +2982,8 @@ class MailWindowController {
         const tr = getAllTranslations();
         const i18nJson = JSON.stringify({
             reloadMessages: tr['overlay.reloadMessages'],
+            reloading: tr['overlay.reloading'], // feedback immédiat au clic
+            quitApp: tr['common.quit'], // bouton Quitter (déjà traduit en 8 langues)
         });
         this.win.webContents.executeJavaScript(
             `window.__utoutlookI18n = Object.assign(window.__utoutlookI18n||{}, ${i18nJson});\n` + script
