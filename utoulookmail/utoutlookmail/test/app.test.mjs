@@ -2093,3 +2093,16 @@ test('v4.0.120: volet masqué par défaut via CSS injecté', async () => {
     assert.ok(button.includes("classList.toggle('utoutlook-show-nav', pref === 'open')"),
         'renderer must only add show class when pref is open (v4.0.120)');
 });
+
+test('v4.0.121: notification clear throttlée + bouton ⌫ au-dessus du clavier', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    const gestures = fs.readFileSync(path.resolve(__dirname, '../public/gestures.js'), 'utf-8');
+
+    assert.ok(cmd.includes('.notifs-cleared') && cmd.includes('-gt 3600'),
+        'notification clear must be throttled to once per hour (v4.0.121)');
+    assert.ok(!cmd.includes('NOTIFS_CLEARED=1'),
+        'old per-wrapper notification clear flag must be gone (v4.0.121)');
+    assert.ok(gestures.includes('Math.round(window.innerHeight * 0.38)'),
+        'backspace button must be raised above the Maliit keyboard overlay (v4.0.121)');
+});

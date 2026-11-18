@@ -231,9 +231,15 @@ function verify_prospect_life() {
 		touch ${lock}
 		# v4.0.69: app bien lancée — retirer du tiroir de notifications les
 		# messages transitoires (welcome, veuillez patienter, etc.)
-		if [ "${NOTIFS_CLEARED:-0}" -eq 0 ]; then
-			NOTIFS_CLEARED=1
+		# v4.0.121: ne le faire QU'UNE FOIS par heure. L'ancien test (variable
+		# shell) se réinitialisait à chaque relance du wrapper → ClearPersistent
+		# était appelé très souvent et Lomiri affichait un « clear » fugitif.
+		_notif_flag="${UTOUTLOOK_CONFIG_DIR}/.notifs-cleared"
+		_notif_now=${EPOCHSECONDS:-0}
+		_notif_stamp=$("${WD}"/bin/cat "${_notif_flag}" 2>/dev/null | "${WD}"/bin/tr -d '[:space:]')
+		if [ -z "${_notif_stamp}" ] || [ $((_notif_now - ${_notif_stamp:-0})) -gt 3600 ]; then
 			utoutlook_notify_clear
+			echo "${_notif_now}" > "${_notif_flag}" 2>/dev/null || true
 		fi
 	fi
 	oldfollow=${follow}
