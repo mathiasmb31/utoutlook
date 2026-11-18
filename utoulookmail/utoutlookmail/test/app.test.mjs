@@ -1963,3 +1963,21 @@ test('v4.0.99: roue de relance réactivée + zombies du wrapper récupérés', a
     assert.ok(cmd.includes('qml/startup.qml') && cmd.includes('STARTUP_QML_PID'),
         'wrapper must launch and close the startup progress screen (v4.0.105)');
 });
+
+test('v4.0.107: wrapper — plus de /usr/bin/date (AppArmor) + scaling jamais 0.00', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+
+    // /usr/bin/date est bloqué par AppArmor → la boucle spammait "Permission denied"
+    // et RELAUNCH_QML_SHOWN_AT restait vide.
+    assert.ok(!cmd.includes('$(date +%s)'),
+        'wrapper must not call /usr/bin/date (AppArmor denies it) (v4.0.107)');
+    assert.ok(cmd.includes('EPOCHSECONDS'),
+        'wrapper must use the bash EPOCHSECONDS builtin instead (v4.0.107)');
+
+    // get-scale.sh peut renvoyer 0 → scaling "0.00" → UI minuscule.
+    assert.ok(cmd.includes('appScaling=115'),
+        'wrapper must fall back to a valid scale instead of 0.00 (v4.0.107)');
+    assert.ok(!cmd.includes('0.00'),
+        'wrapper must never compute a 0.00 device scale factor (v4.0.107)');
+});

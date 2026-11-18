@@ -113,7 +113,7 @@ function verify_prospect_life() {
 		"${WD}"/bin/rm -f "${rotationflag}" 2>/dev/null || true
 		qmlscene "${WD}"/qml/relaunch.qml > "${UTOUTLOOK_CONFIG_DIR}/relaunch-qml.log" 2>&1 &
 		RELAUNCH_QML_PID=$!
-		RELAUNCH_QML_SHOWN_AT=$(date +%s)
+		RELAUNCH_QML_SHOWN_AT=${EPOCHSECONDS:-0} # v4.0.107: builtin bash — /usr/bin/date est interdit par AppArmor
 		echo "rotation relaunch screen shown (app still alive, qml pid ${RELAUNCH_QML_PID})"
 	fi
 
@@ -203,7 +203,7 @@ function verify_prospect_life() {
 				"${WD}"/bin/rm -f "${rotationflag}" 2>/dev/null || true
 				qmlscene "${WD}"/qml/relaunch.qml > "${UTOUTLOOK_CONFIG_DIR}/relaunch-qml.log" 2>&1 &
 				RELAUNCH_QML_PID=$!
-				RELAUNCH_QML_SHOWN_AT=$(date +%s)
+				RELAUNCH_QML_SHOWN_AT=${EPOCHSECONDS:-0} # v4.0.107: builtin bash — /usr/bin/date est interdit par AppArmor
 				echo "rotation relaunch screen shown (qml pid ${RELAUNCH_QML_PID})"
 			else
 				echo "******" && utoutlook_notify "$(utoutlook_t 'shell.cleaning')"
@@ -573,6 +573,17 @@ if [ "$spanFontSize" = "" ]; then
 	spanFontSize=100
 fi
 appScaling=$("${WD}"/utils/get-scale.sh 2>/dev/null)
+# v4.0.107: get-scale.sh peut renvoyer 0 (getprop bloqué au boot) → facteur
+# d'échelle nul → toute l'UI minuscule (vu sur device : instance orpheline
+# lancée avec un facteur nul). On réessaie une fois, puis on retombe sur
+# 1.00 (jamais zéro).
+if [ -z "${appScaling}" ] || [ "${appScaling}" -lt 50 ] 2>/dev/null; then
+	appScaling=$("${WD}"/utils/get-scale.sh 2>/dev/null)
+fi
+if [ -z "${appScaling}" ] || [ "${appScaling}" -lt 50 ] 2>/dev/null; then
+	appScaling=115
+	echo "get-scale returned invalid value — using 1.00 fallback"
+fi
 
 scaling="$((appScaling / 115)).$(printf '%02d' "$((appScaling % 115))")"
 
@@ -604,7 +615,7 @@ while true; do
 	verify_prospect_life
 
 	# v4.0.91: fermer l'écran de relance (roue) dès que le nouvel app répond
-	_now=$(date +%s)
+	_now=${EPOCHSECONDS:-0} # v4.0.107: builtin bash (pas de /usr/bin/date sous AppArmor)
 	if [ -n "${RELAUNCH_QML_PID}" ] && kill -0 "${RELAUNCH_QML_PID}" 2>/dev/null && utoutlook_socket_ping && [ $((_now - ${RELAUNCH_QML_SHOWN_AT:-0})) -ge 5 ]; then
 		kill "${RELAUNCH_QML_PID}" 2>/dev/null || true
 		wait "${RELAUNCH_QML_PID}" 2>/dev/null || true # v4.0.99: récupérer le zombie
