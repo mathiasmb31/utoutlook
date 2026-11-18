@@ -1981,3 +1981,14 @@ test('v4.0.107: wrapper — plus de /usr/bin/date (AppArmor) + scaling jamais 0.
     assert.ok(!cmd.includes('0.00'),
         'wrapper must never compute a 0.00 device scale factor (v4.0.107)');
 });
+
+test('v4.0.109: paysage — ne pas gonfler ni masquer les blocs de la liste', async () => {
+    const fs = await import('node:fs');
+    const css = fs.readFileSync(path.resolve(__dirname, '../public/main.css'), 'utf-8');
+    const gestures = fs.readFileSync(path.resolve(__dirname, '../public/gestures.js'), 'utf-8');
+
+    assert.ok(css.includes(':not(:has([role="option"]))') && css.includes('min-height: 0 !important'),
+        'structural blocks of the message list must not get the row min-height (v4.0.109)');
+    assert.ok(gestures.includes("c.querySelector('[role=\"listbox\"]"),
+        'hideMessageListBottomBar must not hide the block containing the messages (v4.0.109)');
+});
