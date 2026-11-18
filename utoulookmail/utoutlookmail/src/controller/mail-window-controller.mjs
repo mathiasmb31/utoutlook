@@ -649,7 +649,12 @@ class MailWindowController {
                 const empty = await this.win.webContents.executeJavaScript(`
                     (() => {
                         const ml = document.querySelector('[data-app-section="MessageList"]');
-                        if (!ml || !ml.offsetParent) return false; // pas de liste visible = autre vue
+                        if (!ml) return false; // pas de liste du tout = autre vue
+                        // v4.0.94: une liste rendue 0x0 (offsetParent null après un
+                        // pivot) doit compter comme VIDE — avant on retournait false
+                        // ("autre vue") et le watchdog ne réagissait jamais.
+                        if (!ml.offsetParent && ml.getBoundingClientRect().height === 0) return true;
+                        if (!ml.offsetParent) return false; // masquée mais hauteur non nulle = autre vue
                         // v4.0.78: les lignes Outlook sont des role="option" dans un
                         // listbox (pas role="listitem" !) — ancien sélecteur = faux
                         // positifs "liste vide" et reloads en boucle.
@@ -2595,9 +2600,16 @@ class MailWindowController {
                                 'if (document.activeElement && document.activeElement.blur) document.activeElement.blur()'
                             ).catch(() => {});
                             this.win.reload();
+                            // v4.0.94: repaint dès que la page rechargée est prête
+                            // (did-finish-load) + repaints différés — sinon si le
+                            // reload prend > 3 s, les repaints tombaient sur
+                            // l'ancienne page et la liste restait 0x0.
                             const repaintSoon = () => this.forceListRepaint('post-rotation');
-                            setTimeout(repaintSoon, 1000);
-                            setTimeout(repaintSoon, 3000);
+                            const onLoaded = () => { repaintSoon(); setTimeout(repaintSoon, 1500); };
+                            this.win.webContents.once('did-finish-load', onLoaded);
+                            setTimeout(repaintSoon, 2000);
+                            setTimeout(repaintSoon, 5000);
+                            setTimeout(repaintSoon, 8000);
                         }, 1000);
                     }
                 }
