@@ -2305,6 +2305,30 @@ test('v4.1.0: crédit « Inspired from Julien Alarcon » + liens réels du proje
     }
 });
 
+test('v4.1.0: icône — WM_CLASS alignée sur le click + démarrage en 6 étapes', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    const common = fs.readFileSync(path.resolve(__dirname, '../../utils/common.sh'), 'utf-8');
+    const desktop = fs.readFileSync(path.resolve(__dirname, '../../utoutlook.desktop'), 'utf-8');
+    const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
+
+    assert.ok(desktop.includes('StartupWMClass=utoutlook.mathias_utoutlook'),
+        'desktop file must map the Electron window to the click app (v4.1.0)');
+    assert.ok(main.includes('app.setDesktopName("utoutlook.mathias_utoutlook")'),
+        'Electron desktop name must be the click app ID (v4.1.0)');
+    assert.ok(cmd.includes('classoption="--class=utoutlook.mathias_utoutlook"') &&
+              cmd.includes('"$classoption" &'),
+        'wrapper must pass the WM_CLASS switch to prospect-mail (v4.1.0)');
+
+    // Étape 3 → 4 avancée après l'extinction des vieux process (~50 s sinon).
+    assert.ok(common.includes('of 6') && common.includes('sur 6'),
+        'startup steps must be numbered out of 6 (v4.1.0)');
+    assert.ok(cmd.includes('utoutlook_set_start_step 4') &&
+              cmd.includes('utoutlook_set_start_step 5') &&
+              cmd.includes('utoutlook_set_start_step 6'),
+        'all 6 startup steps must be announced (v4.1.0)');
+});
+
 test('v4.0.125: bouton Quitter — cleanupAndExit plus court-circuité (app vivante mais invisible)', async () => {
     const fs = await import('node:fs');
     const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');

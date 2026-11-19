@@ -70,10 +70,10 @@ function launch_prospect() {
 	# v4.0.126: la barre est désormais lancée au tout début du wrapper (avant
 	# test_net et les cleanup). Ici on met seulement à jour l'étape affichée,
 	# et on la relance si elle a disparu entre-temps.
-	utoutlook_set_start_step 4
+	utoutlook_set_start_step 5
 	if ! utoutlook_startup_qml_alive; then
 		start_startup_qml
-		utoutlook_set_start_step 4
+		utoutlook_set_start_step 5
 	fi
 
 	# Wait for notification service to be ready before sending welcome
@@ -83,12 +83,12 @@ function launch_prospect() {
 
 	# v3.3.45: native Wayland client (Lomiri session) — Maliit OSK goes through
 	# the Wayland text-input protocol, password fields included (as in 3.2.x).
-	"${WD}"/bin/App/prospect-mail "$dpioptions" "$sandboxoptions" "$gpuoptions" &
+	"${WD}"/bin/App/prospect-mail "$dpioptions" "$sandboxoptions" "$gpuoptions" "$classoption" &
 	# v4.0.11: capture client PID — kill -0 (builtin, AppArmor-safe) tells us
 	# whether OUR client is alive; used to ignore exitclient flags written by
 	# a dying older process during upgrade.
 	CLIENT_PID=$!
-	utoutlook_set_start_step 5 # v4.0.126: Electron lancé, page en chargement
+	utoutlook_set_start_step 6 # v4.1.0: Electron lancé, page en chargement
 	# v4.0.65: enregistrer le VRAI pid du fils (kill_prospect_pids/prospect_alive
 	# l'utilisent — le pidfile ne contenait que des pids de wrapper avant)
 	echo "${CLIENT_PID}" >> "${UTOUTLOOK_PID_FILE}" 2>/dev/null || true
@@ -513,6 +513,9 @@ done
 # process isn't usable") si on relance trop vite après un kill. 2 s laissent
 # au compositor le temps de libérer les ressources.
 sleep_int 2
+# v4.1.0: l'étape 3 (extinction des anciens process) peut durer ~50 s —
+# on passe à l'étape 4 dès qu'ils sont morts, avant les nettoyages suivants.
+utoutlook_set_start_step 4
 "${WD}"/bin/rm -f ${exitclient} ${killedclient} "${UTOUTLOOK_EXITCOMMAND}" "${UTOUTLOOK_CLOSING}" 2>/dev/null || true
 cleanup
 "${WD}"/utils/mkdir
@@ -640,6 +643,10 @@ scaling="$((appScaling / 115)).$(printf '%02d' "$((appScaling % 115))")"
 
 dpioptions="--high-dpi-support=1 --force-device-scale-factor=$scaling  --text-font-size=$textFontSize --span-font-size=$spanFontSize"
 sandboxoptions="--no-sandbox"
+# v4.1.0: WM_CLASS alignée sur l'ID de l'app click — sans ça, Lomiri
+# affiche une icône jaune « ? » / « application inconnue » quand c'est le
+# wrapper (et non le launcher) qui relance Electron après un crash/quit.
+classoption="--class=utoutlook.mathias_utoutlook"
 # v3.3.8: --in-process-gpu instead of --disable-gpu --disable-software-rasterizer.
 # With --disable-software-rasterizer there was NO fallback, and when Chromium
 # tried to spawn a separate GPU process and failed 3x (error_code=1002),
@@ -673,7 +680,7 @@ if [ ${GPU_CRASH_NEW} -eq 1 ]; then
 	fi
 	show_render_rescue
 	start_startup_qml # réafficher la barre après le choix
-	utoutlook_set_start_step 3
+	utoutlook_set_start_step 5
 fi
 
 if [ "${RENDER_MODE}" = "software" ]; then
