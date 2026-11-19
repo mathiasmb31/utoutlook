@@ -2136,3 +2136,43 @@ test('v4.0.124: badge non lus préservé sans ouvrir le volet', async () => {
     assert.ok(!obs.includes('btn.click()'),
         'no programmatic click may reopen the nav pane (v4.0.124)');
 });
+
+test('v4.0.125: bouton Quitter — cleanupAndExit plus court-circuité (app vivante mais invisible)', async () => {
+    const fs = await import('node:fs');
+    const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
+    const controller = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+
+    // before-quit / will-quit posaient isQuitting AVANT d'appeler
+    // cleanupAndExit(), dont le garde-fou `if (this.isQuitting) return`
+    // sortait immédiatement : aucun exitclient, heartbeat toujours actif,
+    // fenêtre masquée → « app vivante mais invisible » après le bouton Quitter.
+    for (const evt of ['will-quit', 'before-quit']) {
+        const start = main.indexOf(`app.on("${evt}"`);
+        assert.ok(start >= 0, `${evt} handler must exist (v4.0.125)`);
+        const block = main.slice(start, main.indexOf('});', start));
+        assert.ok(block.includes('e.preventDefault()'),
+            `${evt} must cancel the default quit so cleanup can run (v4.0.125)`);
+        assert.ok(!block.includes('this.isQuitting = true'),
+            `${evt} must NOT set isQuitting before calling cleanupAndExit (v4.0.125)`);
+        assert.ok(block.includes('this.cleanupAndExit()'),
+            `${evt} must call cleanupAndExit (v4.0.125)`);
+    }
+
+    const caeStart = main.indexOf('    async cleanupAndExit() {');
+    const cae = main.slice(caeStart, main.indexOf('\n    createControllers()', caeStart));
+    assert.ok(cae.includes('if (this.cleanupStarted) return;'),
+        'cleanupAndExit must guard on a dedicated cleanupStarted flag (v4.0.125)');
+    assert.ok(!cae.includes('if (this.isQuitting) return;'),
+        'cleanupAndExit must not guard on isQuitting (v4.0.125)');
+    assert.ok(cae.includes('global.utoutlookQuitting = true'),
+        'cleanupAndExit must flag a real quit for the window controller (v4.0.125)');
+
+    // Avec hideOnClose=true (forcé sur UT), intercepter 'close' pendant le
+    // quit masque la fenêtre et annule app.quit() → app invisible.
+    const closeStart = controller.indexOf('this.win.on("close", (e) => {');
+    const close = controller.slice(closeStart, controller.indexOf('});', closeStart));
+    assert.ok(close.includes('settings.get("hideOnClose")'),
+        'hideOnClose must still apply outside a quit (v4.0.125)');
+    assert.ok(close.includes('!global.utoutlookQuitting'),
+        'close handler must skip hideOnClose during a real quit (v4.0.125)');
+});
