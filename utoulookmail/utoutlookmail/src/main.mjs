@@ -42,6 +42,8 @@ process.on('uncaughtException', (err) => {
     uncaughtCount++;
     if (uncaughtCount >= 5) {
         logger.error('5 uncaught exceptions in 60s — exiting');
+        // v4.1.0 (revue E26): poser le flag, sinon le wrapper relance en boucle.
+        try { markCleanExit(); } catch (e) { /* ignore */ }
         app.exit(1);
     }
 });
@@ -64,9 +66,10 @@ fs.mkdirSync(CONFIG_DIR, {recursive: true});
 // 2s after launch ("app does not start", ~1 launch in 2-3, race-dependent).
 const PROCESS_START = Date.now();
 try { fs.unlinkSync(CLOSE_FLAG_FILE); } catch (e) { /* ignore */ }
-// v4.1.0: un flag périmé (SIGTERM d'une session précédente) ne doit jamais
-// faire quitter ce nouveau process — on le supprime au démarrage.
-try { fs.unlinkSync(FORCE_QUIT_FILE); } catch (e) { /* ignore */ }
+// v4.1.0 (revue A4): ne PAS supprimer wrapper-quit ici — un nouveau process
+// démarrant pendant qu'un wrapper écrit le flag effacerait le signal et
+// l'ancien process masquerait sa fenêtre puis finirait SIGKILL (orphelins).
+// La fraîcheur est déjà vérifiée sur SIGTERM (mtime >= PROCESS_START).
 
 // v3.3.28: markCleanExit() lives in config.mjs (shared with the window
 // controller) — it writes the exitclient flag SYNCHRONOUSLY before every
@@ -109,9 +112,13 @@ const heartbeatInterval = setInterval(() => {
             mainWindowEverVisible = true;
             logger.info(`Main window became visible after ${heartbeatSeconds} heartbeats`);
         }
-    } else if (!mainWindowEverVisible && heartbeatSeconds === 30 && appInstance?.mailController) {
+    } else if (!mainWindowEverVisible && heartbeatSeconds === 30) {
+        // v4.1.0 (revue D21): vérifier TOUS les comptes, pas seulement le
+        // principal — un autre compte peut avoir une fenêtre visible.
         logger.warn('Main window never shown after 60s — forcing show()');
-        try { appInstance.mailController.show(); } catch (e) { logger.error('Force show failed:', e); }
+        for (const ctl of (appInstance?.accountManager?.controllers?.values() || [])) {
+            try { ctl.show(); } catch (e) { logger.error('Force show failed:', e); }
+        }
     }
 
     // After 60 heartbeats (~2 min) during which the window NEVER appeared,
@@ -228,15 +235,10 @@ class ProspectMail {
         });
 
         app.on("browser-window-blur", () => {
-            // Don't auto-quit when hideOnClose is active — windows are hidden, not closed
-            if (settings.get("hideOnClose")) return;
-            const count = BrowserWindow.getAllWindows()
-                .filter(b => b.isVisible())
-                .length;
-            if (count === 0) {
-                markCleanExit();
-                app.exit(0);
-            }
+            // v4.1.0 (revue A7): ne JAMAIS quitter sur un simple blur —
+            // si hideOnClose est désactivé via le tray, ça coupait les
+            // notifications en arrière-plan. Le wrapper/socket décide.
+            logger.info('browser-window-blur — no auto-quit (v4.1.0)');
         });
 
         app.on("will-quit", (e) => {
@@ -297,7 +299,7 @@ class ProspectMail {
         app.on("window-all-closed", () => {
             // v3.3.28: sync write — the wrapper must see this flag to avoid
             // relaunching the app after a swipe-close (see markCleanExit).
-            markCleanExit();
+            if (!global.restartRequested && !global.skipCleanExitFlag) markCleanExit();
             app.exit(0);
         });
     }
@@ -429,7 +431,8 @@ class ProspectMail {
             logger.warn('Graceful quit took too long — forcing exit');
             app.exit(0);
         }, 3000);
-        if (typeof hardExitTimer.unref === 'function') hardExitTimer.unref();
+        // v4.1.0 (revue A6): pas de unref() — le filet 3 s doit toujours tourner.
+        // if (typeof hardExitTimer.unref === 'function') hardExitTimer.unref();
         app.quit();
     }
 

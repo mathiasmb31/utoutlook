@@ -7,7 +7,10 @@
 # close_command. Un flag évite la double exécution (signal → exit → EXIT trap).
 CLOSE_DONE=0
 trap 'if [ "${CLOSE_DONE}" -eq 0 ]; then CLOSE_DONE=1; close_command; fi' EXIT
-trap 'exit 0' TERM INT HUP
+# v4.1.0 (revue A3): mémoriser que la sortie vient de Lomiri (swipe-close)
+# pour ne pas transformer ce signal en quit propre côté Electron.
+LOMIRI_TERM=0
+trap 'LOMIRI_TERM=1; exit 0' TERM INT HUP
 
 function sleep_int() {
 	# Fallback si le binaire embarqué est absent (ex: pendant une mise à jour,
@@ -26,8 +29,16 @@ function cleanup() {
 	# pidfile != $$ and exits SILENTLY. Otherwise it writes the close flag /
 	# sends the socket quit, which can kill the NEW instance right after its
 	# first launch ("app exits immediately on first start, then relaunches").
+	# v4.1.0: ne jamais écraser le pidfile d'un wrapper PLUS RÉCENT encore
+	# vivant — sinon les deux s'entretuent (revue pré-release, F3).
+	local _pf="${UTOUTLOOK_DATA_DIR}/wrapper.pid" _owner=""
+	[ -f "${_pf}" ] && _owner=$("${WD}"/bin/cat "${_pf}" 2>/dev/null | "${WD}"/bin/tr -d '[:space:]')
+	if [ -n "${_owner}" ] && [ "${_owner}" != "$$" ] && kill -0 "${_owner}" 2>/dev/null; then
+		echo "wrapper $$ périmé (owner=${_owner}) — sortie"
+		exit 0
+	fi
 	mkdir -p "${UTOUTLOOK_DATA_DIR}" 2>/dev/null || true
-	echo $$ > "${UTOUTLOOK_DATA_DIR}/wrapper.pid" 2>/dev/null || true
+	echo $$ > "${_pf}" 2>/dev/null || true
 	# v4.0.11: our client is being killed — reset PID so the exitclient guard
 	# does not mistake a flag written by the dying process for a clean quit.
 	CLIENT_PID=0
@@ -60,7 +71,7 @@ function launch_prospect() {
 		cleanup
 		echo "tried too more " >${exitcommand}
 		utoutlook_write_qml_i18n
-		qmlscene -I "${UTOUTLOOK_CONFIG_DIR}" "${WD}"/qml/nonetwork.qml &
+		qmlscene "${UTOUTLOOK_CONFIG_DIR}"/nonetwork.qml &
 		QML_PID=$!  # v4.0.58: pour que close_command puisse le tuer (pas d'orphelin)
 		wait ${QML_PID} 2>/dev/null || true  # le wrapper reste vivant tant que la page nonetwork est affichée
 		exit 0
@@ -285,8 +296,11 @@ function close_command() {
 	# down is refused with a "please wait" message (the bug happened when the
 	# user tapped the icon before the goodbye notification was sent).
 	echo "closing" > "${UTOUTLOOK_CLOSING}" 2>/dev/null || true
-	# Send quit command via Unix socket (primary method)
-	utoutlook_send_socket_cmd '{"cmd":"quit"}'
+	# v4.1.0 (revue A3): sur swipe-close Lomiri, NE PAS envoyer le quit —
+	# l'app doit seulement masquer sa fenêtre et garder les notifications.
+	if [ "${LOMIRI_TERM:-0}" != "1" ]; then
+		utoutlook_send_socket_cmd '{"cmd":"quit"}'
+	fi
 	# Fallback: write close flag file (picked up by heartbeat)
 	# v4.0.14: embed wrapper PID so the app only honors OUR close flag
 	echo "closed:${UTOUTLOOK_WRAPPER_PID}" >"${UTOUTLOOK_EXITCOMMAND}"
@@ -307,7 +321,7 @@ function close_command() {
 	# socket/flag seuls : si l'app est pendue ou si le wrapper a reçu SIGKILL,
 	# personne ne le tue et il reste orphelin indéfiniment. kill sur notre propre
 	# fils = même label AppArmor, autorisé.
-	if [ -n "${CLIENT_PID}" ] && [ "${CLIENT_PID}" != "0" ] && kill -0 "${CLIENT_PID}" 2>/dev/null; then
+	if [ "${LOMIRI_TERM:-0}" != "1" ] && [ -n "${CLIENT_PID}" ] && [ "${CLIENT_PID}" != "0" ] && kill -0 "${CLIENT_PID}" 2>/dev/null; then
 		# v4.1.0: flag wrapper-quit → vrai quit propre (l'app reapera ses
 		# sous-process Chromium) au lieu d'un hide puis SIGKILL.
 		printf 'quit:%s' "$$" > "${UTOUTLOOK_FORCE_QUIT}" 2>/dev/null || true
@@ -392,7 +406,7 @@ function start_startup_qml() {
 	UTOUTLOOK_STARTUP_LAUNCHING=1
 	utoutlook_set_start_step "${1:-1}"
 	UTOUTLOOK_STARTUP_LAUNCHING=0
-	"${UTOUTLOOK_BIN}/pkill" -9 qmlscene 2>/dev/null || true
+	utoutlook_kill_qmlscene # v4.1.0: préserve STARTUP_QML_PID et RELAUNCH_QML_PID
 	qmlscene "${UTOUTLOOK_STARTUP_QML}" > "${UTOUTLOOK_CONFIG_DIR}/startup-qml.log" 2>&1 &
 	STARTUP_QML_PID=$!
 	echo "startup progress screen shown early (qml pid ${STARTUP_QML_PID})"
@@ -533,7 +547,9 @@ sleep_int 2
 # v4.1.0: l'étape 3 (extinction des anciens process) peut durer ~50 s —
 # on passe à l'étape 4 dès qu'ils sont morts, avant les nettoyages suivants.
 utoutlook_set_start_step 4
-"${WD}"/bin/rm -f ${exitclient} ${killedclient} "${UTOUTLOOK_EXITCOMMAND}" "${UTOUTLOOK_CLOSING}" 2>/dev/null || true
+# v4.1.0: NE PAS supprimer UTOUTLOOK_CLOSING ici — le bloc ci-dessous doit
+# pouvoir le voir (revue pré-release, F4 : code mort).
+"${WD}"/bin/rm -f ${exitclient} ${killedclient} "${UTOUTLOOK_EXITCOMMAND}" 2>/dev/null || true
 cleanup
 "${WD}"/utils/mkdir
 "${WD}"/bin/rm -f "${HOME}/.cache/utoutlook.mathias/quit"
@@ -557,7 +573,7 @@ fi
 # 8s for the flag to disappear; if it never does (ghost), remove it and launch.
 # v4.0.61: a closing flag OLDER than this wrapper's start marker is a ghost
 # (previous wrapper was SIGKILLed before finishing the goodbye) — do NOT wait
-# 15s on it, remove it and launch immediately. Only a FRESH flag (previous
+# 8s on it, remove it and launch immediately. Only a FRESH flag (previous
 # instance still closing right now) triggers the short wait.
 if [ -f "${UTOUTLOOK_CLOSING}" ]; then
 	if utoutlook_flag_fresh "${UTOUTLOOK_CLOSING}"; then
@@ -571,7 +587,7 @@ if [ -f "${UTOUTLOOK_CLOSING}" ]; then
 			_i=$((_i + 1))
 		done
 		if [ -f "${UTOUTLOOK_CLOSING}" ]; then
-			echo "closing flag stuck >15s (ghost) — removing and launching (pid $$)"
+			echo "closing flag stuck >8s (ghost) — removing and launching (pid $$)"
 		else
 			echo "closing finished — launching (pid $$)"
 		fi

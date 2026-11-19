@@ -96,7 +96,7 @@ export class TrayController {
             click: () => this.setLanguage(code),
         }));
         langSubmenu.unshift({
-            label: `${currentLang === 'auto' ? '● ' : '○ '}${t('tray.darkMode.auto')}`,
+            label: `${currentLang === 'auto' ? '● ' : '○ '}${t('tray.language.auto')}`,
             click: () => this.setLanguage('auto'),
         });
 
@@ -311,7 +311,12 @@ export class TrayController {
         // Recreate all account windows with the new frame setting
         global.preventAutoCloseApp = true;
         try {
+            // v4.1.0 (revue B8): fermer les fenêtres PUIS retirer les listeners
+            // des anciens contrôleurs, sinon doublons (ipcMain, screen, cookies).
             this.accountManager.quitAll();
+            for (const ctl of this.accountManager.controllers.values()) {
+                try { ctl.destroy(); } catch (e) { logger.warn('destroy failed:', e.message); }
+            }
             this.accountManager.controllers.clear();
             this.accountManager.init();
         } finally {
@@ -556,6 +561,10 @@ export class TrayController {
     }
 
     cleanupAndQuit() {
-        app.exit(0);
+        // v4.1.0 (revue A2): app.exit(0) contournait cleanupAndExit() —
+        // pas de exitclient, pas de flush des cookies, heartbeat actif →
+        // le wrapper relançait l'app comme après un crash.
+        logger.info('Tray Quit — passing through app.quit() (clean exit)');
+        app.quit();
     }
 }

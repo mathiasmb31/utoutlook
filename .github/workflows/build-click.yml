@@ -24,6 +24,9 @@ on:
 
 jobs:
   build-click:
+    # v4.1.0: respecter la règle — push main uniquement si [click] dans le
+    # message (tags v* et workflow_dispatch restent toujours actifs).
+    if: github.event_name != 'push' || github.ref_type == 'tag' || contains(github.event.head_commit.message, '[click]')
     name: Build Click (arm64)
     runs-on: ubuntu-latest
     timeout-minutes: 30

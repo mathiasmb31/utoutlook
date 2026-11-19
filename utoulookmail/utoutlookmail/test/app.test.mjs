@@ -73,16 +73,31 @@ test('client-injector: caches results', async () => {
 // ============================================================
 
 test('ipc-socket: handleCommand processes quit', async () => {
-    // We test the internal handleCommand via a mock
-    // Since handleCommand is not exported, we test via the public API
+    // v4.1.0 (revue F5): vrai test via une connexion socket — l'ancien test
+    // initialisait quitCalled=false sans jamais l'asserter (faux positif).
+    const net = await import('node:net');
     const {startSocketServer, stopSocketServer} = await import('../src/ipc-socket.mjs');
+    const {SOCKET_PATH} = await import('../src/config.mjs');
     let quitCalled = false;
-    const server = startSocketServer({
-        onQuit: () => { quitCalled = true; },
-    });
-    // Server started, now stop it
-    stopSocketServer();
-    assert.ok(server);
+    const server = startSocketServer({ onQuit: () => { quitCalled = true; } });
+    try {
+        const response = await new Promise((resolve, reject) => {
+            const c = net.createConnection(SOCKET_PATH);
+            let buf = '';
+            const timer = setTimeout(() => { c.destroy(); reject(new Error('socket timeout')); }, 2000);
+            c.on('connect', () => c.write(JSON.stringify({cmd: 'quit'}) + '\n'));
+            c.on('data', (d) => {
+                buf += d.toString();
+                if (buf.includes('\n')) { clearTimeout(timer); c.end(); resolve(buf); }
+            });
+            c.on('error', (e) => { clearTimeout(timer); reject(e); });
+        });
+        assert.ok(response.includes('"ok":true'), 'quit command must be acknowledged');
+        assert.ok(quitCalled, 'onQuit handler must actually be called (v4.1.0)');
+        assert.ok(server);
+    } finally {
+        stopSocketServer();
+    }
 });
 
 // ============================================================
@@ -518,8 +533,8 @@ test('mail-window-controller: CSP script-src includes CDN domains', async () => 
     const cspMatch = content.match(/script-src[^;]+/);
     assert.ok(cspMatch, 'CSP should have script-src directive');
     for (const domain of ['msocdn.com', 'msecnd.net', 'msftauth.net', 'cdn.office.net', 'onecdn.static.microsoft', 'microsoftonline.com']) {
-        assert.ok(content.includes(domain),
-            `CSP constants should include ${domain} (Outlook boot JS served from CDN)`);
+        assert.ok(cspMatch[0].includes('MS_CDN') && content.includes(domain),
+            `script-src must use MS_CDN containing ${domain} (Outlook boot JS served from CDN)`);
     }
 });
 
@@ -571,11 +586,11 @@ test('assets: simplified logo exists for launcher icon', async () => {
     const launcherLogo = path.resolve(__dirname, '../../assets/logo.png');
     assert.ok(fs.existsSync(simpleLogo), 'Simplified logo (logo-simple.png) should exist');
     assert.ok(fs.existsSync(launcherLogo), 'Launcher logo (logo.png) should exist');
-    // Launcher logo should be the simplified version (no circular text)
-    const simpleSize = fs.statSync(simpleLogo).size;
-    const launcherSize = fs.statSync(launcherLogo).size;
-    assert.strictEqual(launcherSize, simpleSize,
-        'Launcher logo should be the simplified version (same as logo-simple.png)');
+    // v4.1.0: comparer le CONTENU, pas seulement la taille (F13).
+    const crypto = await import('node:crypto');
+    const hash = (f) => crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
+    assert.strictEqual(hash(launcherLogo), hash(simpleLogo),
+        'Launcher logo must be byte-identical to the simplified version');
 });
 
 // ============================================================
@@ -827,8 +842,8 @@ test('mail-window-controller: show-notification IPC suppressed when window is vi
         'handleNotification must still be called for background notifications (hotfix #13)');
 
     // The check must be inside the show-notification IPC handler, not global.
-    const ipcStart = content.indexOf('ipcMain.on("show-notification"');
-    const ipcEnd = content.indexOf('ipcMain.on(', ipcStart + 1);
+    const ipcStart = content.indexOf('"show-notification"');
+    const ipcEnd = content.indexOf('this._on(ipcMain,', ipcStart + 1);
     const ipcBody = content.slice(ipcStart, ipcEnd === -1 ? undefined : ipcEnd);
     assert.ok(ipcBody.includes('isVisible()') && ipcBody.includes('isFocused()'),
         'Visibility check must be inside the show-notification IPC handler (hotfix #13)');
@@ -1427,7 +1442,7 @@ test('v3.3.20: section 11b avec ancres réelles du DOM Outlook (aria-label/data-
 test('v3.3.20: CSS/gestures injectés aussi dans les fenêtres secondaires (compose) (v3.3.20)', async () => {
     const fs = await import('node:fs');
     const ctrl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
-    assert.ok(ctrl.includes("app.on('browser-window-created'"),
+    assert.ok(ctrl.includes("this._on(app, 'browser-window-created'"),
         'must listen to browser-window-created to style secondary windows (compose) (v3.3.20)');
     assert.ok(ctrl.includes('async injectStyles(targetWin = null)'),
         'injectStyles must accept a target window (v3.3.20)');
@@ -1440,11 +1455,11 @@ test('v3.3.21: notif du nb de non lus même quand la boîte est ouverte + alerte
     const ctrl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
 
     // 1. updateUnread notifie le count même si la fenêtre est visible
-    const upd = ctrl.slice(ctrl.indexOf('ipcMain.on("updateUnread"'), ctrl.indexOf('ipcMain.on("show-notification"'));
+    const upd = ctrl.slice(ctrl.indexOf('this._on(ipcMain, "updateUnread"'), ctrl.indexOf('this._on(ipcMain, "show-notification"'));
     assert.ok(upd.includes('lastNotifiedUnread') && upd.includes('notif.newMessages.body'),
         'updateUnread must notify the unread count even when the window is visible (v3.3.21)');
     // 2. urgent bypass la suppression foreground
-    const notif = ctrl.slice(ctrl.indexOf('ipcMain.on("show-notification"'));
+    const notif = ctrl.slice(ctrl.indexOf('this._on(ipcMain, "show-notification"'));
     assert.ok(notif.includes('!urgent && this.win.isVisible()'),
         'urgent notifications must bypass the foreground suppression (v3.3.21)');
     // 3. plus de thèmes injectés (dark/focus/accent)
@@ -1691,10 +1706,10 @@ test('v3.3.30: démarrage rapide + wrapper périmé silencieux (pas de kill du n
     // cleanup: pid is recorded BEFORE kill_stale_wrappers so the stale wrapper
     // sees it is no longer the owner
     const cu = cmd.slice(cmd.indexOf('function cleanup()'), cmd.indexOf('function launch_prospect'));
-    const pidPos = cu.indexOf('echo $$ > "${UTOUTLOOK_DATA_DIR}/wrapper.pid"');
+    const pidPos = cu.indexOf('echo $$ > "${_pf}"');
     const kswPos = cu.indexOf('utoutlook_kill_stale_wrappers');
     assert.ok(pidPos !== -1 && kswPos !== -1 && pidPos < kswPos,
-        'cleanup must write wrapper.pid BEFORE kill_stale_wrappers (v3.3.30)');
+        'cleanup must claim/verify wrapper.pid BEFORE kill_stale_wrappers (v3.3.30/v4.1.0)');
 });
 
 test('v4.0.10: upgrade depuis une version < 3.0 — plus de démarrage bloqué sur le splash', async () => {
@@ -1753,7 +1768,7 @@ test('v3.3.45: retour au Wayland natif (Lomiri) — plus de forçage X11, le cla
 test('v3.3.32: repaint forcé au réveil (veille → écran blanc en X11) + pas de background throttling', async () => {
     const fs = await import('node:fs');
     const m = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
-    assert.ok(m.includes('powerMonitor') && m.includes("powerMonitor.on('resume'"),
+    assert.ok(m.includes('powerMonitor') && m.includes("this._on(powerMonitor, 'resume'"),
         'must listen to powerMonitor resume (v3.3.32)');
     assert.ok(m.includes('webContents.invalidate()'),
         'must call webContents.invalidate() to force repaint after wake (v3.3.32)');
@@ -1786,7 +1801,8 @@ test('v3.3.50: badge logo + « Made for Ubtouch » injecté sur la page de login
     assert.ok(i18n.includes("'login.madeFor'"),
         'i18n.mjs must define login.madeFor (v3.3.50)');
     for (const lang of ['fr','en','es','de','it','pt','zh','ar']) {
-        assert.ok(new RegExp("'login.madeFor'[\\s\\S]*?" + lang + ":").test(i18n),
+        const block = i18n.slice(i18n.indexOf("'login.madeFor'"), i18n.indexOf("'login.madeFor'") + 400);
+        assert.ok(block.includes(lang + ':'),
             `login.madeFor must exist for ${lang} (v3.3.50)`);
     }
 });
@@ -1907,7 +1923,7 @@ test('v4.0.95: bouton « Recharger les messages » injecté, câblé IPC et i18n
         'preload must send the reload-messages IPC (v4.0.95)');
 
     // Le contrôleur écoute le canal, injecte le bouton et recharge réellement.
-    assert.ok(controller.includes('ipcMain.on("reload-messages"'),
+    assert.ok(controller.includes('this._on(ipcMain, "reload-messages"'),
         'main process must handle reload-messages (v4.0.95)');
     assert.ok(controller.includes('injectReloadButton'),
         'controller must inject the reload button (v4.0.95)');
@@ -2180,8 +2196,9 @@ test('v4.0.126: splash QML dès la 1re ligne du wrapper + étape i18n', async ()
     }
     assert.ok(common.includes('msg="${msg//%N/${n}}"'),
         'step number must be replaced with a bash builtin, not sed (v4.0.126)');
-    assert.ok(common.includes('if utoutlook_startup_qml_alive; then return 0; fi'),
-        'cleanup must preserve our early splash window (v4.0.126)');
+    assert.ok(common.includes('utoutlook_startup_qml_alive()') &&
+              cmd.includes('if utoutlook_startup_qml_alive; then'),
+        'wrapper must preserve our early splash window (v4.0.126)');
 
     // v4.1.0: AppArmor refuse au qmlscene la lecture d'un .qml dans /tmp —
     // la barre doit être AUTONOME (aucun fichier externe) sous peine de
@@ -2258,9 +2275,11 @@ test('v4.0.128: écran de secours QML rendu logiciel / OpenGL sur crash GPU', as
               qml.includes('Qt.exit(10)') && qml.includes('Qt.exit(11)') &&
               qml.includes('requestActivate()'),
         'rescue buttons must log + exit with distinct codes and activate window (v4.1.0)');
-    assert.ok(cmd.includes('while [ ${i} -lt 30 ]') && cmd.includes('rc=$?') &&
-              cmd.includes('[ "${rc}" -eq 11 ]') && cmd.includes('[ "${rc}" -eq 10 ]'),
-        'wrapper must wait 30s and read the exit code as a fallback (v4.1.0)');
+    const rescueStart = cmd.indexOf('function show_render_rescue()');
+    const rescueBody = cmd.slice(rescueStart, cmd.indexOf('###init', rescueStart));
+    assert.ok(rescueBody.includes('while [ ${i} -lt 30 ]') && rescueBody.includes('rc=$?') &&
+              rescueBody.includes('[ "${rc}" -eq 11 ]') && rescueBody.includes('[ "${rc}" -eq 10 ]'),
+        'show_render_rescue must wait 30s and read the exit code as a fallback (v4.1.0)');
     assert.ok(!qml.includes('/tmp/utoutlook-qml-i18n.js'),
         'rescue screen must NOT import a /tmp JS file — AppArmor denies it (v4.1.0)');
     assert.ok(!qml.includes('import QtQuick.Controls'),
@@ -2272,10 +2291,10 @@ test('v4.0.128: écran de secours QML rendu logiciel / OpenGL sur crash GPU', as
     // Le wrapper détecte le crash FRAIS avant de consommer le marqueur.
     assert.ok(common.includes('utoutlook_gpu_crash_is_new()'),
         'wrapper must detect fresh GPU crashes before resolving mode (v4.0.128)');
-    assert.ok(common.includes('var RENDER_TITLE') &&
-              common.includes('var RENDER_SOFTWARE') &&
-              common.includes('var RENDER_OPENGL'),
-        'QML i18n writer must export the rescue labels (v4.0.128)');
+    assert.ok(common.includes("utoutlook_t 'qml.renderRescueTitle'") &&
+              common.includes("utoutlook_t 'qml.renderSoftware'") &&
+              common.includes("utoutlook_t 'qml.renderOpengl'"),
+        'rescue labels must come from the i18n catalog (v4.1.0)');
     for (const needle of ['UToutlook hit a graphics problem', 'UToutlook tuvo un problema gráfico',
                           'UToutlook hatte ein Grafikproblem', 'UToutlook ha riscontrato un problema grafico',
                           'O UToutlook teve um problema gráfico', 'UToutlook 遇到图形问题',
@@ -2310,7 +2329,7 @@ test('v4.1.0: crédit « Inspired from Julien Alarcon » + liens réels du proje
               pkg.repository.url.includes('mathiasmb31/utoutlook'),
         'package.json links must point to the utoutlook project (v4.1.0)');
     assert.ok(readme.includes('Inspired from Julien Alarcon') &&
-              readme.includes('https://github.com/mathiasmb31/utoutlook') &&
+              readme.includes('./build-deploy.sh') &&
               about.includes('Inspired from Julien Alarcon'),
         'README/about credit and links must be updated (v4.1.0)');
     assert.ok(!/julian[-\s]?alarcon/i.test(readme + about + JSON.stringify(pkg)),
@@ -2384,15 +2403,16 @@ test('v4.1.0: icône — WM_CLASS alignée sur le click + démarrage en 6 étape
 
     // i18n QML : plus de fichier dans /tmp (AppArmor) — import par nom
     // résolu via l'option -I passée à qmlscene.
-    assert.ok(common.includes('local f="${UTOUTLOOK_CONFIG_DIR}/utoutlook-qml-i18n.js"'),
-        'QML i18n must be written in the app config dir, not /tmp (v4.1.0)');
+    assert.ok(common.includes('utoutlook_write_error_qmls()') &&
+              common.includes('${UTOUTLOOK_CONFIG_DIR}/nonetwork.qml'),
+        'QML screens must be generated in the app config dir (v4.1.0)');
     assert.ok(!fs.readFileSync(path.resolve(__dirname, '../../qml/nonetwork.qml'), 'utf-8')
               .includes('/tmp/utoutlook-qml-i18n.js') &&
               !fs.readFileSync(path.resolve(__dirname, '../../qml/exit.qml'), 'utf-8')
               .includes('/tmp/utoutlook-qml-i18n.js'),
         'QML screens must import i18n by name (v4.1.0)');
-    assert.ok((cmd.match(/qmlscene -I "\$\{UTOUTLOOK_CONFIG_DIR\}"/g) || []).length >= 2,
-        'wrapper must pass the config dir as QML import path (v4.1.0)');
+    assert.ok(cmd.includes('qmlscene "${UTOUTLOOK_CONFIG_DIR}"/nonetwork.qml'),
+        'wrapper must launch the generated nonetwork QML (v4.1.0)');
 
     // Démarrage long : attentes réduites (notification/flag de fermeture).
     assert.ok(cmd.includes('utoutlook_wait_notifications 6') &&
@@ -2409,7 +2429,7 @@ test('v4.1.0: icône — WM_CLASS alignée sur le click + démarrage en 6 étape
     assert.ok(ctl.includes('resurfaceWindow(stealFocus = false)') &&
               ctl.includes('setAlwaysOnTop(true)') && ctl.includes('webContents.invalidate()'),
         'controller must re-surface the Mir window without hide() (v4.1.0)');
-    assert.ok(ctl.includes("powerMonitor.on('unlock-screen'") &&
+    assert.ok(ctl.includes("this._on(powerMonitor, 'unlock-screen'") &&
               ctl.includes('surfaceHealthPoll = setInterval'),
         'unlock-screen + periodic re-surface must be wired (v4.1.0)');
     assert.ok(main.includes('this.mailController.resurfaceWindow(true);'),
@@ -2454,4 +2474,54 @@ test('v4.0.125: bouton Quitter — cleanupAndExit plus court-circuité (app viva
         'hideOnClose must still apply outside a quit (v4.0.125)');
     assert.ok(close.includes('!global.utoutlookQuitting'),
         'close handler must skip hideOnClose during a real quit (v4.0.125)');
+});
+
+test('v4.1.0 (revue): outillage release et garde-fous', async () => {
+    const fs = await import('node:fs');
+    const root = path.resolve(__dirname, '../../..');
+    const watch = fs.readFileSync(path.resolve(root, 'watch-log.sh'), 'utf-8');
+    const menu = fs.readFileSync(path.resolve(root, 'menu.sh'), 'utf-8');
+    const store = fs.readFileSync(path.resolve(root, 'openstore-prepare.sh'), 'utf-8');
+    const hook = fs.readFileSync(path.resolve(root, 'githooks/pre-push'), 'utf-8');
+
+    assert.ok(watch.includes('adb devices') && watch.includes('appareil verrouillé'),
+        'watch-log must check the device and explain locked-device failures');
+    assert.ok(menu.includes('-maxdepth 4'), 'menu must detect version in subfolders');
+    assert.ok(store.includes('UPLOAD_OK') && store.includes('"OK"'),
+        'OpenStore upload must require the explicit OK argument');
+    assert.ok(hook.includes('--not --remotes') && !hook.includes('--not --all'),
+        'pre-push must inspect new-branch objects (F16)');
+});
+
+test('v4.1.0: QML générés (étape/erreurs) — pas de modèle testé à la place', async () => {
+    const fs = await import('node:fs');
+    const common = fs.readFileSync(path.resolve(__dirname, '../../utils/common.sh'), 'utf-8');
+    assert.ok(common.includes('utoutlook_write_startup_qml()') &&
+              common.includes('text: "%s"') &&
+              common.includes('NumberAnimation'),
+        'startup QML generator must embed the step label and the animation');
+    assert.ok(common.includes('utoutlook_write_error_qmls()') &&
+              common.includes('QmlI18n.NO_NETWORK/${repl}') &&
+              common.includes('QmlI18n.EXIT_TIMEOUT/${repl}'),
+        'error QML generators must inline translated labels (F11)');
+    assert.ok(common.includes('source: \\"${WD}/qml/no-network-icon.png\\"') &&
+              common.includes('source: \\"${WD}/qml/exit.jpg\\"'),
+        'generated QML must use absolute image paths inside the click');
+});
+
+test('v4.1.0 (revue B8): destroy() retire les listeners à la recréation', async () => {
+    const fs = await import('node:fs');
+    const ctrl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    const tray = fs.readFileSync(path.resolve(__dirname, '../src/controller/tray-controller.mjs'), 'utf-8');
+    assert.ok(ctrl.includes('_on(target, event, handler)') &&
+              ctrl.includes('removeListener(event, handler)'),
+        'controller must track and remove its listeners');
+    assert.ok(ctrl.includes('destroy()') && ctrl.includes('ipcMain.removeHandler(channel)') &&
+              ctrl.includes('ipcMain.removeAllListeners(channel)'),
+        'destroy() must clear IPC handlers as well');
+    assert.ok(tray.includes('ctl.destroy()') && tray.indexOf('quitAll()') < tray.indexOf('ctl.destroy()'),
+        'toggleWindowFrame must close windows then destroy controllers (v4.1.0)');
+    assert.ok(ctrl.includes("this._on(app, 'browser-window-created'") &&
+              ctrl.includes("this._on(powerMonitor, 'unlock-screen'"),
+        'app/powerMonitor/screen listeners must be registered through _on');
 });
