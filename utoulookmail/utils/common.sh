@@ -168,6 +168,40 @@ utoutlook_t() {
 				ar) echo "تم تفعيل العرض البرمجي بعد خطأ رسومي" ;;
 				*)  echo "Rendu logiciel activé après un crash graphique" ;;
 			esac ;;
+		# v4.0.128: écran de secours affiché sur la splash après un crash GPU.
+		"qml.renderRescueTitle")
+			case "${lang}" in
+				en) echo "UToutlook hit a graphics problem" ;;
+				es) echo "UToutlook tuvo un problema gráfico" ;;
+				de) echo "UToutlook hatte ein Grafikproblem" ;;
+				it) echo "UToutlook ha riscontrato un problema grafico" ;;
+				pt) echo "O UToutlook teve um problema gráfico" ;;
+				zh) echo "UToutlook 遇到图形问题" ;;
+				ar) echo "واجه UToutlook مشكلة رسومية" ;;
+				*)  echo "UToutlook a rencontré un problème graphique" ;;
+			esac ;;
+		"qml.renderSoftware")
+			case "${lang}" in
+				en) echo "Use software rendering" ;;
+				es) echo "Usar renderizado por software" ;;
+				de) echo "Software-Rendering verwenden" ;;
+				it) echo "Usa il rendering software" ;;
+				pt) echo "Usar renderização por software" ;;
+				zh) echo "使用软件渲染" ;;
+				ar) echo "استخدم العرض البرمجي" ;;
+				*)  echo "Utiliser le rendu logiciel" ;;
+			esac ;;
+		"qml.renderOpengl")
+			case "${lang}" in
+				en) echo "Use OpenGL rendering" ;;
+				es) echo "Usar renderizado OpenGL" ;;
+				de) echo "OpenGL-Rendering verwenden" ;;
+				it) echo "Usa il rendering OpenGL" ;;
+				pt) echo "Usar renderização OpenGL" ;;
+				zh) echo "使用 OpenGL 渲染" ;;
+				ar) echo "استخدم عرض OpenGL" ;;
+				*)  echo "Utiliser le rendu OpenGL" ;;
+			esac ;;
 		# --- QML screens (v3.3.65: passed to qmlscene via /tmp JS file) ---
 		"qml.noNetwork")
 			case "${lang}" in
@@ -230,6 +264,10 @@ utoutlook_write_qml_i18n() {
 		echo "var NO_NETWORK = \"$(utoutlook_t 'qml.noNetwork' | sed 's/\\/\\\\/g; s/"/\\"/g')\";"
 		echo "var EXIT_TIMEOUT = \"$(utoutlook_t 'qml.exitTimeout' | sed 's/\\/\\\\/g; s/"/\\"/g')\";"
 		echo "var RELAUNCH = \"$(utoutlook_t 'qml.relaunch' | sed 's/\\/\\\\/g; s/"/\\"/g')\";"
+		# v4.0.128: libellés de l'écran de secours rendu logiciel / OpenGL
+		echo "var RENDER_TITLE = \"$(utoutlook_t 'qml.renderRescueTitle' | sed 's/\\/\\\\/g; s/"/\\"/g')\";"
+		echo "var RENDER_SOFTWARE = \"$(utoutlook_t 'qml.renderSoftware' | sed 's/\\/\\\\/g; s/"/\\"/g')\";"
+		echo "var RENDER_OPENGL = \"$(utoutlook_t 'qml.renderOpengl' | sed 's/\\/\\\\/g; s/"/\\"/g')\";"
 	} > "${f}" 2>/dev/null || true
 }
 
@@ -314,6 +352,25 @@ utoutlook_resolve_render_mode() {
 	else
 		echo "hardware"
 	fi
+}
+
+# v4.0.128: vrai si un crash GPU a été AJOUTÉ depuis le dernier lancement.
+# Appelé AVANT utoutlook_resolve_render_mode() (qui consomme le marqueur)
+# pour décider d'afficher l'écran de secours QML.
+utoutlook_gpu_crash_is_new() {
+	local last seen
+	last=$("${UTOUTLOOK_BIN}/grep" -an -E "GPU process isn't usable|error_code=1002" \
+		"${UTOUTLOOK_CONFIG_DIR}/wrapper.log" 2>/dev/null | \
+		"${UTOUTLOOK_BIN}/awk" -F: 'END {print $1}')
+	[ -n "${last}" ] || return 1
+	if [ -f "${UTOUTLOOK_GPU_CRASH_MARKER}" ]; then
+		seen=$("${UTOUTLOOK_BIN}/cat" "${UTOUTLOOK_GPU_CRASH_MARKER}" 2>/dev/null | \
+			"${UTOUTLOOK_BIN}/tr" -d '[:space:]')
+		[ -n "${seen}" ] || seen=0
+	else
+		seen=${last}
+	fi
+	[ "${last}" -gt "${seen}" ] 2>/dev/null
 }
 
 # ============================================================
