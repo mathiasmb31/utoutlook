@@ -598,10 +598,15 @@ const T = {
         zh: 'Human made, vibe verified', ar: 'Human made, vibe verified',
     },
     'about.basedOn': {
-        fr: 'Basé sur Prospect Mail (MIT) adapté pour UBports', en: 'Based on Prospect Mail (MIT) adapted for UBports',
-        es: 'Basado en Prospect Mail (MIT) adaptado para UBports', de: 'Basierend auf Prospect Mail (MIT) für UBports angepasst',
-        it: 'Basato su Prospect Mail (MIT) adattato per UBports', pt: 'Baseado no Prospect Mail (MIT) adaptado para UBports',
-        zh: '基于 Prospect Mail (MIT) 适配 UBports', ar: 'مبني على Prospect Mail (MIT) معدّل لـ UBports',
+        // v4.1.0: crédit corrigé — inspiration, pas paternité (8 langues).
+        fr: 'Inspiré de Julien Alarcon — basé sur Prospect Mail (MIT) adapté pour UBports',
+        en: 'Inspired from Julien Alarcon — based on Prospect Mail (MIT) adapted for UBports',
+        es: 'Inspirado en Julien Alarcon — basado en Prospect Mail (MIT) adaptado para UBports',
+        de: 'Inspiriert von Julien Alarcon — basierend auf Prospect Mail (MIT) für UBports angepasst',
+        it: 'Ispirato a Julien Alarcon — basato su Prospect Mail (MIT) adattato per UBports',
+        pt: 'Inspirado em Julien Alarcon — baseado no Prospect Mail (MIT) adaptado para UBports',
+        zh: '灵感来自 Julien Alarcon — 基于 Prospect Mail (MIT) 适配 UBports',
+        ar: 'مستوحى من Julien Alarcon — مبني على Prospect Mail (MIT) معدّل لـ UBports',
     },
     'about.reportIssue': {
         fr: 'Signaler un problème', en: 'Report an issue', es: 'Informar de un problema',

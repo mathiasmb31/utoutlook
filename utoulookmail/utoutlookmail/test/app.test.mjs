@@ -2265,6 +2265,36 @@ test('v4.0.128: écran de secours QML rendu logiciel / OpenGL sur crash GPU', as
         'wrapper must restore the progress bar after the rescue screen (v4.0.128)');
 });
 
+test('v4.1.0: crédit « Inspired from Julien Alarcon » + liens réels du projet', async () => {
+    const fs = await import('node:fs');
+    const root = path.resolve(__dirname, '../../..');
+    const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf-8'));
+    const i18n = fs.readFileSync(path.resolve(__dirname, '../src/i18n.mjs'), 'utf-8');
+    const readme = fs.readFileSync(path.resolve(root, 'README.md'), 'utf-8');
+    const about = fs.readFileSync(path.resolve(__dirname, '../../patches/about.html'), 'utf-8');
+
+    assert.strictEqual(pkg.author.name, 'Inspired from Julien Alarcon',
+        'author credit must say inspired, not authored (v4.1.0)');
+    assert.strictEqual(pkg.build.appId, 'io.github.mathiasmb31.utoutlook',
+        'Electron appId must point to the real project (v4.1.0)');
+    assert.ok(pkg.homepage === 'https://github.com/mathiasmb31/utoutlook' &&
+              pkg.bugs.url === 'https://github.com/mathiasmb31/utoutlook/issues' &&
+              pkg.repository.url.includes('mathiasmb31/utoutlook'),
+        'package.json links must point to the utoutlook project (v4.1.0)');
+    assert.ok(readme.includes('Inspired from Julien Alarcon') &&
+              readme.includes('https://github.com/mathiasmb31/utoutlook') &&
+              about.includes('Inspired from Julien Alarcon'),
+        'README/about credit and links must be updated (v4.1.0)');
+    assert.ok(!/julian[-\s]?alarcon/i.test(readme + about + JSON.stringify(pkg)),
+        'no stale upstream credit or link may remain (v4.1.0)');
+    for (const needle of ['Inspiré de Julien Alarcon', 'Inspired from Julien Alarcon',
+                          'Inspirado en Julien Alarcon', 'Inspiriert von Julien Alarcon',
+                          'Ispirato a Julien Alarcon', 'Inspirado em Julien Alarcon',
+                          '灵感来自 Julien Alarcon', 'مستوحى من Julien Alarcon']) {
+        assert.ok(i18n.includes(needle), `missing about credit translation: ${needle} (v4.1.0)`);
+    }
+});
+
 test('v4.0.125: bouton Quitter — cleanupAndExit plus court-circuité (app vivante mais invisible)', async () => {
     const fs = await import('node:fs');
     const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
