@@ -10,4 +10,4 @@ X-Ubuntu-XMir-Enable=true
 # v4.1.0: associe la fenêtre Electron à cette app (sinon Lomiri affiche
 # une icône jaune « ? » et « application inconnue » après un redémarrage
 # lancé par le wrapper plutôt que par le launcher).
-StartupWMClass=utoutlook.mathias_utoutlook_4.1.0
+StartupWMClass=utoutlook.mathias_utoutlook_4.2.0
