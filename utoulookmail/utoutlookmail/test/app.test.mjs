@@ -2375,6 +2375,16 @@ test('v4.1.0: icône — WM_CLASS alignée sur le click + démarrage en 6 étape
         'QML screens must import i18n by name (v4.1.0)');
     assert.ok((cmd.match(/qmlscene -I "\$\{UTOUTLOOK_CONFIG_DIR\}"/g) || []).length >= 2,
         'wrapper must pass the config dir as QML import path (v4.1.0)');
+
+    // Démarrage long : attentes réduites (notification/flag de fermeture).
+    assert.ok(cmd.includes('utoutlook_wait_notifications 6') &&
+              !cmd.includes('utoutlook_wait_notifications 15'),
+        'notification wait must be shortened to 6s (v4.1.0)');
+    assert.ok(cmd.includes('while [ ${_i} -lt 4 ]') && cmd.includes('sleep_int 2'),
+        'closing-flag wait must be 4x2s instead of 5x3s (v4.1.0)');
+    assert.ok(fs.readFileSync(path.resolve(__dirname, '../../utils/mkdir.c'), 'utf-8')
+              .includes('errno != EEXIST'),
+        'mkdir must treat EEXIST as success (no log noise) (v4.1.0)');
 });
 
 test('v4.0.125: bouton Quitter — cleanupAndExit plus court-circuité (app vivante mais invisible)', async () => {
