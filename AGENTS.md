@@ -81,9 +81,9 @@ a provoqué OOM + figeage total le 2026-11-04.
 - Surcharge ponctuelle possible (`./build-fast.sh N`, `make jobs=N`) en surveillant `free -h`
 
 
-## Identité d'app Ubuntu Touch (OBLIGATOIRE — règle Mathias, 2026-11-19, TOUTES apps)
+## Icône jaune / app inconnue Ubuntu Touch (OBLIGATOIRE — règle Mathias, 2026-11-19, TOUTES apps)
 
-**Ne PAS personnaliser l'identité de la fenêtre** : ni `--class`, ni `StartupWMClass`, ni `app.setDesktopName("<id d'app>")` (la valeur historique `"UToutlookmail"` est conservée, c'est une chaîne libre). Ces 3 réglages ajoutés en v4.1.0 ont créé l'icône jaune `unknown.qtmir` ; retour à l'état v4.0.98 en v4.2.3. Watchdog préservé (lancement en `&`, pas `exec`). Voir `base-de-connaissances/ubuntu-touch-commun.md` §2.14 et fiche addendum 22:15.
+**Ne jamais créer de fenêtre QML/QMLScene séparée** (splash, barre de progression) dans une app click : Lomiri la voit comme une app inconnue (`unknown.qtmir` → icône jaune, double icône, splash bloqué, fermetures forcées). Utiliser le splash natif ou afficher le progrès dans la fenêtre principale. Vérifier avec `gdbus introspect --dest com.lomiri.Shell --object-path /com/lomiri/Shell/Launcher --xml | grep unknown_2Eqtmir`. Détails : `base-de-connaissances/ubuntu-touch-commun.md` §2.14 et fiche addendum 23:10.
 
 ## Build manuel (OBLIGATOIRE — règle Mathias, 2026-11-17)
 
