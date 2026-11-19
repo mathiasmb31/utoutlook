@@ -3303,23 +3303,28 @@ class MailWindowController {
                 }
             }, 150);
         } catch (e) { /* ignore */ }
-        // v4.1.0 (fix login invisible): constaté sur device pendant la saisie du
-        // login — après un blur, Lomiri/Mir retire la surface mais isVisible()
-        // reste true et show() est un no-op : le pulse alwaysOnTop + invalidate
-        // seuls ne la réintègrent pas. Un changement de géométrie RÉEL force
-        // XWayland/Mir à re-mapper la surface. +1 px puis restauration (pas de
-        // hide() : crash GPU FATAL sur UT, voir v4.0.39).
+        // v4.1.8 (fix récidive 19/11 : surface perdue que le +1px ne ramène pas) :
+        // constaté sur device — après un blur, Lomiri/Mir retire la surface mais
+        // isVisible() reste true, show() est un no-op, et le pulse alwaysOnTop +
+        // invalidate + nudge +1px ne la réintègrent PAS. On force un VRAI
+        // unmap/remap en déplaçant la fenêtre HORS ÉCRAN puis en la restaurant :
+        // c'est un changement de géométrie que le window manager (Mir) ne peut
+        // pas ignorer. PAS de hide() (crash GPU FATAL, v4.0.39) ni de minimize()
+        // (intercepts hideOnMinimize → hide). Le déplacement est restauré après
+        // 250 ms ; garde `_resurfaceNudgePending` pour éviter les chevauchements.
         if (!this._resurfaceNudgePending) {
             this._resurfaceNudgePending = true;
             try {
                 const b = this.win.getBounds();
-                this.win.setBounds({ ...b, width: b.width + 1, height: b.height + 1 });
+                // Décalage horizontal réel (40 px) : suffisant pour que Mir
+                // re-map la surface, sans sortir du écran au point de la perdre.
+                this.win.setBounds({ ...b, x: b.x + 40 });
                 setTimeout(() => {
-                    this._resurfaceNudgePending = false;
                     if (this.alive && this.win && !this.win.isDestroyed()) {
                         try { this.win.setBounds(b); } catch (e) { /* ignore */ }
                     }
-                }, 200);
+                    this._resurfaceNudgePending = false;
+                }, 250);
             } catch (e) {
                 this._resurfaceNudgePending = false;
             }
