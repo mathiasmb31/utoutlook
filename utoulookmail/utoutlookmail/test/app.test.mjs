@@ -2241,8 +2241,12 @@ test('v4.0.128: écran de secours QML rendu logiciel / OpenGL sur crash GPU', as
     // Le QML ne peut pas écrire de fichier : il loggue son choix sur stdout.
     assert.ok(qml.includes('UT_RENDER_CHOICE=software') &&
               qml.includes('UT_RENDER_CHOICE=opengl') &&
-              qml.includes('Qt.exit(0)'),
-        'rescue buttons must log their choice then quit (v4.0.128)');
+              qml.includes('Qt.exit(10)') && qml.includes('Qt.exit(11)') &&
+              qml.includes('requestActivate()'),
+        'rescue buttons must log + exit with distinct codes and activate window (v4.1.0)');
+    assert.ok(cmd.includes('while [ ${i} -lt 30 ]') && cmd.includes('rc=$?') &&
+              cmd.includes('[ "${rc}" -eq 11 ]') && cmd.includes('[ "${rc}" -eq 10 ]'),
+        'wrapper must wait 30s and read the exit code as a fallback (v4.1.0)');
     assert.ok(!qml.includes('/tmp/utoutlook-qml-i18n.js'),
         'rescue screen must NOT import a /tmp JS file — AppArmor denies it (v4.1.0)');
     assert.ok(!qml.includes('import QtQuick.Controls'),

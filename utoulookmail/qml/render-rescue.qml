@@ -15,9 +15,10 @@ import QtQuick.Window 2.2
 // QtQuick pur : aucun QtQuick.Controls (ne se rend pas sous qmlscene sur UT).
 Window {
     visible: true
-    flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+    flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowActive
     visibility: Window.FullScreen
     color: "#0f0f1a"
+    Component.onCompleted: requestActivate()
 
     Column {
         anchors.centerIn: parent
@@ -48,7 +49,7 @@ Window {
                 anchors.fill: parent
                 onClicked: {
                     console.log("UT_RENDER_CHOICE=software");
-                    Qt.exit(0);
+                    Qt.exit(10);
                 }
             }
         }
@@ -71,7 +72,7 @@ Window {
                 anchors.fill: parent
                 onClicked: {
                     console.log("UT_RENDER_CHOICE=opengl");
-                    Qt.exit(0);
+                    Qt.exit(11);
                 }
             }
         }

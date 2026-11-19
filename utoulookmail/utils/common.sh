@@ -386,15 +386,21 @@ utoutlook_write_rescue_qml() {
 	opengl=$(utoutlook_t 'qml.renderOpengl')
 	{
 		printf 'import QtQuick 2.9\nimport QtQuick.Window 2.2\n'
-		printf 'Window {\n    visible: true\n    flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint\n    visibility: Window.FullScreen\n    color: "#0f0f1a"\n'
+		printf 'Window {\n    visible: true\n    flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowActive\n    visibility: Window.FullScreen\n    color: "#0f0f1a"\n'
+		# v4.1.0: sous Mir une fenêtre plein écran créée par qmlscene n'a pas
+		# toujours le focus clavier/souris — on la rend active explicitement.
+		printf '    Component.onCompleted: requestActivate()\n'
 		printf '    Column {\n        anchors.centerIn: parent\n        spacing: 28\n'
 		printf '        Text { anchors.horizontalCenter: parent.horizontalCenter; color: "#ffffff"; font.pixelSize: 26; text: "%s" }\n' "${title}"
 		printf '        Rectangle { width: 560; height: 76; radius: 14; color: "#E95420"; anchors.horizontalCenter: parent.horizontalCenter\n'
 		printf '          Text { anchors.centerIn: parent; color: "#ffffff"; font.pixelSize: 22; text: "%s" }\n' "${soft}"
-		printf '          MouseArea { anchors.fill: parent; onClicked: { console.log("UT_RENDER_CHOICE=software"); Qt.exit(0); } }\n        }\n'
+		# Code de sortie distinct EN PLUS du console.log : si le buffer stdout
+		# n'est pas vidé à Qt.exit(), le wrapper sait quand même quel choix
+		# a été fait en lisant $? de wait.
+		printf '          MouseArea { anchors.fill: parent; onClicked: { console.log("UT_RENDER_CHOICE=software"); Qt.exit(10); } }\n        }\n'
 		printf '        Rectangle { width: 560; height: 76; radius: 14; color: "#2a2a3a"; border.color: "#E95420"; border.width: 2; anchors.horizontalCenter: parent.horizontalCenter\n'
 		printf '          Text { anchors.centerIn: parent; color: "#ffffff"; font.pixelSize: 22; text: "%s" }\n' "${opengl}"
-		printf '          MouseArea { anchors.fill: parent; onClicked: { console.log("UT_RENDER_CHOICE=opengl"); Qt.exit(0); } }\n        }\n'
+		printf '          MouseArea { anchors.fill: parent; onClicked: { console.log("UT_RENDER_CHOICE=opengl"); Qt.exit(11); } }\n        }\n'
 		printf '    }\n}\n'
 	} > "${dst}" 2>/dev/null || true
 }

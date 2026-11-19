@@ -400,32 +400,34 @@ function start_startup_qml() {
 
 # v4.0.128: écran de secours rendu logiciel / OpenGL. Affiché uniquement
 # après un crash GPU FRAIS et sans override manuel. Le QML ne peut pas écrire
-# de fichier : il loggue UT_RENDER_CHOICE=... sur stdout puis Qt.exit(0) ;
-# on lit le marqueur dans render-rescue-qml.log. 8 s max, sinon on garde le
-# basculement automatique en logiciel (comportement v4.0.127).
+# de fichier : il loggue UT_RENDER_CHOICE=... sur stdout puis sort avec un
+# code distinct (10=software, 11=opengl) — le code de sortie sert de secours
+# si le buffer stdout n'est pas vidé. v4.1.0: fenêtre activée (focus Mir) et
+# délai porté à 30 s (retour utilisateur : clic pas capté / trop rapide).
 function show_render_rescue() {
 	local log="${UTOUTLOOK_CONFIG_DIR}/render-rescue-qml.log"
-	local qpid i=0
+	local qpid i=0 rc=0
 	utoutlook_write_rescue_qml # v4.1.0: généré dans le dossier de l'app (AppArmor)
 	: > "${log}" 2>/dev/null || true
 	qmlscene "${UTOUTLOOK_CONFIG_DIR}"/render-rescue.qml > "${log}" 2>&1 &
 	qpid=$!
-	while [ ${i} -lt 8 ] && kill -0 "${qpid}" 2>/dev/null; do
+	while [ ${i} -lt 30 ] && kill -0 "${qpid}" 2>/dev/null; do
 		sleep_int 1
 		i=$((i + 1))
 	done
 	if kill -0 "${qpid}" 2>/dev/null; then
 		kill "${qpid}" 2>/dev/null || true
 		wait "${qpid}" 2>/dev/null || true
-		echo "render rescue timeout — keeping automatic software mode"
+		echo "render rescue timeout (30s) — keeping automatic software mode"
 		return
 	fi
-	wait "${qpid}" 2>/dev/null || true
-	if "${UTOUTLOOK_BIN}/grep" -qa 'UT_RENDER_CHOICE=opengl' "${log}" 2>/dev/null; then
+	wait "${qpid}" 2>/dev/null || rc=$?
+	echo "render rescue: qmlscene exit=$rc"
+	if [ "${rc}" -eq 11 ] || "${UTOUTLOOK_BIN}/grep" -qa 'UT_RENDER_CHOICE=opengl' "${log}" 2>/dev/null; then
 		printf 'hardware' > "${UTOUTLOOK_RENDER_MODE_FILE}" 2>/dev/null || true
 		RENDER_MODE="hardware"
 		echo "render rescue: OpenGL chosen"
-	elif "${UTOUTLOOK_BIN}/grep" -qa 'UT_RENDER_CHOICE=software' "${log}" 2>/dev/null; then
+	elif [ "${rc}" -eq 10 ] || "${UTOUTLOOK_BIN}/grep" -qa 'UT_RENDER_CHOICE=software' "${log}" 2>/dev/null; then
 		printf 'software' > "${UTOUTLOOK_RENDER_MODE_FILE}" 2>/dev/null || true
 		RENDER_MODE="software"
 		echo "render rescue: software chosen"
