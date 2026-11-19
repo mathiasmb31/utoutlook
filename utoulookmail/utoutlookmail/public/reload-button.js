@@ -15,13 +15,14 @@
     //   - FIRST_ID   : « Première installation » — wipe complet + notif + relance.
     const UBTOUCH_ID = 'utoutlook-ubtouch-badge';
     const FIRST_ID = 'utoutlook-first-install-btn';
-    // SVG Ubuntu Touch officiel (cercle orange UBports) en data-URI — pas de
-    // fichier aggiuntif, fonctionne sous AppArmor et dans le preload isolé.
+    // v4.1.5: VRAIE cocarde Ubuntu Touch officielle (fond orange #E95420 +
+    // les 3 pastilles/arcs blancs), extraite du logo Wikimedia "Ubuntu touch
+    // logo 2025 dark.svg" — pas une approximation. Cadrée sur le carré 73x73.
+    // En data-URI : pas de fichier aggiuntif, marche sous AppArmor.
     const UBTOUCH_SVG = 'data:image/svg+xml;utf8,' + encodeURIComponent(
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
-        '<circle cx="32" cy="32" r="32" fill="#E95420"/>' +
-        '<circle cx="32" cy="32" r="19" fill="none" stroke="#fff" stroke-width="2"/>' +
-        '<circle cx="32" cy="32" r="5" fill="#fff"/>' +
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 73 73">' +
+        '<path fill="#E95420" d="M72.712 0H0v114.48h72.712z"/>' +
+        '<path fill="#fff" d="M16.625 80.772a7.527 7.527 0 1 0 0-15.055 7.527 7.527 0 0 0 0 15.055m31.351-16.506a7.527 7.527 0 1 0 0-15.054 7.527 7.527 0 0 0 0 15.054M33.603 92.62a18.33 18.33 0 0 1-12.501-9.536 10.84 10.84 0 0 1-6.437.79c3.082 7.57 9.62 13.068 17.644 14.788 1.76.378 3.555.56 5.347.55a10.77 10.77 0 0 1-2.204-6.294 18 18 0 0 1-1.846-.3zm12.678 7.567a7.527 7.527 0 1 0 0-15.054 7.527 7.527 0 0 0 0 15.054m10.476-10.291a24.7 24.7 0 0 0 4.782-10.146A24.68 24.68 0 0 0 57.99 61a10.84 10.84 0 0 1-4.233 4.958 18.42 18.42 0 0 1 1.74 12.498 18.4 18.4 0 0 1-2.34 5.833 10.8 10.8 0 0 1 3.602 5.61zM16.044 62.45q.289-.016.573-.015 1.143 0 2.272.243c1.228.263 2.381.727 3.438 1.385a18.37 18.37 0 0 1 14.782-7.907q.048-.856.226-1.695a10.9 10.9 0 0 1 2.058-4.41c-9.468-.75-18.666 4.136-23.351 12.4z"/>' +
         '</svg>'
     );
     // Outlook mail : outlook.live.com/mail, outlook.office.com/mail,
@@ -43,14 +44,17 @@
     // Bouton First install : même gabarit que Recharger (fond sombre, texte orange)
     const BTN_FIRST_STYLE = BTN_STYLE +
         'background:rgba(15,15,26,0.92);color:#E95420;border:1px solid #E95420;min-width:150px;';
-    // v4.1.4: icône « double tap » (chiffre 2 + deux flèches) — même dessin
-    // que le bouton de la page de login, pour une indication cohérente.
+    // v4.1.5: icône « double tap » = DEUX DOIGTS stylisés qui tapent (avec
+    // pastille de contact sous chaque doigt) + chiffre 2. Plus explicite que
+    // les flèches d'avant, qui ressemblaient à une flamme. Même dessin que le
+    // bouton de la page de login.
     const DOUBLE_TAP_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent(
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">' +
-        '<circle cx="12" cy="13" r="9" fill="#E95420"/>' +
-        '<text x="12" y="18" font-family="Arial,sans-serif" font-size="13" font-weight="bold" fill="#fff" text-anchor="middle">2</text>' +
-        '<path d="M7 2 l3 3 -3 3" fill="none" stroke="#E95420" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>' +
-        '<path d="M13 2 l3 3 -3 3" fill="none" stroke="#E95420" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '<rect x="5.5" y="2" width="5" height="11" rx="2.5" fill="#E95420"/>' +
+        '<rect x="13.5" y="2" width="5" height="11" rx="2.5" fill="#E95420"/>' +
+        '<circle cx="8" cy="15.5" r="1.6" fill="#E95420"/>' +
+        '<circle cx="16" cy="15.5" r="1.6" fill="#E95420"/>' +
+        '<text x="12" y="23" font-family="Arial,sans-serif" font-size="9" font-weight="bold" fill="#E95420" text-anchor="middle">2</text>' +
         '</svg>'
     );
     // Badge UBtouch : même hauteur que les autres, carré (logo rond centré),

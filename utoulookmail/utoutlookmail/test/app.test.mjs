@@ -1573,16 +1573,27 @@ test('v4.1.3: barre liste — badge UBtouch décoratif + bouton first-install (i
     }
 });
 
-test('v4.1.4: icône « double tap » explicite sur les deux boutons first-install', async () => {
+test('v4.1.5: cocarde UBtouch officielle + icône deux doigts sur les boutons', async () => {
     const fs = await import('node:fs');
     const gestures = fs.readFileSync(path.resolve(__dirname, '../public/gestures.js'), 'utf-8');
     const btn = fs.readFileSync(path.resolve(__dirname, '../public/reload-button.js'), 'utf-8');
-    // Même dessin dans les deux fichiers : cercle « 2 » + deux flèches de tap.
+    // Nouveau dessin double-tap : DEUX DOIGTS (rects) + pastilles + chiffre 2.
     for (const [name, src] of [['login', gestures], ['liste', btn]]) {
-        assert.ok(src.includes('DOUBLE_TAP_ICON'), `${name}: icône double-tap définie (v4.1.4)`);
-        assert.ok(src.includes('text-anchor="middle">2<'), `${name}: chiffre 2 dans l'icône (v4.1.4)`);
-        assert.ok(src.includes('stroke-linecap="round"'), `${name}: flèches de tap dans l'icône (v4.1.4)`);
+        assert.ok(src.includes('DOUBLE_TAP_ICON'), `${name}: icône double-tap définie (v4.1.5)`);
+        assert.ok((src.match(/<rect x="5\.5"/g) || []).length >= 1 &&
+                  (src.match(/<rect x="13\.5"/g) || []).length >= 1,
+            `${name}: deux doigts stylisés (v4.1.5)`);
+        assert.ok(src.includes('<circle cx="8" cy="15.5"') &&
+                  src.includes('<circle cx="16" cy="15.5"'),
+            `${name}: pastilles de contact sous les doigts (v4.1.5)`);
+        assert.ok(!/stroke-linecap="round"/.test(src.slice(src.indexOf('DOUBLE_TAP_ICON'), src.indexOf('DOUBLE_TAP_ICON') + 600)),
+            `${name}: plus de flèches « flamme » (v4.1.5)`);
     }
+    // VRAIE cocarde Ubuntu Touch officielle (fond orange + path blanc 772 chars).
+    assert.ok(btn.includes('viewBox="0 0 73 73"'), 'cocarde cadrée sur 73x73 (v4.1.5)');
+    assert.ok(btn.includes('M72.712 0H0v114.48h72.712z'), 'fond orange officiel (v4.1.5)');
+    assert.ok(btn.includes('M16.625 80.772'), 'path blanc de la cocarde officielle (v4.1.5)');
+    assert.ok(!/r="19" fill="none" stroke/.test(btn), 'plus de faux cercle approximatif (v4.1.5)');
     // Le texte vit dans un span dédié pour ne pas écraser l'icône.
     assert.ok(gestures.includes("label.className = 'ut-first-label'"),
         'login: span de texte dédié (v4.1.4)');
