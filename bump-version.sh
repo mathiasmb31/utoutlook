@@ -19,6 +19,15 @@ for f in $(find . -maxdepth 4 \( -name manifest.json -o -name package.json \) \
     N=$((N+1))
   fi
 done
+# v4.2.1: synchroniser AUSSI la version RACINE de package-lock.json (les 2
+# premiers champs "version", avant le bloc "dependencies"). Le sed générique
+# ci-dessus ne touche pas le lock (find limite à manifest/package.json) et il
+# ne doit PAS toucher les versions des dépendances.
+for f in $(find . -maxdepth 4 -name package-lock.json \
+             -not -path '*/node_modules/*' -not -path '*/build/*' -not -path '*/dist/*' 2>/dev/null); do
+  sed -i -E "1,12s/(\"version\"[[:space:]]*:[[:space:]]*\")[^\"]+\"/\1$VER\"/" "$f"
+  echo "bump: $f (version racine) -> $VER"
+done
 # v4.1.9: synchroniser AUSSI le StartupWMClass du .desktop avec l'ID versionné
 # (Lomiri résout l'icône via cet ID — voir fiche addendum 19:25).
 DESKTOP="$ROOT/utoulookmail/utoutlook.desktop"
