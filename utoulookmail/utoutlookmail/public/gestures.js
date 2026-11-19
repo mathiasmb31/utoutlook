@@ -202,12 +202,12 @@
     // pastille de contact sous chaque doigt) + chiffre 2 — plus explicite que
     // les flèches d'avant (qui ressemblaient à une flamme). i18n-indépendant.
     const DOUBLE_TAP_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent(
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">' +
-        '<rect x="5.5" y="2" width="5" height="11" rx="2.5" fill="#E95420"/>' +
-        '<rect x="13.5" y="2" width="5" height="11" rx="2.5" fill="#E95420"/>' +
-        '<circle cx="8" cy="15.5" r="1.6" fill="#E95420"/>' +
-        '<circle cx="16" cy="15.5" r="1.6" fill="#E95420"/>' +
-        '<text x="12" y="23" font-family="Arial,sans-serif" font-size="9" font-weight="bold" fill="#E95420" text-anchor="middle">2</text>' +
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28">' +
+        '<rect x="5" y="1" width="6" height="12" rx="3" fill="#E95420"/>' +
+        '<rect x="17" y="1" width="6" height="12" rx="3" fill="#E95420"/>' +
+        '<circle cx="8" cy="15" r="2" fill="#E95420"/>' +
+        '<circle cx="20" cy="15" r="2" fill="#E95420"/>' +
+        '<text x="14" y="27" font-family="Arial,sans-serif" font-size="12" font-weight="bold" fill="#E95420" text-anchor="middle">2</text>' +
         '</svg>'
     );
 
@@ -225,8 +225,8 @@
         const icon = document.createElement('img');
         icon.src = DOUBLE_TAP_ICON;
         icon.alt = '';
-        icon.width = 18; icon.height = 18;
-        icon.style.cssText = 'display:inline-block;width:18px;height:18px;vertical-align:middle;margin-right:6px;';
+        icon.width = 24; icon.height = 24;
+        icon.style.cssText = 'display:inline-block;width:24px;height:24px;vertical-align:middle;margin-right:5px;';
         b.appendChild(icon);
         b.appendChild(label);
         b.setAttribute('aria-label', label.textContent);
