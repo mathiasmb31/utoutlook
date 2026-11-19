@@ -2348,7 +2348,14 @@ class MailWindowController {
             try { this.win.webContents.invalidate(); } catch (e) { /* ignore */ }
         });
         this.win.on("hide", () => logger.info('Window event: hide'));
-        this.win.on("focus", () => logger.info('Window event: focus'));
+        this.win.on("focus", () => {
+            logger.info('Window event: focus');
+            // v4.1.0 (fix login invisible): sur device, un blur pendant la saisie
+            // du login peut faire retirer la surface Mir ; le focus revient côté
+            // X mais la fenêtre reste invisible. Forcer la réintégration ici,
+            // sans voler le focus (le champ garde le focus pour l'OSK Maliit).
+            this.resurfaceWindow(false);
+        });
         this.win.on("blur", () => logger.info('Window event: blur'));
 
         // Hide instead of quit on close
@@ -3245,11 +3252,32 @@ class MailWindowController {
                 }
             }, 150);
         } catch (e) { /* ignore */ }
+        // v4.1.0 (fix login invisible): constaté sur device pendant la saisie du
+        // login — après un blur, Lomiri/Mir retire la surface mais isVisible()
+        // reste true et show() est un no-op : le pulse alwaysOnTop + invalidate
+        // seuls ne la réintègrent pas. Un changement de géométrie RÉEL force
+        // XWayland/Mir à re-mapper la surface. +1 px puis restauration (pas de
+        // hide() : crash GPU FATAL sur UT, voir v4.0.39).
+        if (!this._resurfaceNudgePending) {
+            this._resurfaceNudgePending = true;
+            try {
+                const b = this.win.getBounds();
+                this.win.setBounds({ ...b, width: b.width + 1, height: b.height + 1 });
+                setTimeout(() => {
+                    this._resurfaceNudgePending = false;
+                    if (this.alive && this.win && !this.win.isDestroyed()) {
+                        try { this.win.setBounds(b); } catch (e) { /* ignore */ }
+                    }
+                }, 200);
+            } catch (e) {
+                this._resurfaceNudgePending = false;
+            }
+        }
         try { this.win.webContents.invalidate(); } catch (e) { /* ignore */ }
         if (stealFocus) {
             try { this.win.focus(); } catch (e) { /* ignore */ }
         }
-        logger.info('v4.1.0: window re-surfaced (alwaysOnTop pulse + invalidate)');
+        logger.info('v4.1.0: window re-surfaced (alwaysOnTop pulse + bounds nudge + invalidate)');
     }
 
     /**

@@ -61,6 +61,42 @@ function cleanup() {
 	fi
 }
 
+# v4.1.0: flags GPU recalculés à chaque lancement — le mode peut basculer
+# automatiquement entre deux tentatives (voir flip_render_mode).
+# Electron 44 ne fournit plus libEGL.so/libGLESv2.so : les anciens flags ANGLE
+# font échouer le GPU process (error_code=1002) puis FATAL. Le mode logiciel
+# utilise donc --in-process-gpu + compositing CPU.
+function compute_gpu_options() {
+	local mode="$1"
+	if [ "${mode}" = "software" ]; then
+		gpuoptions="--in-process-gpu --disable-gpu --disable-gpu-compositing --enable-unsafe-swiftshader --disable-features=VaapiVideoDecoder,AcceleratedVideoDecoder"
+	else
+		gpuoptions="--in-process-gpu --disable-features=VaapiVideoDecoder,AcceleratedVideoDecoder"
+	fi
+}
+
+# v4.1.0: après un échec de démarrage (heartbeat jamais écrit ou mort), tenter
+# l'AUTRE mode d'affichage avant d'abandonner, avec un message i18n.
+# Max 2 bascules par session pour éviter la boucle hardware <-> software.
+function flip_render_mode() {
+	if [ "${RENDER_FLIPS:-0}" -ge 2 ]; then
+		echo "auto render fallback skipped (${RENDER_FLIPS} flips this session)"
+		return 1
+	fi
+	local cur new
+	cur=$("${UTOUTLOOK_BIN}/cat" "${UTOUTLOOK_RENDER_MODE_FILE}" 2>/dev/null | "${UTOUTLOOK_BIN}/tr" -d '[:space:]')
+	case "${cur}" in
+		software|on|1) new="hardware" ;;
+		*) new="software" ;;
+	esac
+	printf '%s' "${new}" > "${UTOUTLOOK_RENDER_MODE_FILE}" 2>/dev/null || true
+	RENDER_MODE="${new}"
+	RENDER_FLIPS=$(( ${RENDER_FLIPS:-0} + 1 ))
+	compute_gpu_options "${RENDER_MODE}"
+	echo "auto render fallback: ${cur} -> ${new} (launchtry=${launchtry}, flip ${RENDER_FLIPS}/2)"
+	utoutlook_notify "$(utoutlook_t 'shell.autoFallback')"
+}
+
 function launch_prospect() {
 	# v4.1.0 (revue M2): heartbeat propre après un relaunch.
 	"${WD}"/bin/rm -f "${filelifefollow}" 2>/dev/null || true
@@ -168,10 +204,10 @@ function verify_prospect_life() {
 		# mtime guard le protège, autant ne pas le poser).
 		echo "heartbeat never started — cleaning and relaunching (try ${launchtry})"
 		echo "******" && utoutlook_notify "$(utoutlook_t 'shell.cleaning')"
-		# v4.0.36: watchdog — on retry (launchtry>1) with no heartbeat, the splash
-		# is likely stuck: tell the user to relaunch manually.
+		# v4.1.0: au 2e échec, basculer automatiquement de mode d'affichage
+		# (message i18n) au lieu de demander à l'utilisateur de relancer.
 		if [ "${launchtry}" -gt 1 ]; then
-			utoutlook_notify "$(utoutlook_t 'shell.pleaseRelaunch')"
+			flip_render_mode || utoutlook_notify "$(utoutlook_t 'shell.pleaseRelaunch')"
 		fi
 		stagnantCount=0
 		startupGrace=0
@@ -208,6 +244,10 @@ function verify_prospect_life() {
 			echo ${oldfollow}
 			# v3.3.9: nettoyer puis RELANCER au lieu de quitter (limite launchtry>3).
 			echo "heartbeat dead — cleaning and relaunching (try ${launchtry})"
+			# v4.1.0: même bascule automatique sur heartbeat mort (hors quit propre).
+			if [ "${launchtry}" -gt 1 ]; then
+				flip_render_mode || true
+			fi
 			# v4.0.91: si l'app a quitté pour un changement d'orientation (flag
 			# frais), afficher une roue plein écran pendant la relance — elle est
 			# tuée dès que le nouvel app répond sur le socket (voir boucle while).
@@ -470,6 +510,7 @@ utoutlook_set_start_step 2
 test_net
 utoutlook_set_start_step 3
 export launchtry=1
+RENDER_FLIPS=0  # v4.1.0: max 2 bascules auto par session
 
 oldfollow="0"
 startupGrace=0
@@ -724,8 +765,8 @@ if [ ${GPU_CRASH_NEW} -eq 1 ]; then
 	utoutlook_set_start_step 5
 fi
 
+compute_gpu_options "${RENDER_MODE}"
 if [ "${RENDER_MODE}" = "software" ]; then
-	gpuoptions="--disable-gpu --disable-gpu-compositing --use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader --disable-features=VaapiVideoDecoder,AcceleratedVideoDecoder"
 	echo "software rendering enabled (render-mode=${RENDER_MODE})"
 	utoutlook_notify "$(utoutlook_t 'shell.softwareMode')"
 else
