@@ -16,11 +16,24 @@ if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
   exit 0
 fi
 
-DEV="57606579"
+DEV="${DEVICE:-${ADB_SERIAL:-57606579}}"
 LOG="/home/phablet/.config/utoutlook.mathias/wrapper.log"
 FILTER="${1:-}"
 
-echo "Watch $LOG (Ctrl+C pour quitter)..."
+# v4.1.0: garde-fou — sur UT, /home/phablet est chiffré. Après un reboot
+# non déverrouillé, adb voit le dossier mais pas son contenu (ENOKEY), ce
+# qui donnait "Required key not available" à l'install et un watch muet.
+if ! adb devices 2>/dev/null | grep -q "^${DEV}[[:space:]]*device"; then
+  echo "ERREUR: device $DEV non connecté (adb devices)" >&2
+  exit 1
+fi
+if ! adb -s "$DEV" shell "test -f '$LOG'" 2>/dev/null; then
+  echo "ERREUR: $LOG illisible sur le device $DEV — appareil verrouillé après reboot ?" >&2
+  echo "  Déverrouillez le téléphone (PIN/mot de passe) puis relancez." >&2
+  exit 1
+fi
+
+echo "Watch $LOG sur $DEV via adb (Ctrl+C pour quitter)..."
 case "$FILTER" in
   error)  adb -s $DEV shell "tail -f $LOG" | grep -v FOLLOW | grep -iE "error|fatal|csp|violates|uncaught|431|too long" ;;
   loop)   adb -s $DEV shell "tail -f $LOG" | grep -v FOLLOW | grep -iE "loop|resync|reload|post.srf|saut|v4.0" ;;
