@@ -187,6 +187,11 @@ const T = {
         fr: 'Mode sombre', en: 'Dark mode', es: 'Modo oscuro', de: 'Dunkelmodus',
         it: 'Modalità scura', pt: 'Modo escuro', zh: '深色模式', ar: 'الوضع الداكن',
     },
+    'tray.language.auto': {
+        fr: 'Auto (système)', en: 'Auto (system)', es: 'Auto (sistema)',
+        de: 'Auto (System)', it: 'Auto (sistema)', pt: 'Auto (sistema)',
+        zh: '自动（系统）', ar: 'تلقائي (النظام)',
+    },
     'tray.darkMode.auto': {
         fr: 'Auto (système)', en: 'Auto (system)', es: 'Auto (sistema)',
         de: 'Auto (System)', it: 'Auto (sistema)', pt: 'Auto (sistema)',
@@ -607,6 +612,18 @@ const T = {
         pt: 'Inspirado em Julien Alarcon — baseado no Prospect Mail (MIT) adaptado para UBports',
         zh: '灵感来自 Julien Alarcon — 基于 Prospect Mail (MIT) 适配 UBports',
         ar: 'مستوحى من Julien Alarcon — مبني على Prospect Mail (MIT) معدّل لـ UBports',
+    },
+    'about.github': {
+        fr: 'GitHub', en: 'GitHub', es: 'GitHub', de: 'GitHub',
+        it: 'GitHub', pt: 'GitHub', zh: 'GitHub', ar: 'GitHub',
+    },
+    'about.donate': {
+        fr: 'Faire un don', en: 'Donate', es: 'Donar', de: 'Spenden',
+        it: 'Dona', pt: 'Doar', zh: '捐赠', ar: 'تبرع',
+    },
+    'about.version': {
+        fr: 'Version', en: 'Version', es: 'Versión', de: 'Version',
+        it: 'Versione', pt: 'Versão', zh: '版本', ar: 'الإصدار',
     },
     'about.reportIssue': {
         fr: 'Signaler un problème', en: 'Report an issue', es: 'Informar de un problema',

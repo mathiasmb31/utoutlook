@@ -61,6 +61,8 @@ build:
 - cp /usr/bin/sleep $INSTALL_DIR/bin
 - cp /usr/bin/touch $INSTALL_DIR/bin
 - cp /usr/bin/cat $INSTALL_DIR/bin
+- cp /usr/bin/mkdir $INSTALL_DIR/bin
+- cp /usr/bin/id $INSTALL_DIR/bin
 - cp /usr/bin/tr $INSTALL_DIR/bin
 - cp /usr/bin/cut $INSTALL_DIR/bin
 # Custom notify binary (D-Bus Postal + Launcher badge)

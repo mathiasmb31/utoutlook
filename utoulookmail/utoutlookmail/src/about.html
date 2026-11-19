@@ -138,12 +138,12 @@
     </div>
 
     <div class="links">
-        <a href="#" class="link-button" id="github-link">GitHub</a>
-        <a href="#" class="link-button" id="donate-link">Donate</a>
+        <a href="#" class="link-button" id="github-link"></a>
+        <a href="#" class="link-button" id="donate-link"></a>
     </div>
 
     <div class="footer">
-        <p id="footer-tagline">Human made, vibe verified</p>
+        <p id="footer-tagline"></p>
         <a href="#" class="report-link" id="report-link">Report an issue</a>
     </div>
 
@@ -160,14 +160,20 @@
         const description = urlParams.get('description') || '';
         const tagline = urlParams.get('tagline') || 'Human made, vibe verified';
         const basedOn = urlParams.get('basedOn') || '';
-        const reportIssue = urlParams.get('reportIssue') || 'Report an issue';
+        const reportIssue = urlParams.get('reportIssue') || '';
+        const githubLabel = urlParams.get('githubLabel') || '';
+        const donateLabel = urlParams.get('donateLabel') || '';
+        const versionLabel = urlParams.get('versionLabel') || '';
 
         // Apply translations
         document.getElementById('app-name').textContent = appName;
-        document.getElementById('version').textContent = `Version ${version}`;
-        document.querySelector('.info').innerHTML =
-            `<p>${description}</p><p><strong>${tagline}</strong></p><p>${basedOn}</p>`;
+        document.getElementById('version').textContent = `${versionLabel} ${version}`;
+        // v4.1.0: textContent — pas d'innerHTML avec des paramètres d'URL.
+        document.querySelector('.info').textContent = `${description} ${tagline} ${basedOn}`;
         document.getElementById('report-link').textContent = reportIssue;
+        document.getElementById('github-link').textContent = githubLabel;
+        document.getElementById('donate-link').textContent = donateLabel;
+        document.getElementById('footer-tagline').textContent = tagline;
 
         // Get link elements
         const githubLink = document.getElementById('github-link');
