@@ -6,6 +6,13 @@
 # fermeture). SIGKILL ne peut pas être trappé, d'où le kill actif du fils dans
 # close_command. Un flag évite la double exécution (signal → exit → EXIT trap).
 CLOSE_DONE=0
+# v4.2.4: BARRE QML DE DÉMARRAGE DÉSACTIVÉE — cause confirmée de l'icône jaune.
+# Device 23:05 : avec la barre (v4.2.3) l'item `unknown.qtmir` apparaît dès
+# l'affichage des écrans QML ; sans elle (v4.2.4), 0 item, 0 message AppMan
+# « app that's not in the Launcher model », plus de double icône ni de splash
+# bloqué. La barre avait été ajoutée en v4.0.105, juste après la v4.0.98
+# saine signalée par Mathias. Le watchdog du wrapper est inchangé.
+export UTOUTLOOK_DISABLE_STARTUP_QML=1
 trap 'if [ "${CLOSE_DONE}" -eq 0 ]; then CLOSE_DONE=1; close_command; fi' EXIT
 # v4.1.0 (revue A3): mémoriser que la sortie vient de Lomiri (swipe-close)
 # pour ne pas transformer ce signal en quit propre côté Electron.
@@ -474,6 +481,12 @@ function start_startup_qml() {
 	utoutlook_set_start_step "${1:-1}"
 	UTOUTLOOK_STARTUP_LAUNCHING=0
 	utoutlook_kill_qmlscene # v4.1.0: préserve STARTUP_QML_PID et RELAUNCH_QML_PID
+	# v4.2.4: ne pas créer la fenêtre QML de démarrage (voir note en tête de
+	# fichier — c'était elle qui créait l'item inconnu `unknown.qtmir`).
+	if [ "${UTOUTLOOK_DISABLE_STARTUP_QML:-0}" = "1" ]; then
+		echo "startup QML bar disabled (experiment v4.2.4)"
+		return 0
+	fi
 	qmlscene "${UTOUTLOOK_STARTUP_QML}" > "${UTOUTLOOK_CONFIG_DIR}/startup-qml.log" 2>&1 &
 	STARTUP_QML_PID=$!
 	echo "startup progress screen shown early (qml pid ${STARTUP_QML_PID})"
