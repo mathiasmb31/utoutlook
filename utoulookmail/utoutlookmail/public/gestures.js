@@ -198,15 +198,37 @@
     // de login (le bouton ⌫ est en bas à droite — aucun chevauchement, aucun contenu masqué).
     // Vide cookies + localStorage + sessionStorage + IndexedDB puis recharge la page,
     // pour repartir d'un état vierge quand une session Microsoft bloque (boucle 2FA, etc.). ---
+    // v4.1.4: icône « double tap » explicite (chiffre 2 + deux flèches vers le
+    // bas) en data-URI SVG — compréhensible sans texte, i18n-indépendant.
+    const DOUBLE_TAP_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">' +
+        '<circle cx="12" cy="13" r="9" fill="#E95420"/>' +
+        '<text x="12" y="18" font-family="Arial,sans-serif" font-size="13" font-weight="bold" fill="#fff" text-anchor="middle">2</text>' +
+        '<path d="M7 2 l3 3 -3 3" fill="none" stroke="#E95420" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '<path d="M13 2 l3 3 -3 3" fill="none" stroke="#E95420" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '</svg>'
+    );
+
     const ensureFirstInstallButton = () => {
         if (!LOGIN_HOSTS_RE.test(location.hostname)) return;
         if (document.getElementById('utoutlook-first-install')) return;
         const i18n = window.__utoutlookI18n || {};
         const b = document.createElement('button');
         b.id = 'utoutlook-first-install';
-        b.textContent = i18n.firstInstall || 'First install';
-        b.setAttribute('aria-label', b.textContent);
-        b.style.cssText = 'position:fixed;left:26px;top:26px;padding:8px 14px;border-radius:20px;border:2px solid #E95420;background:rgba(255,255,255,.92);color:#E95420;font:600 13px/1 system-ui,sans-serif;z-index:2147483647;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.15);';
+        // v4.1.4: texte dans un span dédié pour que l'icône ne soit pas écrasée
+        // par les changements de texte (armement / confirmation).
+        const label = document.createElement('span');
+        label.className = 'ut-first-label';
+        label.textContent = i18n.firstInstall || 'First install';
+        const icon = document.createElement('img');
+        icon.src = DOUBLE_TAP_ICON;
+        icon.alt = '';
+        icon.width = 18; icon.height = 18;
+        icon.style.cssText = 'display:inline-block;width:18px;height:18px;vertical-align:middle;margin-right:6px;';
+        b.appendChild(icon);
+        b.appendChild(label);
+        b.setAttribute('aria-label', label.textContent);
+        b.style.cssText = 'position:fixed;left:26px;top:26px;padding:6px 12px;border-radius:20px;border:2px solid #E95420;background:rgba(255,255,255,.92);color:#E95420;font:600 13px/1 system-ui,sans-serif;z-index:2147483647;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.15);';
         // v4.1.0 (fix login invisible): éloigné du bord (10 px → 26 px) — un tap
         // destiné au champ pouvait tomber dessus et ouvrir le dialogue natif.
         // En bas il recouvrait le champ de login (clavier Maliit bloqué).
@@ -222,15 +244,19 @@
             // invisible). Confirmation en page UNIQUEMENT (double-tap 3 s).
             if (!armed) {
                 armed = true;
-                const orig = b.textContent;
-                b.textContent = (i18n.firstInstallConfirmAction || 'Wipe everything') + ' ?';
+                const orig = label.textContent;
+                label.textContent = (i18n.firstInstallConfirmAction || 'Wipe everything') + ' ?';
+                b.setAttribute('aria-label', label.textContent);
                 b.style.background = '#E95420';
                 b.style.color = '#fff';
+                icon.style.filter = 'brightness(0) invert(1)'; // icône blanche sur fond orange
                 armTimer = setTimeout(() => {
                     armed = false;
-                    b.textContent = orig;
+                    label.textContent = orig;
+                    b.setAttribute('aria-label', orig);
                     b.style.background = 'rgba(255,255,255,.92)';
                     b.style.color = '#E95420';
+                    icon.style.filter = '';
                 }, 3000);
                 return;
             }

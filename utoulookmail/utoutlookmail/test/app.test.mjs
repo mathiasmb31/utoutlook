@@ -1573,6 +1573,26 @@ test('v4.1.3: barre liste — badge UBtouch décoratif + bouton first-install (i
     }
 });
 
+test('v4.1.4: icône « double tap » explicite sur les deux boutons first-install', async () => {
+    const fs = await import('node:fs');
+    const gestures = fs.readFileSync(path.resolve(__dirname, '../public/gestures.js'), 'utf-8');
+    const btn = fs.readFileSync(path.resolve(__dirname, '../public/reload-button.js'), 'utf-8');
+    // Même dessin dans les deux fichiers : cercle « 2 » + deux flèches de tap.
+    for (const [name, src] of [['login', gestures], ['liste', btn]]) {
+        assert.ok(src.includes('DOUBLE_TAP_ICON'), `${name}: icône double-tap définie (v4.1.4)`);
+        assert.ok(src.includes('text-anchor="middle">2<'), `${name}: chiffre 2 dans l'icône (v4.1.4)`);
+        assert.ok(src.includes('stroke-linecap="round"'), `${name}: flèches de tap dans l'icône (v4.1.4)`);
+    }
+    // Le texte vit dans un span dédié pour ne pas écraser l'icône.
+    assert.ok(gestures.includes("label.className = 'ut-first-label'"),
+        'login: span de texte dédié (v4.1.4)');
+    assert.ok(btn.includes("span.className = 'ut-first-label'"),
+        'liste: span de texte dédié (v4.1.4)');
+    assert.ok(btn.includes('setFirstLabel'), 'liste: setFirstLabel cible le span (v4.1.4)');
+    assert.ok(!/first\.textContent = tr/.test(btn),
+        'liste: plus de textContent direct sur le bouton first (v4.1.4)');
+});
+
 test('v3.3.22: uncaughtException ne tue plus l\'app au premier coup (exit seulement après 5 en 60s)', async () => {
     const fs = await import('node:fs');
     const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');

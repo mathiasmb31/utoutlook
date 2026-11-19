@@ -43,6 +43,16 @@
     // Bouton First install : même gabarit que Recharger (fond sombre, texte orange)
     const BTN_FIRST_STYLE = BTN_STYLE +
         'background:rgba(15,15,26,0.92);color:#E95420;border:1px solid #E95420;min-width:150px;';
+    // v4.1.4: icône « double tap » (chiffre 2 + deux flèches) — même dessin
+    // que le bouton de la page de login, pour une indication cohérente.
+    const DOUBLE_TAP_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">' +
+        '<circle cx="12" cy="13" r="9" fill="#E95420"/>' +
+        '<text x="12" y="18" font-family="Arial,sans-serif" font-size="13" font-weight="bold" fill="#fff" text-anchor="middle">2</text>' +
+        '<path d="M7 2 l3 3 -3 3" fill="none" stroke="#E95420" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '<path d="M13 2 l3 3 -3 3" fill="none" stroke="#E95420" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '</svg>'
+    );
     // Badge UBtouch : même hauteur que les autres, carré (logo rond centré),
     // purement décoratif — pas de curseur pointer, pas de tabindex.
     const BADGE_STYLE =
@@ -103,7 +113,7 @@
             const btn = document.getElementById(FIRST_ID);
             if (btn) {
                 btn.disabled = true;
-                setLabel(btn, tr('actionFirstInstallNotify', 'Data cleared — restarting…'));
+                setFirstLabel(btn, tr('actionFirstInstallNotify', 'Data cleared — restarting…'));
             }
             try {
                 if (window.electronAPI && typeof window.electronAPI.firstInstall === 'function') {
@@ -133,6 +143,15 @@
     const setLabel = (btn, text) => {
         if (btn.textContent !== text) btn.textContent = text;
         if (btn.getAttribute('aria-label') !== text) btn.setAttribute('aria-label', text);
+    };
+
+    // v4.1.4: le bouton First install contient une icône + un span de texte.
+    // On ne modifie QUE le span, pour ne jamais écraser l'icône (contrairement
+    // à setLabel qui joue sur textContent). Les autres boutons gardent setLabel.
+    const setFirstLabel = (btn, text) => {
+        const span = btn && btn.querySelector('.ut-first-label');
+        if (span && span.textContent !== text) span.textContent = text;
+        if (btn && btn.getAttribute('aria-label') !== text) btn.setAttribute('aria-label', text);
     };
 
     // v4.0.98: Outlook ré-applique display:none / visibility:hidden sur les
@@ -233,20 +252,35 @@
             first.id = FIRST_ID;
             first.type = 'button';
             first.style.cssText = BTN_FIRST_STYLE;
+            // v4.1.4: icône « 2 » + span de texte (l'icône reste visible quand
+            // le texte change pendant la confirmation).
+            const icon = document.createElement('img');
+            icon.src = DOUBLE_TAP_ICON;
+            icon.alt = '';
+            icon.width = 18; icon.height = 18;
+            icon.style.cssText = 'display:inline-block;width:18px;height:18px;vertical-align:middle;margin-right:6px;';
+            const span = document.createElement('span');
+            span.className = 'ut-first-label';
+            first.appendChild(icon);
+            first.appendChild(span);
             let armed = false, armTimer = null;
             first.addEventListener('click', (e) => {
                 e.preventDefault(); e.stopPropagation();
                 if (!armed) {
                     armed = true;
-                    const orig = first.textContent;
-                    first.textContent = tr('actionFirstInstallConfirm', 'Wipe everything?');
+                    const orig = span.textContent;
+                    span.textContent = tr('actionFirstInstallConfirm', 'Wipe everything?');
+                    first.setAttribute('aria-label', span.textContent);
                     first.style.background = '#E95420';
                     first.style.color = '#fff';
+                    icon.style.filter = 'brightness(0) invert(1)';
                     armTimer = setTimeout(() => {
                         armed = false;
-                        first.textContent = orig;
+                        span.textContent = orig;
+                        first.setAttribute('aria-label', orig);
                         first.style.background = 'rgba(15,15,26,0.92)';
                         first.style.color = '#E95420';
+                        icon.style.filter = '';
                     }, 3000);
                     return;
                 }
@@ -259,7 +293,7 @@
 
         setLabel(reload, tr('reloadMessages', 'Reload messages'));
         setLabel(quit, tr('quitApp', 'Quit'));
-        setLabel(first, tr('actionFirstInstall', 'First install'));
+        setFirstLabel(first, tr('actionFirstInstall', 'First install'));
         // v4.1.0 (revue renderer #4): la barre doit rester visible SURTOUT
         // quand la liste est cassée (0×0) — c'est le cas à secourir. On ne
         // masque que le bouton Recharger pendant le chargement initial.
