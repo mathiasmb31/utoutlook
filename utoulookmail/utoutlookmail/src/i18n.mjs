@@ -613,6 +613,29 @@ const T = {
         zh: '灵感来自 Julien Alarcon — 基于 Prospect Mail (MIT) 适配 UBports',
         ar: 'مستوحى من Julien Alarcon — مبني على Prospect Mail (MIT) معدّل لـ UBports',
     },
+    'observer.domChanged': {
+        fr: 'DOM Outlook modifié — les sélecteurs de l’observer ne correspondent plus (non lus indisponibles)',
+        en: 'Outlook page changed — the unread observer selectors no longer match',
+        es: 'La página de Outlook cambió — los selectores ya no coinciden',
+        de: 'Outlook-Seite geändert — die Beobachter-Selektoren passen nicht mehr',
+        it: 'Pagina Outlook modificata — i selettori non corrispondono più',
+        pt: 'Página do Outlook alterada — os seletores não correspondem mais',
+        zh: 'Outlook 页面已更改 — 观察者选择器不再匹配',
+        ar: 'تغيّرت صفحة Outlook — لم تعد محددات المراقب تطابق',
+    },
+    'notif.calendar.reminderFallback': {
+        fr: 'Rappel', en: 'Reminder', es: 'Recordatorio', de: 'Erinnerung',
+        it: 'Promemoria', pt: 'Lembrete', zh: '提醒', ar: 'تذكير',
+    },
+    'notif.calendar.at': {
+        fr: 'à', en: 'at', es: 'a las', de: 'um', it: 'alle', pt: 'às', zh: '于', ar: 'في',
+    },
+    'notif.calendar.until': {
+        fr: 'dans', en: 'in', es: 'en', de: 'in', it: 'tra', pt: 'em', zh: '还有', ar: 'بعد',
+    },
+    'notif.calendar.location': {
+        fr: 'à', en: 'at', es: 'en', de: 'in', it: 'a', pt: 'em', zh: '地点', ar: 'في',
+    },
     'about.github': {
         fr: 'GitHub', en: 'GitHub', es: 'GitHub', de: 'GitHub',
         it: 'GitHub', pt: 'GitHub', zh: 'GitHub', ar: 'GitHub',

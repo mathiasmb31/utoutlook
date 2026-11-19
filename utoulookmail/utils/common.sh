@@ -270,6 +270,14 @@ utoutlook_write_qml_i18n() {
 	utoutlook_write_error_qmls
 }
 
+# v4.1.0: échapper un texte pour un littéral QML (revue renderer #8).
+utoutlook_qml_escape() {
+	local s="$1"
+	s=${s//\\/\\\\}
+	s=${s//\"/\\\"}
+	printf '%s' "${s}"
+}
+
 # v4.1.0 (revue F1/F2): un import JS relatif est résolu par rapport au
 # dossier du .qml, PAS au -I ; et sed n'est pas embarqué. On génère donc
 # nonetwork.qml / exit.qml avec le libellé traduit INLINÉ, comme startup.qml.
@@ -278,8 +286,9 @@ utoutlook_write_error_qmls() {
 	src="${WD}/qml/nonetwork.qml"
 	dst="${UTOUTLOOK_CONFIG_DIR}/nonetwork.qml"
 	if [ -f "${src}" ]; then
-		content=$("${UTOUTLOOK_BIN}/cat" "${src}" 2>/dev/null) || return 0
-		txt=$(utoutlook_t 'qml.noNetwork')
+		content=$("${UTOUTLOOK_BIN}/cat" "${src}" 2>/dev/null) || content=""
+		[ -n "${content}" ] || content="import QtQuick 2.9"
+		txt=$(utoutlook_qml_escape "$(utoutlook_t 'qml.noNetwork')")
 		repl="\"${txt}\""
 		content=${content//import \"utoutlook-qml-i18n.js\" as QmlI18n/}
 		content=${content//QmlI18n.NO_NETWORK/${repl}}
@@ -289,8 +298,9 @@ utoutlook_write_error_qmls() {
 	src="${WD}/qml/exit.qml"
 	dst="${UTOUTLOOK_CONFIG_DIR}/exit.qml"
 	if [ -f "${src}" ]; then
-		content=$("${UTOUTLOOK_BIN}/cat" "${src}" 2>/dev/null) || return 0
-		txt=$(utoutlook_t 'qml.exitTimeout')
+		content=$("${UTOUTLOOK_BIN}/cat" "${src}" 2>/dev/null) || content=""
+		[ -n "${content}" ] || content="import QtQuick 2.9"
+		txt=$(utoutlook_qml_escape "$(utoutlook_t 'qml.exitTimeout')")
 		repl="\"${txt}\""
 		content=${content//import \"utoutlook-qml-i18n.js\" as QmlI18n/}
 		content=${content//QmlI18n.EXIT_TIMEOUT/${repl}}
@@ -312,7 +322,7 @@ export UTOUTLOOK_STARTUP_QML="${UTOUTLOOK_CONFIG_DIR}/startup.qml"
 utoutlook_write_startup_qml() {
 	local n="$1"
 	local msg
-	msg=$(utoutlook_t 'qml.startStep')
+	msg=$(utoutlook_qml_escape "$(utoutlook_t 'qml.startStep')")
 	msg="${msg//%N/${n}}"
 	{
 		printf 'import QtQuick 2.9\n'
@@ -331,7 +341,7 @@ utoutlook_write_startup_qml() {
 utoutlook_set_start_step() {
 	local n="$1"
 	local msg
-	msg=$(utoutlook_t 'qml.startStep')
+	msg=$(utoutlook_qml_escape "$(utoutlook_t 'qml.startStep')")
 	msg="${msg//%N/${n}}"
 	printf '%s\n' "${msg}" > "${UTOUTLOOK_STEP_FILE}" 2>/dev/null || true
 	utoutlook_write_startup_qml "${n}"
@@ -424,9 +434,9 @@ utoutlook_prospect_running() {
 utoutlook_write_rescue_qml() {
 	local dst="${UTOUTLOOK_CONFIG_DIR}/render-rescue.qml"
 	local title soft opengl
-	title=$(utoutlook_t 'qml.renderRescueTitle')
-	soft=$(utoutlook_t 'qml.renderSoftware')
-	opengl=$(utoutlook_t 'qml.renderOpengl')
+	title=$(utoutlook_qml_escape "$(utoutlook_t 'qml.renderRescueTitle')")
+	soft=$(utoutlook_qml_escape "$(utoutlook_t 'qml.renderSoftware')")
+	opengl=$(utoutlook_qml_escape "$(utoutlook_t 'qml.renderOpengl')")
 	{
 		printf 'import QtQuick 2.9\nimport QtQuick.Window 2.2\n'
 		printf 'Window {\n    visible: true\n    flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowActive\n    visibility: Window.FullScreen\n    color: "#0f0f1a"\n'
@@ -525,37 +535,19 @@ utoutlook_gpu_crash_is_new() {
 # Usage: utoutlook_socket_ping
 # ============================================================
 utoutlook_socket_ping() {
-	python3 -c "
-import socket, sys
-try:
-    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    s.settimeout(2)
-    s.connect('${UTOUTLOOK_SOCKET}')
-    s.sendall(b'{\"cmd\":\"ping\"}\n')
-    data = s.recv(1024)
-    s.close()
-    sys.exit(0 if b'pong' in data else 1)
-except Exception:
-    sys.exit(1)
-" 2>/dev/null
+	# v4.1.0: helper C embarqué (socketcli) — interpréteur absent du click
+	# et nc sans -U, rendaient quit/show inertes sous AppArmor.
+	local ans
+	ans=$("${UTOUTLOOK_BIN}/socketcli" "${UTOUTLOOK_SOCKET}" '{"cmd":"ping"}' 2 2>/dev/null)
+	case "${ans}" in
+		*pong*) return 0 ;;
+		*) return 1 ;;
+	esac
 }
 
-# ============================================================
-# Send a JSON command to the Electron app via Unix socket
 # Usage: utoutlook_send_socket_cmd '{"cmd":"quit"}'
-# ============================================================
 utoutlook_send_socket_cmd() {
-	python3 -c "
-import socket, sys
-try:
-    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    s.settimeout(2)
-    s.connect('${UTOUTLOOK_SOCKET}')
-    s.sendall((sys.argv[1] + '\n').encode())
-    s.close()
-except Exception:
-    pass
-" "$1" 2>/dev/null || true
+	"${UTOUTLOOK_BIN}/socketcli" "${UTOUTLOOK_SOCKET}" "$1" 2 >/dev/null 2>&1 || true
 }
 
 # ============================================================
@@ -664,13 +656,6 @@ utoutlook_kill_stale_wrappers() {
 		if [ -n "$p" ] && [ "$p" != "$self" ] && [ "$p" != "$parent" ] && utoutlook_pid_is_wrapper "$p"; then
 			echo "wrapper $self périmé (owner=$p) — sortie immédiate"
 			exit 0
-		fi
-	fi
-	if [ -f "$pidfile" ]; then
-		p=$("${UTOUTLOOK_BIN}/cat" "$pidfile" 2>/dev/null | "${UTOUTLOOK_BIN}/tr" -d '[:space:]')
-		if [ -n "$p" ] && [ "$p" != "$self" ] && [ "$p" != "$parent" ] && utoutlook_pid_is_wrapper "$p"; then
-			echo "killing stale wrapper pid=$p (from pidfile)"
-			kill -9 "$p" 2>/dev/null || true
 		fi
 	fi
 	# Fallback: pgrep scan (may be restricted by AppArmor — silent unless it

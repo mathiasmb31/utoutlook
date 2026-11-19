@@ -74,6 +74,9 @@ else
 fi
 rm -f "$tmp"
 
+# v4.1.0: avertissement (non bloquant ici) pour l'historique git — voir
+# check-history.sh --strict utilisé par le pre-push.
+if [ -x ./check-history.sh ]; then ./check-history.sh | head -1; fi
 echo "== 6/7 confidentialite (XXXX)"
 # Les fichiers qui documentent la règle elle-meme sont exclus du grep.
 if grep -ri XXXX --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=build \

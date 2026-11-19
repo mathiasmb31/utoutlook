@@ -190,7 +190,7 @@ const observeUnreadHandlers = {
         try {
           window.electronAPI.showNotification(
             I18N.appName || 'UToutlook Mail',
-            'DOM Outlook modifié — les sélecteurs de l\'observer ne correspondent plus (non lus indisponibles)',
+            tr('observerDomChanged'),
             null,
             true // urgent
           );
@@ -277,7 +277,7 @@ const observeUnreadHandlers = {
       }
     };
 
-    const checkUnread = (checkOnlyZeroUnread) => {
+    const checkUnread = (checkOnlyZeroUnread, silentNotifications = false) => { // v4.1.0
       // Re-query on every check: Outlook SPA recreates DOM nodes during navigation.
       // A stale (disconnected) element keeps its old title attribute, causing
       // false reads (e.g. old unread=5 when real count is now 4 → false notification).
@@ -306,7 +306,7 @@ const observeUnreadHandlers = {
             state.zeroUnreadConfirmCount = 0;
           }
           state.lastUnreadCount = docUnread;
-          if (!checkOnlyZeroUnread) updateUnreadDebounced(docUnread);
+          updateUnreadDebounced(docUnread); // v4.1.0: badge toujours à jour
           if (docUnread > prev && !checkOnlyZeroUnread) {
             const now = new Date();
             const since = state.lastUnreadNotificationTime ? now - state.lastUnreadNotificationTime : Infinity;
@@ -399,16 +399,18 @@ const observeUnreadHandlers = {
       // is a temporary "(0 unread)" from a re-render, the badge would
       // flicker to 0 and back, which the user perceives as an envelope
       // notification appearing/disappearing.
-      if (unread > 0 || !checkOnlyZeroUnread) {
-        if (!(unread === 0 && zeroPendingConfirmation)) {
-          updateUnreadDebounced(unread);
-        }
+      // v4.1.0: mettre à jour le badge dès que la valeur est confirmée,
+      // même en mode "zero only" — sinon le badge reste bloqué sur l'ancien
+      // compte (revue renderer #2).
+      if (!(unread === 0 && zeroPendingConfirmation)) {
+        updateUnreadDebounced(unread);
+      }
 
         // Only show notification if unread count increased.
         // Compare against previousUnreadCount (captured above, before the
         // update) — NOT state.lastUnreadCount, which now equals unread and
         // would make this comparison always false (hotfix #11).
-        if (unread > previousUnreadCount && !checkOnlyZeroUnread) {
+        if (unread > previousUnreadCount && !silentNotifications) {
           // Anti-spam: only show notification if enough time has passed
           const now = new Date();
           const timeSinceLastNotification = state.lastUnreadNotificationTime
@@ -436,25 +438,24 @@ const observeUnreadHandlers = {
             debug(`Unread notification suppressed by anti-spam (need to wait ${CONFIG.unreadEmailThrottleMs}ms)`);
           }
         }
-      }
     };
 
     // Find the navigation pane using semantic attribute (more stable than CSS classes)
     const navigationPane = document.querySelector('[data-app-section="NavigationPane"]');
     const leftPanel = navigationPane?.querySelector('#folderPaneDroppableContainer');
 
-    if (!leftPanel) {
-      debug('Navigation panel not found for mutation observer');
-      return false;
-    }
+    // v4.1.0 (revue renderer #1): ne pas abandonner la détection quand le
+    // panneau est absent — le treeitem peut être rendu ailleurs. On observe
+    // alors le document entier et le timer continue de notifier.
+    const observeTarget = leftPanel || document.body;
+    debug(leftPanel ? 'Successfully found inbox element and navigation panel'
+                    : 'Navigation panel absent — observing document instead');
 
-    debug('Successfully found inbox element and navigation panel');
-
-    // Observe for DOM changes
+    if (unreadObserver) { unreadObserver.disconnect(); unreadObserver = null; }
     unreadObserver = new MutationObserver(() => {
       debounce(checkUnread, CONFIG.mutationDebounceMs, "unread-mutation");
     });
-    unreadObserver.observe(leftPanel, {
+    unreadObserver.observe(observeTarget, {
       attributes: true,
       childList: true,
       subtree: true,
@@ -509,15 +510,15 @@ const observeUnreadHandlers = {
         if (!state.lastCalendarNotificationTime || timeSinceLastNotification > CONFIG.calendarReminderThrottleMs) {
           const reminderDetails = [];
           reminderElements.forEach((reminder) => {
-            const subject = reminder.getAttribute('subject') || 'Reminder';
+            const subject = reminder.getAttribute('subject') || tr('reminderFallback');
             const timeDisplay = reminder.getAttribute('starttimedisplaystring') || '';
             const timeUntil = reminder.getAttribute('timeuntildisplaystring') || '';
             const location = reminder.getAttribute('location') || '';
 
             let details = subject;
-            if (timeDisplay) details += ` at ${timeDisplay}`;
-            if (timeUntil) details += ` (${timeUntil})`;
-            if (location) details += ` - ${location}`;
+            if (timeDisplay) details += ` ${tr('calendarAt')} ${timeDisplay}`;
+            if (timeUntil) details += ` (${tr('calendarUntil')} ${timeUntil})`;
+            if (location) details += ` ${tr('calendarLocation')} ${location}`;
 
             reminderDetails.push(details);
           });
@@ -538,6 +539,7 @@ const observeUnreadHandlers = {
     };
 
     // Observe for DOM changes
+    if (notificationObserver) { notificationObserver.disconnect(); notificationObserver = null; }
     notificationObserver = new MutationObserver(() => {
       debounce(checkNotifications, CONFIG.mutationDebounceMs, "notification-mutation");
     });

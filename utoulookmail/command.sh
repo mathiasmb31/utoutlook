@@ -62,6 +62,10 @@ function cleanup() {
 }
 
 function launch_prospect() {
+	# v4.1.0 (revue M2): heartbeat propre après un relaunch.
+	"${WD}"/bin/rm -f "${filelifefollow}" 2>/dev/null || true
+	oldfollow=""
+	stagnantCount=0
 	cleanup
 	if [[ -f ${lock} ]]; then
 		utoutlook_notify "$(utoutlook_t 'shell.waitClose')"
@@ -298,8 +302,13 @@ function close_command() {
 	echo "closing" > "${UTOUTLOOK_CLOSING}" 2>/dev/null || true
 	# v4.1.0 (revue A3): sur swipe-close Lomiri, NE PAS envoyer le quit —
 	# l'app doit seulement masquer sa fenêtre et garder les notifications.
-	if [ "${LOMIRI_TERM:-0}" != "1" ]; then
+	if [ "${LOMIRI_TERM:-0}" = "1" ]; then
+		# v4.1.0 (revue E2): signaler à l'app orpheline que sa fenêtre doit
+		# rester masquée (le watchdog surface ne doit pas la ré-afficher).
+		printf 'swipe' > "${UTOUTLOOK_SWIPE_HIDDEN}" 2>/dev/null || true
+	else
 		utoutlook_send_socket_cmd '{"cmd":"quit"}'
+		"${WD}"/bin/rm -f "${UTOUTLOOK_SWIPE_HIDDEN}" 2>/dev/null || true
 	fi
 	# Fallback: write close flag file (picked up by heartbeat)
 	# v4.0.14: embed wrapper PID so the app only honors OUR close flag
@@ -385,6 +394,10 @@ export socketpath="${UTOUTLOOK_SOCKET}"
 # tell a close flag written by ITS wrapper apart from one written by a dying
 # older wrapper (race: old wrapper writes "closed" after the new one cleaned up).
 export UTOUTLOOK_WRAPPER_PID=$$
+export UTOUTLOOK_SWIPE_HIDDEN="${UTOUTLOOK_CONFIG_DIR}/swipe-hidden"
+"${WD}"/bin/rm -f "${UTOUTLOOK_SWIPE_HIDDEN}" 2>/dev/null || true
+# v4.1.0: repartir d'un pidfile vide (revue M1).
+: > "${UTOUTLOOK_DATA_DIR}/__prospect.pid" 2>/dev/null || true
 
 # v4.1.0: prendre la propriété du wrapper AVANT toute attente. Sans ça, deux
 # wrappers lancés à ~20 s d'intervalle (Lomiri relance pendant que le 1er
@@ -502,7 +515,10 @@ kill_prospect_pids() {
 		_pid=$("${WD}"/bin/tr -d '[:space:]' <<<"${_pid}")
 		# v4.1.0: TERM d'abord (wrapper-quit est posé) — SIGKILL en dernier
 		# recours seulement dans utoutlook_kill_app() après 5 s d'attente.
-		[ -n "${_pid}" ] && kill -TERM "${_pid}" 2>/dev/null || true
+		# v4.1.0: ne jamais envoyer TERM à un PID périmé/recyclé (revue M1).
+		if [ -n "${_pid}" ] && utoutlook_pid_is_prospect "${_pid}" && ! utoutlook_pid_is_zombie "${_pid}"; then
+			kill -TERM "${_pid}" 2>/dev/null || true
+		fi
 	done < "${UTOUTLOOK_PID_FILE}"
 	utoutlook_kill_by_proc 2>/dev/null || true
 }
@@ -511,16 +527,9 @@ kill_prospect_pids
 # AppArmor) to quit cleanly via the shared Unix socket — same socket path for
 # all versions, so the quit command reaches even an old-version process.
 utoutlook_send_socket_cmd '{"cmd":"quit"}'
-# v4.0.30: kill stale wrappers too (except ourselves) so they release the flock
-# v4.0.65: pgrep -f est aveugle sous AppArmor → scan /proc/*/cmdline (lecture
-# des process même label autorisée ; les autres labels échouent silencieusement)
-for _d in /proc/[0-9]*; do
-	_p=${_d#/proc/}
-	[ "${_p}" = "$$" ] && continue
-	if "${WD}"/bin/grep -qa 'bin/command\.sh' "${_d}/cmdline" 2>/dev/null; then
-		kill -9 "${_p}" 2>/dev/null || true
-	fi
-done
+# v4.1.0: suppression du scan /proc inconditionnel (revue M3) — il pouvait
+# faire s'entretuer deux wrappers. utoutlook_kill_stale_wrappers() gère
+# l'arbitrage via pidfile + vérification /proc/cmdline.
 # v4.0.25: wait actively (max ~10s) for ALL old prospect-mail processes to die
 # before launching — Lomiri SIGTERMs the process on swipe-close and a dying old
 # process can rewrite lifecycle flags while the new one starts (race → "slow

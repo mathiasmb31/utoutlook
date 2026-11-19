@@ -21,7 +21,7 @@ export function openAboutWindow() {
 
     const version = app.getVersion();
     const githubUrl = "https://github.com/mathiasmb31/utoutlookmail";
-    const donateUrl = "https://github.com/mathiasmb31/utoutlookmail";
+    const donateUrl = "https://github.com/mathiasmb31/utoutlook"; // v4.1.0: pas de page de don dédiée — lien vers le projet
 
     aboutWindow = new BrowserWindow({
         width: 450,

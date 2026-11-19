@@ -204,17 +204,10 @@
         b.id = 'utoutlook-first-install';
         b.textContent = i18n.firstInstall || 'First install';
         b.setAttribute('aria-label', b.textContent);
-        b.style.cssText = 'position:fixed;left:14px;bottom:14px;padding:8px 14px;border-radius:20px;border:2px solid #E95420;background:rgba(255,255,255,.92);color:#E95420;font:600 13px/1 system-ui,sans-serif;z-index:2147483647;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.15);';
-        // v4.0.126: ce bouton « corriger la session » était lui aussi sous le
-        // clavier Maliit (bottom:14px) pendant la saisie du login.
-        const placeFirstInstall = () => {
-            b.style.bottom = aboveKeyboardBottom() + 'px';
-        };
-        placeFirstInstall();
-        if (window.visualViewport) {
-            window.visualViewport.addEventListener('resize', placeFirstInstall);
-            window.visualViewport.addEventListener('scroll', placeFirstInstall);
-        }
+        b.style.cssText = 'position:fixed;left:10px;top:10px;padding:8px 14px;border-radius:20px;border:2px solid #E95420;background:rgba(255,255,255,.92);color:#E95420;font:600 13px/1 system-ui,sans-serif;z-index:2147483647;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.15);';
+        // v4.1.0: EN HAUT à gauche — en bas il recouvrait le champ de login
+        // (le clavier Maliit n'arrivait pas, l'input ne prenait pas le focus).
+        b.addEventListener('mousedown', e => e.preventDefault()); // ne pas voler le focus
         // v3.3.66: window.confirm() is NOT implemented in Electron (always returns
         // false) — the native confirm dialog is shown by the main process via IPC.
         // Fallback without electronAPI: two-tap pattern (tap once to arm, tap again
@@ -284,8 +277,9 @@
         const i18n = window.__utoutlookI18n || {};
         const b = document.createElement('button');
         b.id = 'utoutlook-render-mode';
-        b.style.cssText = 'position:fixed;left:14px;padding:8px 14px;border-radius:20px;border:2px solid #E95420;background:rgba(255,255,255,.92);color:#E95420;font:600 13px/1 system-ui,sans-serif;z-index:2147483647;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.15);';
-        const place = () => { b.style.bottom = (aboveKeyboardBottom() + 44) + 'px'; };
+        b.style.cssText = 'position:fixed;left:10px;top:58px;padding:6px 12px;border-radius:18px;border:2px solid #E95420;background:rgba(255,255,255,.92);color:#E95420;font:600 12px/1 system-ui,sans-serif;z-index:2147483647;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.15);';
+        // v4.1.0: en haut, sous « Première installation », sans recouvrir l'input.
+        b.addEventListener('mousedown', e => e.preventDefault());
         const refresh = async () => {
             let mode = 'auto';
             try { mode = await window.electronAPI.getRenderMode(); } catch (_) {}
@@ -300,17 +294,25 @@
             try { await window.electronAPI.setRenderMode(next); } catch (_) {}
             await refresh(); // effectif au prochain lancement
         });
-        place();
         refresh();
-        if (window.visualViewport) {
-            window.visualViewport.addEventListener('resize', place);
-            window.visualViewport.addEventListener('scroll', place);
-        }
         (document.body || document.documentElement).appendChild(b);
     };
     ensureRenderModeButton();
     new MutationObserver(() => ensureRenderModeButton())
         .observe(document.documentElement, {childList: true, subtree: true});
+
+    // v4.1.0: masquer les boutons utilitaires dès qu'un champ a le focus —
+    // ils ne doivent jamais intercepter un tap destiné au champ de login.
+    const syncUtilityButtons = () => {
+        const inField = isField(document.activeElement) || isField(lastField);
+        for (const id of ['utoutlook-first-install', 'utoutlook-render-mode']) {
+            const el = document.getElementById(id);
+            if (el) el.style.display = inField ? 'none' : 'block';
+        }
+    };
+    syncUtilityButtons();
+    document.addEventListener('focusin', syncUtilityButtons, true);
+    document.addEventListener('focusout', () => setTimeout(syncUtilityButtons, 150), true);
 
     // --- v3.3.42: masquer le bouton « Options de connexion » ---
     // Sur la page de saisie du mot de passe Microsoft, ce lien mène à la page
