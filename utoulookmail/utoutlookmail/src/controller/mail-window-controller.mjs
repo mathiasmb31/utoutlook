@@ -86,6 +86,9 @@ class MailWindowController {
         this.accountName = accountConfig?.name || 'Compte principal';
         this.sessionPartition = accountConfig?.partition || 'persist:utoutlook-default';
         this.unreadCount = 0;
+        // v4.1.0 (revue B8): registre des listeners pour destroy().
+        this._listeners = [];
+        this._ipcHandleChannels = ['get-render-mode', 'set-render-mode', 'first-install'];
         this.init();
         // Check both command-line flag and settings for initial minimization
         const hasMinimizedFlag = (global.cmdLine || []).indexOf("--minimized") !== -1;
@@ -413,7 +416,7 @@ class MailWindowController {
             } catch (e) { logger.warn('v4.0.46: restore token failed:', e.message); }
         };
 
-        ses.cookies.on('changed', (_event, cookie, _cause, removed) => {
+        this._on(ses.cookies, 'changed', (_event, cookie, _cause, removed) => {
             if (removed) return;
             const name = cookie.name || '';
             const domain = (cookie.domain || '').toLowerCase();
@@ -1167,6 +1170,36 @@ class MailWindowController {
 
     // --- Lifecycle orchestrator ---
 
+    /** Enregistre un listener en le mémorisant pour destroy(). */
+    _on(target, event, handler) {
+        if (!target || typeof target.on !== 'function') return;
+        target.on(event, handler);
+        this._listeners.push([target, event, handler]);
+    }
+
+    /** Retire TOUS les listeners de ce contrôleur (recréation UI). */
+    destroy() {
+        for (const [target, event, handler] of this._listeners) {
+            try { target.removeListener(event, handler); } catch (e) { /* ignore */ }
+        }
+        this._listeners = [];
+        for (const channel of this._ipcHandleChannels) {
+            try { ipcMain.removeHandler(channel); } catch (e) { /* ignore */ }
+        }
+        for (const channel of ['show', 'insert-text', 'zoom', 'updateUnread', 'show-notification',
+                               'toggle-focus-mode', 'set-accent-color', 'toggle-dark-mode',
+                               'reload', 'reload-messages', 'quit-app']) {
+            try { ipcMain.removeAllListeners(channel); } catch (e) { /* ignore */ }
+        }
+        for (const timer of ['cookieFlushInterval', 'observerHealthCheck', 'serverMonitor',
+                             'rotationPoll', 'keyboardHealthPoll', 'surfaceHealthPoll', 'listWatchdog']) {
+            if (this[timer]) { try { clearInterval(this[timer]); } catch (e) {} this[timer] = null; }
+        }
+        this.win = null;
+        this.splashWindow = null;
+        logger.info('MailWindowController destroyed (listeners removed)');
+    }
+
     init() {
         this.reloadSettings();
         this.setupCSP();
@@ -1184,7 +1217,7 @@ class MailWindowController {
         this.setupWindowOpenHandler();
         // v3.3.20: the compose window opens as a SEPARATE BrowserWindow — inject
         // the UT look & gestures there too, or it stays unstyled.
-        app.on('browser-window-created', (_e, win) => {
+        this._on(app, 'browser-window-created', (_e, win) => {
             if (win === this.win) return;
             win.webContents.on('dom-ready', () => {
                 this.injectStyles(win).catch(() => {});
@@ -1839,27 +1872,27 @@ class MailWindowController {
     }
 
     setupIpcHandlers() {
-        ipcMain.on("show", (event) => {
+        this._on(ipcMain, "show", (event) => {
             // Only respond if this is our window's webContents
             if (this.win && event.sender === this.win.webContents) {
                 this.show();
             }
         });
 
-        ipcMain.on("insert-text", (event, text) => {
+        this._on(ipcMain, "insert-text", (event, text) => {
             if (this.win && event.sender === this.win.webContents) {
                 this.insertText(text);
             }
         });
 
-        ipcMain.on("zoom", (event, {action}) => {
+        this._on(ipcMain, "zoom", (event, {action}) => {
             if (this.win && event.sender === this.win.webContents) {
                 this.handleZoomCommand(action);
             }
         });
 
         // Per-account unread tracking (filter by sender)
-        ipcMain.on("updateUnread", (event, value) => {
+        this._on(ipcMain, "updateUnread", (event, value) => {
             if (this.win && event.sender === this.win.webContents) {
                 this.unreadCount = value || 0;
                 if (this.onUnreadChange) {
@@ -1879,7 +1912,7 @@ class MailWindowController {
             }
         });
 
-        ipcMain.on("show-notification", (event, {title, body, icon, urgent}) => {
+        this._on(ipcMain, "show-notification", (event, {title, body, icon, urgent}) => {
             if (this.win && event.sender === this.win.webContents) {
                 // hotfix #13: skip notification when the app is in the foreground —
                 // UNLESS urgent (e.g. DOM changed alert, v3.3.21).
@@ -1892,34 +1925,34 @@ class MailWindowController {
         });
 
         // Focus mode toggle (from renderer or tray)
-        ipcMain.on("toggle-focus-mode", (event) => {
+        this._on(ipcMain, "toggle-focus-mode", (event) => {
             if (this.win && event.sender === this.win.webContents) {
                 this.toggleFocusMode();
             }
         });
 
         // Accent color change (from renderer or tray)
-        ipcMain.on("set-accent-color", (event, color) => {
+        this._on(ipcMain, "set-accent-color", (event, color) => {
             if (this.win && event.sender === this.win.webContents) {
                 this.setAccentColor(color);
             }
         });
 
         // Dark mode toggle (from renderer or tray)
-        ipcMain.on("toggle-dark-mode", (event) => {
+        this._on(ipcMain, "toggle-dark-mode", (event) => {
             if (this.win && event.sender === this.win.webContents) {
                 this.toggleDarkMode();
             }
         });
 
         // Reload (from renderer, e.g. offline.html retry button)
-        ipcMain.on("reload", (event) => {
+        this._on(ipcMain, "reload", (event) => {
             if (this.win && event.sender === this.win.webContents) {
                 this.reloadWindow();
             }
         });
         // v4.0.95: bouton « Recharger les messages » en bas de la liste
-        ipcMain.on("reload-messages", (event) => {
+        this._on(ipcMain, "reload-messages", (event) => {
             if (this.win && event.sender === this.win.webContents) {
                 this.manualReloadMessages();
             }
@@ -1927,7 +1960,7 @@ class MailWindowController {
         // v4.0.95: bouton « Quitter » — VRAI quit propre (app.quit() déclenche
         // before-quit → cleanupAndExit → exitclient + flushed cookies) pour que
         // le wrapper command.sh voie le flag et s'arrête aussi, sans swipe.
-        ipcMain.on("quit-app", (event) => {
+        this._on(ipcMain, "quit-app", (event) => {
             if (this.win && event.sender === this.win.webContents) {
                 logger.info('v4.0.95: fermeture demandée par le bouton Quitter');
                 app.quit();
@@ -2264,18 +2297,18 @@ class MailWindowController {
         // window is no longer repainted → white screen on wake ("veille puis
         // écran blanc"). powerMonitor 'resume' fires from logind → force a
         // full redraw of the webContents and re-assert visibility/focus.
-        powerMonitor.on('resume', () => {
+        this._on(powerMonitor, 'resume', () => {
             logger.info('powerMonitor resume — re-surfacing window (v4.1.0)');
             this.resurfaceWindow(true);
         });
         // v4.1.0: sur le device le event 'resume' de logind n'est pas Always
         // reçu au déverrouillage (journal : aucun "powerMonitor resume" après
         // "gkr-pam: unlocked login keyring") — 'unlock-screen' couvre ce cas.
-        powerMonitor.on('unlock-screen', () => {
+        this._on(powerMonitor, 'unlock-screen', () => {
             logger.info('powerMonitor unlock-screen — re-surfacing window (v4.1.0)');
             this.resurfaceWindow(true);
         });
-        powerMonitor.on('suspend', () => logger.info('powerMonitor suspend (v3.3.32)'));
+        this._on(powerMonitor, 'suspend', () => logger.info('powerMonitor suspend (v3.3.32)'));
     }
 
     setupWindowEvents() {
@@ -2637,9 +2670,9 @@ class MailWindowController {
     }
 
     setupScreenEvents() {
-        screen.on('display-metrics-changed', () => { this.handleDisplayChange(); });
-        screen.on('display-added', () => this.handleDisplayChange());
-        screen.on('display-removed', () => this.handleDisplayChange());
+        this._on(screen, 'display-metrics-changed', () => { this.handleDisplayChange(); });
+        this._on(screen, 'display-added', () => this.handleDisplayChange());
+        this._on(screen, 'display-removed', () => this.handleDisplayChange());
         // v4.1.0: filet de sécurité — même sans event powerMonitor (constaté
         // sur device), réintègre périodiquement la surface Mir si la fenêtre
         // est censée être visible. Pas de focus volé : stealFocus = false.
