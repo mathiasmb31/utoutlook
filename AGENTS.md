@@ -81,6 +81,10 @@ a provoqué OOM + figeage total le 2026-11-04.
 - Surcharge ponctuelle possible (`./build-fast.sh N`, `make jobs=N`) en surveillant `free -h`
 
 
+## Identité d'app Ubuntu Touch (OBLIGATOIRE — règle Mathias, 2026-11-19, TOUTES apps)
+
+**L'ID d'app vu par Lomiri est TOUJOURS NON VERSIONNÉ** (`utoutlook.mathias_utoutlook`) — jamais dans `--class`, `setDesktopName()`, `StartupWMClass`, ni les favoris dconf `appid://...`. `bump-version.sh` ne re-versionne jamais l'ID. Un ID versionné → icône jaune + splash bloqué (`long App ID encountered` dans le journal du shell). Voir `base-de-connaissances/ubuntu-touch-commun.md` §2.14 et fiche addendum 21:40.
+
 ## Build manuel (OBLIGATOIRE — règle Mathias, 2026-11-17)
 
 **Ne jamais lancer de build depuis l'agent IA** (économie de tokens/API) : Mathias fait les builds lui-même via les scripts `build-deploy.sh` / `build-fast.sh` du projet. L'agent prépare le code, les tests et les scripts ; Mathias lance le build + déploiement + test device.
