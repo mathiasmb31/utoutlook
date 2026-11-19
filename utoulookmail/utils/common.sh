@@ -272,22 +272,52 @@ utoutlook_write_qml_i18n() {
 }
 
 # ============================================================
-# v4.0.126: étape de démarrage affichée par startup.qml.
-# Le wrapper écrit un petit QML (rechargé par un Loader/Timer dans
-# startup.qml) — aucun texte en dur, tout passe par utoutlook_t().
-# La substitution %N utilise le bash builtin (pas de sed sous AppArmor).
+# v4.1.0: barre de démarrage GÉNÉRÉE dans le dossier de l'app avec le
+# libellé d'étape intégré. AppArmor interdit la lecture d'un .qml dans
+# /tmp (v4.0.126 → splash bloquée) ; ~/.config/<app>/ est autorisé.
+# Aucun texte en dur : tout passe par utoutlook_t(), substitution %N
+# en bash pur (pas de sed sous AppArmor).
 # ============================================================
 export UTOUTLOOK_STEP_FILE="${UTOUTLOOK_CONFIG_DIR}/start-step"
+export UTOUTLOOK_STARTUP_QML="${UTOUTLOOK_CONFIG_DIR}/startup.qml"
+
+utoutlook_write_startup_qml() {
+	local n="$1"
+	local msg
+	msg=$(utoutlook_t 'qml.startStep')
+	msg="${msg//%N/${n}}"
+	{
+		printf 'import QtQuick 2.9\n'
+		printf 'import QtQuick.Window 2.2\n'
+		printf 'Window {\n    visible: true\n    flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint\n    visibility: Window.FullScreen\n    color: "#0f0f1a"\n'
+		printf '    Column {\n        anchors.centerIn: parent\n        spacing: 18\n'
+		printf '        Rectangle {\n            width: 600; height: 8; radius: 4; color: "#2a2a3a"\n'
+		printf '            Rectangle { id: bar; height: parent.height; width: 1; radius: parent.radius; color: "#E95420" }\n'
+		printf '            NumberAnimation { target: bar; property: "width"; from: 1; to: 592; duration: 1100; loops: Animation.Infinite; running: true }\n'
+		printf '        }\n'
+		printf '        Text { anchors.horizontalCenter: parent.horizontalCenter; color: "#ffffff"; font.pixelSize: 22; text: "%s" }\n' "${msg}"
+		printf '    }\n}\n'
+	} > "${UTOUTLOOK_STARTUP_QML}" 2>/dev/null || true
+}
+
 utoutlook_set_start_step() {
 	local n="$1"
 	local msg
 	msg=$(utoutlook_t 'qml.startStep')
 	msg="${msg//%N/${n}}"
-	# v4.1.0: fichier TEXTE dans le dossier de l'app (autorisé AppArmor).
-	# Ne PAS écrire de .qml dans /tmp : qmlscene n'a pas le droit de le lire
-	# sur le click installé → splash bloquée (v4.0.126 régressé).
 	printf '%s\n' "${msg}" > "${UTOUTLOOK_STEP_FILE}" 2>/dev/null || true
+	utoutlook_write_startup_qml "${n}"
 	echo "${msg}"
+	# Relancer la barre pour afficher le nouveau libellé, sauf pendant le
+	# tout premier lancement où start_startup_qml() s'en charge déjà.
+	if [ "${UTOUTLOOK_STARTUP_LAUNCHING:-0}" != "1" ] && utoutlook_startup_qml_alive; then
+		kill "${STARTUP_QML_PID}" 2>/dev/null || true
+		wait "${STARTUP_QML_PID}" 2>/dev/null || true
+		STARTUP_QML_PID=""
+		qmlscene "${UTOUTLOOK_STARTUP_QML}" > "${UTOUTLOOK_CONFIG_DIR}/startup-qml.log" 2>&1 &
+		STARTUP_QML_PID=$!
+		echo "startup step ${n} shown (qml pid ${STARTUP_QML_PID})"
+	fi
 }
 
 # v4.0.126: la barre lancée dès la 1re ligne du wrapper ne doit pas être tuée

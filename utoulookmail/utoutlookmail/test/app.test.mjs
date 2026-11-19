@@ -1962,8 +1962,8 @@ test('v4.0.99: roue de relance réactivée + zombies du wrapper récupérés', a
     const splash = fs.readFileSync(path.resolve(__dirname, '../../qml/startup.qml'), 'utf-8');
     assert.ok(splash.includes('NumberAnimation') && splash.includes('#E95420'),
         'startup.qml must show an animated orange progress bar (v4.0.105)');
-    assert.ok(cmd.includes('qml/startup.qml') && cmd.includes('STARTUP_QML_PID'),
-        'wrapper must launch and close the startup progress screen (v4.0.105)');
+    assert.ok(cmd.includes('UTOUTLOOK_STARTUP_QML') && cmd.includes('STARTUP_QML_PID'),
+        'wrapper must launch and close the generated startup progress screen (v4.0.105/v4.1.0)');
 });
 
 test('v4.0.107: wrapper — plus de /usr/bin/date (AppArmor) + scaling jamais 0.00', async () => {
@@ -2176,6 +2176,12 @@ test('v4.0.126: splash QML dès la 1re ligne du wrapper + étape i18n', async ()
         'startup.qml must NOT depend on an external QML file (v4.1.0 regression)');
     assert.ok(common.includes('UTOUTLOOK_STEP_FILE="${UTOUTLOOK_CONFIG_DIR}/start-step"'),
         'step info must be written as plain text in the app config dir (v4.1.0)');
+    assert.ok(common.includes('utoutlook_write_startup_qml()') &&
+              common.includes('UTOUTLOOK_STARTUP_QML="${UTOUTLOOK_CONFIG_DIR}/startup.qml"') &&
+              common.includes('text: "%s"'),
+        'startup QML with the step label must be generated in the app config dir (v4.1.0)');
+    assert.ok(cmd.includes('qmlscene "${UTOUTLOOK_STARTUP_QML}"'),
+        'wrapper must launch the generated QML (v4.1.0)');
 });
 
 test('v4.0.127: rendu logiciel auto sur crash GPU + override utilisateur', async () => {

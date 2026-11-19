@@ -375,9 +375,11 @@ function start_startup_qml() {
 		return 0
 	fi
 	utoutlook_write_qml_i18n
-	utoutlook_set_start_step 1
+	UTOUTLOOK_STARTUP_LAUNCHING=1
+	utoutlook_set_start_step "${1:-1}"
+	UTOUTLOOK_STARTUP_LAUNCHING=0
 	"${UTOUTLOOK_BIN}/pkill" -9 qmlscene 2>/dev/null || true
-	qmlscene "${WD}"/qml/startup.qml > "${UTOUTLOOK_CONFIG_DIR}/startup-qml.log" 2>&1 &
+	qmlscene "${UTOUTLOOK_STARTUP_QML}" > "${UTOUTLOOK_CONFIG_DIR}/startup-qml.log" 2>&1 &
 	STARTUP_QML_PID=$!
 	echo "startup progress screen shown early (qml pid ${STARTUP_QML_PID})"
 }
