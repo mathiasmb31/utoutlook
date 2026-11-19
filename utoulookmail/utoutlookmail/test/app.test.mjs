@@ -2363,6 +2363,18 @@ test('v4.1.0: icône — WM_CLASS alignée sur le click + démarrage en 6 étape
         'wrapper must claim the pidfile before any long wait (v4.1.0)');
     assert.ok(common.includes('wrapper $self périmé (owner=$p) — sortie immédiate'),
         'stale wrapper must exit instead of killing the newer one (v4.1.0)');
+
+    // i18n QML : plus de fichier dans /tmp (AppArmor) — import par nom
+    // résolu via l'option -I passée à qmlscene.
+    assert.ok(common.includes('local f="${UTOUTLOOK_CONFIG_DIR}/utoutlook-qml-i18n.js"'),
+        'QML i18n must be written in the app config dir, not /tmp (v4.1.0)');
+    assert.ok(!fs.readFileSync(path.resolve(__dirname, '../../qml/nonetwork.qml'), 'utf-8')
+              .includes('/tmp/utoutlook-qml-i18n.js') &&
+              !fs.readFileSync(path.resolve(__dirname, '../../qml/exit.qml'), 'utf-8')
+              .includes('/tmp/utoutlook-qml-i18n.js'),
+        'QML screens must import i18n by name (v4.1.0)');
+    assert.ok((cmd.match(/qmlscene -I "\$\{UTOUTLOOK_CONFIG_DIR\}"/g) || []).length >= 2,
+        'wrapper must pass the config dir as QML import path (v4.1.0)');
 });
 
 test('v4.0.125: bouton Quitter — cleanupAndExit plus court-circuité (app vivante mais invisible)', async () => {

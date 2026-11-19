@@ -266,7 +266,10 @@ utoutlook_t() {
 # qmlscene cannot read env vars directly; /tmp is writable on the device.
 # Usage: utoutlook_write_qml_i18n
 utoutlook_write_qml_i18n() {
-	local f="/tmp/utoutlook-qml-i18n.js"
+	# v4.1.0: plus de /tmp — AppArmor refuse au qmlscene la lecture des
+	# fichiers qui s'y trouvent. Écrit dans le dossier de l'app, passé aux
+	# qmlscene via l'option -I (import QML par nom, sans chemin en dur).
+	local f="${UTOUTLOOK_CONFIG_DIR}/utoutlook-qml-i18n.js"
 	{
 		echo "var NO_NETWORK = \"$(utoutlook_t 'qml.noNetwork' | sed 's/\\/\\\\/g; s/"/\\"/g')\";"
 		echo "var EXIT_TIMEOUT = \"$(utoutlook_t 'qml.exitTimeout' | sed 's/\\/\\\\/g; s/"/\\"/g')\";"
