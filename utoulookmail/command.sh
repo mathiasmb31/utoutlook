@@ -395,7 +395,21 @@ function close_command() {
 	exit 0
 }
 
-export WD=$(pwd)
+# v4.1.11: `pwd` (builtin) lit le VRAI cwd (/proc/<pid>/cwd), qui est le dossier
+# du click même quand la variable d'env PWD est périmée (/home/phablet) — cas
+# vécu avec les relances setsid. `pwd -P` résout les liens symboliques (ex:
+# /.click/users/@all -> /opt/click.../<version>). On garde un garde-fou : si
+# le cwd ne contient pas 'utoutlook.mathias', on tente de le déduire de $0.
+export WD="$(pwd -P 2>/dev/null || pwd)"
+case "$WD" in
+  *utoutlook.mathias*) ;;
+  *)
+    _SRC="${BASH_SOURCE[0]}"
+    case "$_SRC" in
+      *utoutlook.mathias*) WD="${_SRC%/bin/command.sh}" ;;
+    esac
+    ;;
+esac
 echo "$WD"
 
 # Source shared functions and path constants
