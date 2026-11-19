@@ -370,6 +370,14 @@ export socketpath="${UTOUTLOOK_SOCKET}"
 # older wrapper (race: old wrapper writes "closed" after the new one cleaned up).
 export UTOUTLOOK_WRAPPER_PID=$$
 
+# v4.1.0: prendre la propriété du wrapper AVANT toute attente. Sans ça, deux
+# wrappers lancés à ~20 s d'intervalle (Lomiri relance pendant que le 1er
+# attend encore) s'entretuent via le scan pgrep, et le plus ancien reprend
+# tout son démarrage → étape 3 bloquée ~45 s. Le plus récent gagne désormais
+# immédiatement : l'ancien se voit périmé dans utoutlook_kill_stale_wrappers.
+mkdir -p "${UTOUTLOOK_DATA_DIR}" 2>/dev/null || true
+echo $$ > "${UTOUTLOOK_DATA_DIR}/wrapper.pid" 2>/dev/null || true
+
 # v4.0.126: afficher la barre de démarrage LE PLUS TÔT POSSIBLE — ici, avant
 # test_net (jusqu'à 6 s de sondes), avant les 3 cleanup() et avant l'attente
 # du service de notifications (15 s). Les nettoyages ne la tuent plus :

@@ -603,6 +603,17 @@ utoutlook_kill_stale_wrappers() {
 		kill -0 "$pid" 2>/dev/null || return 1
 		"${UTOUTLOOK_BIN}/grep" -q 'command\.sh' "/proc/${pid}/cmdline" 2>/dev/null
 	}
+	# v4.1.0: si un AUTRE wrapper vit et possède le pidfile, c'est nous qui
+	# sommes périmés (un plus récent a pris la main). Sortir IMMÉDIATEMENT —
+	# sinon les deux wrappers s'entretuent (pgrep) et le plus ancien reprend
+	# tout son démarrage depuis l'étape 1 (~45 s perdus sur l'étape 3).
+	if [ -f "$pidfile" ]; then
+		p=$("${UTOUTLOOK_BIN}/cat" "$pidfile" 2>/dev/null | "${UTOUTLOOK_BIN}/tr" -d '[:space:]')
+		if [ -n "$p" ] && [ "$p" != "$self" ] && [ "$p" != "$parent" ] && utoutlook_pid_is_wrapper "$p"; then
+			echo "wrapper $self périmé (owner=$p) — sortie immédiate"
+			exit 0
+		fi
+	fi
 	if [ -f "$pidfile" ]; then
 		p=$("${UTOUTLOOK_BIN}/cat" "$pidfile" 2>/dev/null | "${UTOUTLOOK_BIN}/tr" -d '[:space:]')
 		if [ -n "$p" ] && [ "$p" != "$self" ] && [ "$p" != "$parent" ] && utoutlook_pid_is_wrapper "$p"; then
