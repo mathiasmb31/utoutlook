@@ -2389,6 +2389,17 @@ test('v4.1.0: icône — WM_CLASS alignée sur le click + démarrage en 6 étape
     assert.ok(fs.readFileSync(path.resolve(__dirname, '../../utils/mkdir.c'), 'utf-8')
               .includes('errno != EEXIST'),
         'mkdir must treat EEXIST as success (no log noise) (v4.1.0)');
+
+    // Fenêtre "visible" pour Electron mais surface Mir perdue après unlock.
+    const ctl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    assert.ok(ctl.includes('resurfaceWindow(stealFocus = false)') &&
+              ctl.includes('setAlwaysOnTop(true)') && ctl.includes('webContents.invalidate()'),
+        'controller must re-surface the Mir window without hide() (v4.1.0)');
+    assert.ok(ctl.includes("powerMonitor.on('unlock-screen'") &&
+              ctl.includes('surfaceHealthPoll = setInterval'),
+        'unlock-screen + periodic re-surface must be wired (v4.1.0)');
+    assert.ok(main.includes('this.mailController.resurfaceWindow(true);'),
+        'socket show must force surface re-integration (v4.1.0)');
 });
 
 test('v4.0.125: bouton Quitter — cleanupAndExit plus court-circuité (app vivante mais invisible)', async () => {
