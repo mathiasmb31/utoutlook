@@ -312,7 +312,12 @@ class ProspectMail {
                 // v4.0.27: launcher tap while the app is already running (hidden
                 // after swipe-close) — re-show the main window.
                 logger.info("Socket: show command received");
-                if (this.mailController) this.mailController.show();
+                if (this.mailController) {
+                    this.mailController.show();
+                    // v4.1.0: show() sur une fenêtre déjà "visible" ne fait rien
+                    // côté Mir — forcer la réintégration de la surface.
+                    this.mailController.resurfaceWindow(true);
+                }
             },
             onZoom: (action) => {
                 if (this.mailController) {
