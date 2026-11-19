@@ -1615,34 +1615,30 @@ test('v4.1.11: WD dérivé du vrai cwd (pwd -P), pas de la variable PWD périmé
         'plain $(pwd) without -P must not be used (v4.1.11)');
 });
 
-test('v4.2.1: _appver via expansion bash ${WD##*/}, pas de basename externe (AppArmor)', async () => {
-    const fs = await import('node:fs');
-    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
-    assert.ok(cmd.includes('_appver="${WD##*/}"'),
-        '_appver must use bash parameter expansion, AppArmor-safe (v4.2.1)');
-    assert.ok(!/_appver=\$\(basename/.test(cmd),
-        'external basename must NOT be used: denied by AppArmor, leaves _appver empty (v4.2.1)');
-});
-
-test('v4.1.9: identité fenêtre = app ID VERSIONNÉ (icône jaune Lomiri)', async () => {
+test('v4.2.2: identité fenêtre = app ID NON VERSIONNÉ (Launcher model Lomiri)', async () => {
     const fs = await import('node:fs');
     const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
     const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
     const desktop = fs.readFileSync(path.resolve(__dirname, '../../utoutlook.desktop'), 'utf-8');
     const bump = fs.readFileSync(path.resolve(__dirname, '../../../bump-version.sh'), 'utf-8');
-    // main.mjs lit l'ID versionné passé par le wrapper
-    assert.ok(main.includes('process.env.APP_CLASS_ID'),
-        'setDesktopName must read APP_CLASS_ID from wrapper (v4.1.9)');
-    // wrapper dérive la version du dossier et l'exporte
-    assert.ok(cmd.includes('APP_CLASS_ID="utoutlook.mathias_utoutlook${_appver') &&
+    // Le wrapper exporte un ID non versionné (aucun calcul de version, aucun
+    // binaire externe) et le passe à Electron via --class.
+    assert.ok(cmd.includes('APP_CLASS_ID="utoutlook.mathias_utoutlook"') &&
               cmd.includes('export APP_CLASS_ID') &&
               cmd.includes('classoption="--class=${APP_CLASS_ID}"'),
-        'wrapper must derive versioned ID and pass it to Electron (v4.1.9)');
-    // desktop versionné + bump synchronisé
-    assert.ok(/^StartupWMClass=utoutlook\.mathias_utoutlook_\d+\.\d+\.\d+$/m.test(desktop),
-        'desktop StartupWMClass must be versioned (v4.1.9, any version)');
-    assert.ok(bump.includes('StartupWMClass=utoutlook.mathias_utoutlook_$VER'),
-        'bump-version.sh must sync StartupWMClass (v4.1.9)');
+        'wrapper must pass the NON-versioned app ID to Electron (v4.2.2)');
+    assert.ok(!/_appver|basename/.test(cmd),
+        'no version derivation: Lomiri expects the non-versioned ID (v4.2.2)');
+    // main.mjs lit cet ID (ou le même en fallback)
+    assert.ok(main.includes('process.env.APP_CLASS_ID') &&
+              main.includes('"utoutlook.mathias_utoutlook"'),
+        'setDesktopName must use the non-versioned ID (v4.2.2)');
+    // desktop non versionné + bump ne le re-versionne pas
+    assert.ok(/^StartupWMClass=utoutlook\.mathias_utoutlook$/m.test(desktop),
+        'desktop StartupWMClass must be NON-versioned (v4.2.2)');
+    assert.ok(bump.includes('StartupWMClass=utoutlook.mathias_utoutlook/') &&
+              !bump.includes('StartupWMClass=utoutlook.mathias_utoutlook_$VER'),
+        'bump-version.sh must NOT re-version StartupWMClass (v4.2.2)');
 });
 
 test('v3.3.22: uncaughtException ne tue plus l\'app au premier coup (exit seulement après 5 en 60s)', async () => {
@@ -2496,13 +2492,13 @@ test('v4.1.0: icône — WM_CLASS alignée sur le click + démarrage en 6 étape
     const desktop = fs.readFileSync(path.resolve(__dirname, '../../utoutlook.desktop'), 'utf-8');
     const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
 
-    assert.ok(/^StartupWMClass=utoutlook\.mathias_utoutlook_\d+\.\d+\.\d+$/m.test(desktop),
-        'desktop file must map the Electron window to the versioned click app ID (v4.1.9, any version)');
+    assert.ok(/^StartupWMClass=utoutlook\.mathias_utoutlook$/m.test(desktop),
+        'desktop file must map the Electron window to the NON-versioned app ID (v4.2.2)');
     assert.ok(main.includes('app.setDesktopName(process.env.APP_CLASS_ID'),
-        'Electron desktop name must read versioned APP_CLASS_ID from wrapper (v4.1.9)');
+        'Electron desktop name must read the non-versioned APP_CLASS_ID from wrapper (v4.2.2)');
     assert.ok(cmd.includes('classoption="--class=${APP_CLASS_ID}"') &&
               cmd.includes('"$classoption" &'),
-        'wrapper must pass the versioned WM_CLASS switch to prospect-mail (v4.1.9)');
+        'wrapper must pass the non-versioned WM_CLASS switch to prospect-mail (v4.2.2)');
 
     // Étape 3 → 4 avancée après l'extinction des vieux process (~50 s sinon).
     assert.ok(common.includes('of 6') && common.includes('sur 6'),

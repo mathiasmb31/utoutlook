@@ -7,7 +7,8 @@ Type=Application
 X-Lomiri-Touch=true
 X-Ubuntu-Touch=true
 X-Ubuntu-XMir-Enable=true
-# v4.1.0: associe la fenêtre Electron à cette app (sinon Lomiri affiche
-# une icône jaune « ? » et « application inconnue » après un redémarrage
-# lancé par le wrapper plutôt que par le launcher).
-StartupWMClass=utoutlook.mathias_utoutlook_4.2.1
+# v4.2.2: associe la fenêtre Electron à l'ID NON VERSIONNÉ attendu par le
+# Launcher model de Lomiri (favori `appid://utoutlook.mathias_utoutlook`).
+# L'ID versionné (v4.1.9→v4.2.1) faisait créer une icône jaune « inconnue »
+# et bloquait le splash : "app that's not in the Launcher model".
+StartupWMClass=utoutlook.mathias_utoutlook
