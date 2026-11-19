@@ -13,12 +13,20 @@ fi
 echo "[1/4] Building notify ..."
 cd $ROOT
 
+# Build OUT-OF-SOURCE : un `cmake .` ici écraserait le Makefile artisanal du
+# projet et laisserait CMakeCache.txt/CMakeFiles/ dans la source (cf. correctif
+# équivalent dans build-fast.sh « revue F4 »). Le binaire est recopié dans $ROOT
+# car clickable.yaml embarque $ROOT/notify dans le click.
+NOTIFY_BUILD="${BUILD_DIR}/notify"
+
 # Cache: skip rebuild if binary exists and --force not passed
 if [ "$FORCE_BUILD" -eq 0 ] && [ -x "$ROOT/notify" ]; then
 	echo "notify binary already exists, skipping (use --force to rebuild)"
 else
-	cmake .
-	make
+	mkdir -p "$NOTIFY_BUILD"
+	cmake -S "$ROOT" -B "$NOTIFY_BUILD" -DCMAKE_BUILD_TYPE=Release
+	make -C "$NOTIFY_BUILD"
+	cp "$NOTIFY_BUILD/notify" "$ROOT/notify"
 fi
 
 echo "[2/4] Building fake xdg-open ..."
