@@ -262,23 +262,41 @@ utoutlook_t() {
 	esac
 }
 
-# Write a JS file with the translated QML strings, imported by the .qml screens.
-# qmlscene cannot read env vars directly; /tmp is writable on the device.
-# Usage: utoutlook_write_qml_i18n
+# v4.1.0 (revue F1/F2): plus de fichier JS ni de sed — AppArmor interdit
+# /tmp et sed n'est pas embarqué. Les écrans QML d'erreur sont générés avec
+# leur libellé traduit intégré (comme startup.qml / render-rescue.qml).
+# Le nom de la fonction est conservé pour les appelants existants.
 utoutlook_write_qml_i18n() {
-	# v4.1.0: plus de /tmp — AppArmor refuse au qmlscene la lecture des
-	# fichiers qui s'y trouvent. Écrit dans le dossier de l'app, passé aux
-	# qmlscene via l'option -I (import QML par nom, sans chemin en dur).
-	local f="${UTOUTLOOK_CONFIG_DIR}/utoutlook-qml-i18n.js"
-	{
-		echo "var NO_NETWORK = \"$(utoutlook_t 'qml.noNetwork' | sed 's/\\/\\\\/g; s/"/\\"/g')\";"
-		echo "var EXIT_TIMEOUT = \"$(utoutlook_t 'qml.exitTimeout' | sed 's/\\/\\\\/g; s/"/\\"/g')\";"
-		echo "var RELAUNCH = \"$(utoutlook_t 'qml.relaunch' | sed 's/\\/\\\\/g; s/"/\\"/g')\";"
-		# v4.0.128: libellés de l'écran de secours rendu logiciel / OpenGL
-		echo "var RENDER_TITLE = \"$(utoutlook_t 'qml.renderRescueTitle' | sed 's/\\/\\\\/g; s/"/\\"/g')\";"
-		echo "var RENDER_SOFTWARE = \"$(utoutlook_t 'qml.renderSoftware' | sed 's/\\/\\\\/g; s/"/\\"/g')\";"
-		echo "var RENDER_OPENGL = \"$(utoutlook_t 'qml.renderOpengl' | sed 's/\\/\\\\/g; s/"/\\"/g')\";"
-	} > "${f}" 2>/dev/null || true
+	utoutlook_write_error_qmls
+}
+
+# v4.1.0 (revue F1/F2): un import JS relatif est résolu par rapport au
+# dossier du .qml, PAS au -I ; et sed n'est pas embarqué. On génère donc
+# nonetwork.qml / exit.qml avec le libellé traduit INLINÉ, comme startup.qml.
+utoutlook_write_error_qmls() {
+	local src dst content txt repl
+	src="${WD}/qml/nonetwork.qml"
+	dst="${UTOUTLOOK_CONFIG_DIR}/nonetwork.qml"
+	if [ -f "${src}" ]; then
+		content=$("${UTOUTLOOK_BIN}/cat" "${src}" 2>/dev/null) || return 0
+		txt=$(utoutlook_t 'qml.noNetwork')
+		repl="\"${txt}\""
+		content=${content//import \"utoutlook-qml-i18n.js\" as QmlI18n/}
+		content=${content//QmlI18n.NO_NETWORK/${repl}}
+		content=${content//source: \"no-network-icon.png\"/source: \"${WD}/qml/no-network-icon.png\"}
+		printf '%s\n' "${content}" > "${dst}" 2>/dev/null || true
+	fi
+	src="${WD}/qml/exit.qml"
+	dst="${UTOUTLOOK_CONFIG_DIR}/exit.qml"
+	if [ -f "${src}" ]; then
+		content=$("${UTOUTLOOK_BIN}/cat" "${src}" 2>/dev/null) || return 0
+		txt=$(utoutlook_t 'qml.exitTimeout')
+		repl="\"${txt}\""
+		content=${content//import \"utoutlook-qml-i18n.js\" as QmlI18n/}
+		content=${content//QmlI18n.EXIT_TIMEOUT/${repl}}
+		content=${content//source: \"exit.jpg\"/source: \"${WD}/qml/exit.jpg\"}
+		printf '%s\n' "${content}" > "${dst}" 2>/dev/null || true
+	fi
 }
 
 # ============================================================
@@ -338,8 +356,31 @@ utoutlook_startup_qml_alive() {
 }
 
 utoutlook_kill_qmlscene() {
-	if utoutlook_startup_qml_alive; then return 0; fi
-	"${UTOUTLOOK_BIN}/pkill" -9 qmlscene 2>/dev/null || true
+	# v4.1.0: préserver TOUS nos écrans QML (revue F6 — la roue de relance
+	# était tuée par start_startup_qml). Scan /proc plutôt que pkill global.
+	local pids p keep=""
+	[ -n "${STARTUP_QML_PID:-}" ] && keep="${keep} ${STARTUP_QML_PID}"
+	[ -n "${RELAUNCH_QML_PID:-}" ] && keep="${keep} ${RELAUNCH_QML_PID}"
+	pids=$("${UTOUTLOOK_BIN}/ls" -l /proc/*/exe 2>/dev/null | \
+		"${UTOUTLOOK_BIN}/grep" qmlscene | \
+		"${UTOUTLOOK_BIN}/awk" -F'/' '{print $3}')
+	for p in ${pids}; do
+		case " ${keep} " in
+			*" ${p} "*) continue ;;
+		esac
+		kill -9 "${p}" 2>/dev/null || true
+	done
+}
+
+# v4.1.0: vrai binaire prospect-mail (pas un simple pgrep -f qui peut
+# correspondre au grep du pipeline — revue F8).
+utoutlook_pid_is_prospect() {
+	local line
+	line=$("${UTOUTLOOK_BIN}/ls" -l "/proc/$1/exe" 2>/dev/null) || return 1
+	case "${line}" in
+		*prospect-mail*) return 0 ;;
+		*) return 1 ;;
+	esac
 }
 
 # ============================================================
@@ -363,6 +404,7 @@ utoutlook_prospect_running() {
 	pids=$("${UTOUTLOOK_BIN}/pgrep" -f 'prospect-mail' 2>/dev/null)
 	for p in ${pids}; do
 		utoutlook_pid_is_zombie "${p}" && continue
+		utoutlook_pid_is_prospect "${p}" || continue
 		kill -0 "${p}" 2>/dev/null && return 0
 	done
 	# pgrep -f peut être aveugle sous AppArmor : compléter avec le pidfile.
@@ -371,6 +413,7 @@ utoutlook_prospect_running() {
 		p=$("${UTOUTLOOK_BIN}/tr" -d '[:space:]' <<<"${p}")
 		[ -n "${p}" ] || continue
 		utoutlook_pid_is_zombie "${p}" && continue
+		utoutlook_pid_is_prospect "${p}" || continue
 		kill -0 "${p}" 2>/dev/null && return 0
 	done < "${UTOUTLOOK_PID_FILE}"
 	return 1

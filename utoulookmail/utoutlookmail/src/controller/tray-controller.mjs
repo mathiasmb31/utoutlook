@@ -96,7 +96,7 @@ export class TrayController {
             click: () => this.setLanguage(code),
         }));
         langSubmenu.unshift({
-            label: `${currentLang === 'auto' ? '● ' : '○ '}${t('tray.darkMode.auto')}`,
+            label: `${currentLang === 'auto' ? '● ' : '○ '}${t('tray.language.auto')}`,
             click: () => this.setLanguage('auto'),
         });
 
@@ -556,6 +556,10 @@ export class TrayController {
     }
 
     cleanupAndQuit() {
-        app.exit(0);
+        // v4.1.0 (revue A2): app.exit(0) contournait cleanupAndExit() —
+        // pas de exitclient, pas de flush des cookies, heartbeat actif →
+        // le wrapper relançait l'app comme après un crash.
+        logger.info('Tray Quit — passing through app.quit() (clean exit)');
+        app.quit();
     }
 }

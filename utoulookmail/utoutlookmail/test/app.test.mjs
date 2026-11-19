@@ -73,16 +73,31 @@ test('client-injector: caches results', async () => {
 // ============================================================
 
 test('ipc-socket: handleCommand processes quit', async () => {
-    // We test the internal handleCommand via a mock
-    // Since handleCommand is not exported, we test via the public API
+    // v4.1.0 (revue F5): vrai test via une connexion socket — l'ancien test
+    // initialisait quitCalled=false sans jamais l'asserter (faux positif).
+    const net = await import('node:net');
     const {startSocketServer, stopSocketServer} = await import('../src/ipc-socket.mjs');
+    const {SOCKET_PATH} = await import('../src/config.mjs');
     let quitCalled = false;
-    const server = startSocketServer({
-        onQuit: () => { quitCalled = true; },
-    });
-    // Server started, now stop it
-    stopSocketServer();
-    assert.ok(server);
+    const server = startSocketServer({ onQuit: () => { quitCalled = true; } });
+    try {
+        const response = await new Promise((resolve, reject) => {
+            const c = net.createConnection(SOCKET_PATH);
+            let buf = '';
+            const timer = setTimeout(() => { c.destroy(); reject(new Error('socket timeout')); }, 2000);
+            c.on('connect', () => c.write(JSON.stringify({cmd: 'quit'}) + '\n'));
+            c.on('data', (d) => {
+                buf += d.toString();
+                if (buf.includes('\n')) { clearTimeout(timer); c.end(); resolve(buf); }
+            });
+            c.on('error', (e) => { clearTimeout(timer); reject(e); });
+        });
+        assert.ok(response.includes('"ok":true'), 'quit command must be acknowledged');
+        assert.ok(quitCalled, 'onQuit handler must actually be called (v4.1.0)');
+        assert.ok(server);
+    } finally {
+        stopSocketServer();
+    }
 });
 
 // ============================================================
@@ -517,8 +532,8 @@ test('mail-window-controller: CSP script-src includes CDN domains', async () => 
     const cspMatch = content.match(/script-src[^;]+/);
     assert.ok(cspMatch, 'CSP should have script-src directive');
     for (const domain of ['msocdn.com', 'msecnd.net', 'msftauth.net', 'cdn.office.net', 'onecdn.static.microsoft', 'microsoftonline.com']) {
-        assert.ok(content.includes(domain),
-            `CSP constants should include ${domain} (Outlook boot JS served from CDN)`);
+        assert.ok(cspMatch[0].includes('MS_CDN') && content.includes(domain),
+            `script-src must use MS_CDN containing ${domain} (Outlook boot JS served from CDN)`);
     }
 });
 
@@ -1677,10 +1692,10 @@ test('v3.3.30: démarrage rapide + wrapper périmé silencieux (pas de kill du n
     // cleanup: pid is recorded BEFORE kill_stale_wrappers so the stale wrapper
     // sees it is no longer the owner
     const cu = cmd.slice(cmd.indexOf('function cleanup()'), cmd.indexOf('function launch_prospect'));
-    const pidPos = cu.indexOf('echo $$ > "${UTOUTLOOK_DATA_DIR}/wrapper.pid"');
+    const pidPos = cu.indexOf('echo $$ > "${_pf}"');
     const kswPos = cu.indexOf('utoutlook_kill_stale_wrappers');
     assert.ok(pidPos !== -1 && kswPos !== -1 && pidPos < kswPos,
-        'cleanup must write wrapper.pid BEFORE kill_stale_wrappers (v3.3.30)');
+        'cleanup must claim/verify wrapper.pid BEFORE kill_stale_wrappers (v3.3.30/v4.1.0)');
 });
 
 test('v4.0.10: upgrade depuis une version < 3.0 — plus de démarrage bloqué sur le splash', async () => {
@@ -1772,7 +1787,8 @@ test('v3.3.50: badge logo + « Made for Ubtouch » injecté sur la page de login
     assert.ok(i18n.includes("'login.madeFor'"),
         'i18n.mjs must define login.madeFor (v3.3.50)');
     for (const lang of ['fr','en','es','de','it','pt','zh','ar']) {
-        assert.ok(new RegExp("'login.madeFor'[\\s\\S]*?" + lang + ":").test(i18n),
+        const block = i18n.slice(i18n.indexOf("'login.madeFor'"), i18n.indexOf("'login.madeFor'") + 400);
+        assert.ok(block.includes(lang + ':'),
             `login.madeFor must exist for ${lang} (v3.3.50)`);
     }
 });
@@ -2166,8 +2182,9 @@ test('v4.0.126: splash QML dès la 1re ligne du wrapper + étape i18n', async ()
     }
     assert.ok(common.includes('msg="${msg//%N/${n}}"'),
         'step number must be replaced with a bash builtin, not sed (v4.0.126)');
-    assert.ok(common.includes('if utoutlook_startup_qml_alive; then return 0; fi'),
-        'cleanup must preserve our early splash window (v4.0.126)');
+    assert.ok(common.includes('utoutlook_startup_qml_alive()') &&
+              cmd.includes('if utoutlook_startup_qml_alive; then'),
+        'wrapper must preserve our early splash window (v4.0.126)');
 
     // v4.1.0: AppArmor refuse au qmlscene la lecture d'un .qml dans /tmp —
     // la barre doit être AUTONOME (aucun fichier externe) sous peine de
@@ -2258,10 +2275,10 @@ test('v4.0.128: écran de secours QML rendu logiciel / OpenGL sur crash GPU', as
     // Le wrapper détecte le crash FRAIS avant de consommer le marqueur.
     assert.ok(common.includes('utoutlook_gpu_crash_is_new()'),
         'wrapper must detect fresh GPU crashes before resolving mode (v4.0.128)');
-    assert.ok(common.includes('var RENDER_TITLE') &&
-              common.includes('var RENDER_SOFTWARE') &&
-              common.includes('var RENDER_OPENGL'),
-        'QML i18n writer must export the rescue labels (v4.0.128)');
+    assert.ok(common.includes("utoutlook_t 'qml.renderRescueTitle'") &&
+              common.includes("utoutlook_t 'qml.renderSoftware'") &&
+              common.includes("utoutlook_t 'qml.renderOpengl'"),
+        'rescue labels must come from the i18n catalog (v4.1.0)');
     for (const needle of ['UToutlook hit a graphics problem', 'UToutlook tuvo un problema gráfico',
                           'UToutlook hatte ein Grafikproblem', 'UToutlook ha riscontrato un problema grafico',
                           'O UToutlook teve um problema gráfico', 'UToutlook 遇到图形问题',
@@ -2370,15 +2387,16 @@ test('v4.1.0: icône — WM_CLASS alignée sur le click + démarrage en 6 étape
 
     // i18n QML : plus de fichier dans /tmp (AppArmor) — import par nom
     // résolu via l'option -I passée à qmlscene.
-    assert.ok(common.includes('local f="${UTOUTLOOK_CONFIG_DIR}/utoutlook-qml-i18n.js"'),
-        'QML i18n must be written in the app config dir, not /tmp (v4.1.0)');
+    assert.ok(common.includes('utoutlook_write_error_qmls()') &&
+              common.includes('${UTOUTLOOK_CONFIG_DIR}/nonetwork.qml'),
+        'QML screens must be generated in the app config dir (v4.1.0)');
     assert.ok(!fs.readFileSync(path.resolve(__dirname, '../../qml/nonetwork.qml'), 'utf-8')
               .includes('/tmp/utoutlook-qml-i18n.js') &&
               !fs.readFileSync(path.resolve(__dirname, '../../qml/exit.qml'), 'utf-8')
               .includes('/tmp/utoutlook-qml-i18n.js'),
         'QML screens must import i18n by name (v4.1.0)');
-    assert.ok((cmd.match(/qmlscene -I "\$\{UTOUTLOOK_CONFIG_DIR\}"/g) || []).length >= 2,
-        'wrapper must pass the config dir as QML import path (v4.1.0)');
+    assert.ok(cmd.includes('qmlscene "${UTOUTLOOK_CONFIG_DIR}"/nonetwork.qml'),
+        'wrapper must launch the generated nonetwork QML (v4.1.0)');
 
     // Démarrage long : attentes réduites (notification/flag de fermeture).
     assert.ok(cmd.includes('utoutlook_wait_notifications 6') &&
@@ -2440,4 +2458,21 @@ test('v4.0.125: bouton Quitter — cleanupAndExit plus court-circuité (app viva
         'hideOnClose must still apply outside a quit (v4.0.125)');
     assert.ok(close.includes('!global.utoutlookQuitting'),
         'close handler must skip hideOnClose during a real quit (v4.0.125)');
+});
+
+test('v4.1.0 (revue): outillage release et garde-fous', async () => {
+    const fs = await import('node:fs');
+    const root = path.resolve(__dirname, '../../..');
+    const watch = fs.readFileSync(path.resolve(root, 'watch-log.sh'), 'utf-8');
+    const menu = fs.readFileSync(path.resolve(root, 'menu.sh'), 'utf-8');
+    const store = fs.readFileSync(path.resolve(root, 'openstore-prepare.sh'), 'utf-8');
+    const hook = fs.readFileSync(path.resolve(root, 'githooks/pre-push'), 'utf-8');
+
+    assert.ok(watch.includes('adb devices') && watch.includes('appareil verrouillé'),
+        'watch-log must check the device and explain locked-device failures');
+    assert.ok(menu.includes('-maxdepth 4'), 'menu must detect version in subfolders');
+    assert.ok(store.includes('UPLOAD_OK') && store.includes('"OK"'),
+        'OpenStore upload must require the explicit OK argument');
+    assert.ok(hook.includes('--not --remotes') && !hook.includes('--not --all'),
+        'pre-push must inspect new-branch objects (F16)');
 });
