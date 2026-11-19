@@ -56,12 +56,32 @@ let unreadCheckTimer = null;
 let unreadObserver = null;
 let notificationObserver = null;
 let retryTimer = null;
-let retryDelay = CONFIG.initialRetryDelayMs;
-// v3.3.22: un handler qui échoue 5× de suite est déclaré mort (ex: interface
-// interne outlookWebAppUnread supprimée par Microsoft) — sinon retry infini
-// qui spam les logs et bouffe du CPU (vu: "Failed to connect" toutes les 3s).
-const handlerFailCount = {};
-const deadHandlers = {};
+// v4.1.1: compteurs de retry persistés dans `window`. Le script est réinjecté à
+// chaque dom-ready/did-stop-loading ET par le health check toutes les 10 s :
+// avec des compteurs locaux, la limite de 5 échecs ne s'accumulait jamais et
+// chaque injection relogguait « Failed to connect ... (1/5) » dans wrapper.log.
+const RETRY_COOLDOWN_MS = 5 * 60 * 1000;
+if (!window.__utoutlookRetryState) {
+  window.__utoutlookRetryState = {
+    failCount: {},
+    dead: {},
+    deadSince: {},
+    delay: CONFIG.initialRetryDelayMs,
+  };
+}
+const retryState = window.__utoutlookRetryState;
+
+// Un handler déclaré mort peut redevenir valide (connexion Outlook après la
+// page de login) : on le réveille après un délai de grâce plutôt que de le
+// condamner définitivement pour la session.
+for (const type of Object.keys(retryState.dead)) {
+  if (Date.now() - (retryState.deadSince[type] || 0) > RETRY_COOLDOWN_MS) {
+    delete retryState.dead[type];
+    delete retryState.deadSince[type];
+    retryState.failCount[type] = 0;
+    debug(`Reviving ${type} after cooldown`);
+  }
+}
 
 // Persistent state across re-injections.
 // The observer script is re-injected on dom-ready, did-navigate-in-page,
@@ -552,21 +572,24 @@ const initializeEmailMonitoring = () => {
   const failedHandlers = [];
 
   for (const interfaceType in observeUnreadHandlers) {
-    if (deadHandlers[interfaceType]) continue; // v3.3.22: dead after 5 failures
+    if (retryState.dead[interfaceType]) continue; // v3.3.22: dead after 5 failures
     const handler = observeUnreadHandlers[interfaceType];
     const started = handler();
 
     if (started) {
-      handlerFailCount[interfaceType] = 0;
+      retryState.failCount[interfaceType] = 0;
+      delete retryState.dead[interfaceType];
+      delete retryState.deadSince[interfaceType];
       debug(`Successfully connected to ${interfaceType} interface`);
       startedHandlers.push(interfaceType);
     } else {
-      handlerFailCount[interfaceType] = (handlerFailCount[interfaceType] || 0) + 1;
-      if (handlerFailCount[interfaceType] >= 5) {
-        deadHandlers[interfaceType] = true;
+      retryState.failCount[interfaceType] = (retryState.failCount[interfaceType] || 0) + 1;
+      if (retryState.failCount[interfaceType] >= 5) {
+        retryState.dead[interfaceType] = true;
+        retryState.deadSince[interfaceType] = Date.now();
         debug(`Giving up on ${interfaceType} after 5 failures (interface removed by Outlook?)`);
       } else {
-        debug(`Failed to connect to ${interfaceType} interface (${handlerFailCount[interfaceType]}/5)`);
+        debug(`Failed to connect to ${interfaceType} interface (${retryState.failCount[interfaceType]}/5)`);
       }
       failedHandlers.push(interfaceType);
     }
@@ -576,7 +599,7 @@ const initializeEmailMonitoring = () => {
   if (startedHandlers.length > 0) {
     window.__utoutlookObserverActive = true;
     // Reset backoff on success
-    retryDelay = CONFIG.initialRetryDelayMs;
+    retryState.delay = CONFIG.initialRetryDelayMs;
     debug(`Observer active (${startedHandlers.length} handler(s) connected)`);
   } else {
     window.__utoutlookObserverActive = false;
@@ -584,13 +607,13 @@ const initializeEmailMonitoring = () => {
 
   // Retry failed handlers with exponential backoff — but NOT forever:
   // v3.3.22 dead handlers (5 consecutive failures) are excluded from the retry.
-  const retryable = failedHandlers.filter(f => !deadHandlers[f]);
-  if (retryable.length > 0 || (startedHandlers.length === 0 && Object.keys(deadHandlers).length < Object.keys(observeUnreadHandlers).length)) {
-    const currentDelay = retryDelay;
+  const retryable = failedHandlers.filter(f => !retryState.dead[f]);
+  if (retryable.length > 0 || (startedHandlers.length === 0 && Object.keys(retryState.dead).length < Object.keys(observeUnreadHandlers).length)) {
+    const currentDelay = retryState.delay;
     debug(`Retrying in ${currentDelay / 1000}s (failed: ${retryable.join(', ') || 'all'})`);
     retryTimer = setTimeout(() => {
       // Exponential backoff: double the delay, capped at max
-      retryDelay = Math.min(retryDelay * 2, CONFIG.maxRetryDelayMs);
+      retryState.delay = Math.min(retryState.delay * 2, CONFIG.maxRetryDelayMs);
       initializeEmailMonitoring();
     }, currentDelay);
   } else {
@@ -614,6 +637,7 @@ const debounce = (() => {
   };
 })();
 
-debug('init monitor');
+// v4.1.1: un seul « init monitor » par injection (initializeEmailMonitoring()
+// le loggue déjà) — l'ancien double log doublait le bruit dans wrapper.log.
 initializeEmailMonitoring();
 })(); // end IIFE
