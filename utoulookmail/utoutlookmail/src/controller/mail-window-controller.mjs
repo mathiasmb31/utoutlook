@@ -2255,11 +2255,15 @@ class MailWindowController {
         // écran blanc"). powerMonitor 'resume' fires from logind → force a
         // full redraw of the webContents and re-assert visibility/focus.
         powerMonitor.on('resume', () => {
-            logger.info('powerMonitor resume — forcing window repaint (v3.3.32)');
-            if (!this.alive) return;
-            try { this.win.webContents.invalidate(); } catch (e) { logger.warn('invalidate failed:', e.message); }
-            try { if (!this.win.isVisible()) this.win.show(); } catch (e) { /* ignore */ }
-            try { this.win.focus(); } catch (e) { /* ignore */ }
+            logger.info('powerMonitor resume — re-surfacing window (v4.1.0)');
+            this.resurfaceWindow(true);
+        });
+        // v4.1.0: sur le device le event 'resume' de logind n'est pas Always
+        // reçu au déverrouillage (journal : aucun "powerMonitor resume" après
+        // "gkr-pam: unlocked login keyring") — 'unlock-screen' couvre ce cas.
+        powerMonitor.on('unlock-screen', () => {
+            logger.info('powerMonitor unlock-screen — re-surfacing window (v4.1.0)');
+            this.resurfaceWindow(true);
         });
         powerMonitor.on('suspend', () => logger.info('powerMonitor suspend (v3.3.32)'));
     }
@@ -2353,6 +2357,11 @@ class MailWindowController {
             if (this.keyboardHealthPoll) {
                 clearInterval(this.keyboardHealthPoll);
                 this.keyboardHealthPoll = null;
+            }
+            // v4.1.0: stop surface re-surfacing watchdog
+            if (this.surfaceHealthPoll) {
+                clearInterval(this.surfaceHealthPoll);
+                this.surfaceHealthPoll = null;
             }
             // v4.0.78: stop list-empty watchdog
             if (this.listWatchdog) {
@@ -2617,6 +2626,14 @@ class MailWindowController {
         screen.on('display-metrics-changed', () => { this.handleDisplayChange(); });
         screen.on('display-added', () => this.handleDisplayChange());
         screen.on('display-removed', () => this.handleDisplayChange());
+        // v4.1.0: filet de sécurité — même sans event powerMonitor (constaté
+        // sur device), réintègre périodiquement la surface Mir si la fenêtre
+        // est censée être visible. Pas de focus volé : stealFocus = false.
+        this.surfaceHealthPoll = setInterval(() => {
+            if (this.alive && this.win.isVisible() && !global.utoutlookQuitting) {
+                this.resurfaceWindow(false);
+            }
+        }, 30000);
         // v4.0.66: sur UT, un pivot ne déclenche PAS display-metrics-changed ni
         // webContents resize (vérifié dans les logs : 0 événement) — la rotation
         // est faite au niveau compositor. On POLL la rotation de l'écran et on
@@ -3106,6 +3123,34 @@ class MailWindowController {
     reloadWindow() {
         this.initialMinimization.domReady = false;
         this.win.reload();
+    }
+
+    /**
+     * v4.1.0: "re-surface" — sur UT/Lomiri, après un verrouillage/déverrouillage
+     * ou un changement de session Mir, la fenêtre reste MapViewable côté X
+     * (isVisible() === true, heartbeat actif) mais le shell ne compose plus sa
+     * surface : l'app paraît fermée alors qu'elle vit. Forcer un passage
+     * alwaysOnTop puis invalidate() oblige Mir à réintégrer la surface, sans
+     * win.hide() (interdit : crash GPU FATAL sur UT, voir v4.0.39).
+     */
+    resurfaceWindow(stealFocus = false) {
+        if (!this.alive || global.utoutlookQuitting) return;
+        if (!this.win.isVisible()) {
+            try { this.win.show(); } catch (e) { /* ignore */ }
+        }
+        try {
+            this.win.setAlwaysOnTop(true);
+            setTimeout(() => {
+                if (this.alive) {
+                    try { this.win.setAlwaysOnTop(false); } catch (e) { /* ignore */ }
+                }
+            }, 150);
+        } catch (e) { /* ignore */ }
+        try { this.win.webContents.invalidate(); } catch (e) { /* ignore */ }
+        if (stealFocus) {
+            try { this.win.focus(); } catch (e) { /* ignore */ }
+        }
+        logger.info('v4.1.0: window re-surfaced (alwaysOnTop pulse + invalidate)');
     }
 
     /**
