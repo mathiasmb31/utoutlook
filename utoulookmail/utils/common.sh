@@ -277,16 +277,17 @@ utoutlook_write_qml_i18n() {
 # startup.qml) — aucun texte en dur, tout passe par utoutlook_t().
 # La substitution %N utilise le bash builtin (pas de sed sous AppArmor).
 # ============================================================
-export UTOUTLOOK_STEP_QML="/tmp/utoutlook-start-step.qml"
+export UTOUTLOOK_STEP_FILE="${UTOUTLOOK_CONFIG_DIR}/start-step"
 utoutlook_set_start_step() {
 	local n="$1"
 	local msg
 	msg=$(utoutlook_t 'qml.startStep')
 	msg="${msg//%N/${n}}"
-	{
-		printf 'import QtQuick 2.9\n'
-		printf 'QtObject { property string label: "%s" }\n' "${msg}"
-	} > "${UTOUTLOOK_STEP_QML}" 2>/dev/null || true
+	# v4.1.0: fichier TEXTE dans le dossier de l'app (autorisé AppArmor).
+	# Ne PAS écrire de .qml dans /tmp : qmlscene n'a pas le droit de le lire
+	# sur le click installé → splash bloquée (v4.0.126 régressé).
+	printf '%s\n' "${msg}" > "${UTOUTLOOK_STEP_FILE}" 2>/dev/null || true
+	echo "${msg}"
 }
 
 # v4.0.126: la barre lancée dès la 1re ligne du wrapper ne doit pas être tuée
@@ -299,6 +300,29 @@ utoutlook_startup_qml_alive() {
 utoutlook_kill_qmlscene() {
 	if utoutlook_startup_qml_alive; then return 0; fi
 	"${UTOUTLOOK_BIN}/pkill" -9 qmlscene 2>/dev/null || true
+}
+
+# v4.1.0: génère l'écran de secours DANS le dossier de l'app (autorisé
+# AppArmor) avec les libellés traduits intégrés — aucun import depuis /tmp.
+utoutlook_write_rescue_qml() {
+	local dst="${UTOUTLOOK_CONFIG_DIR}/render-rescue.qml"
+	local title soft opengl
+	title=$(utoutlook_t 'qml.renderRescueTitle')
+	soft=$(utoutlook_t 'qml.renderSoftware')
+	opengl=$(utoutlook_t 'qml.renderOpengl')
+	{
+		printf 'import QtQuick 2.9\nimport QtQuick.Window 2.2\n'
+		printf 'Window {\n    visible: true\n    flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint\n    visibility: Window.FullScreen\n    color: "#0f0f1a"\n'
+		printf '    Column {\n        anchors.centerIn: parent\n        spacing: 28\n'
+		printf '        Text { anchors.horizontalCenter: parent.horizontalCenter; color: "#ffffff"; font.pixelSize: 26; text: "%s" }\n' "${title}"
+		printf '        Rectangle { width: 560; height: 76; radius: 14; color: "#E95420"; anchors.horizontalCenter: parent.horizontalCenter\n'
+		printf '          Text { anchors.centerIn: parent; color: "#ffffff"; font.pixelSize: 22; text: "%s" }\n' "${soft}"
+		printf '          MouseArea { anchors.fill: parent; onClicked: { console.log("UT_RENDER_CHOICE=software"); Qt.exit(0); } }\n        }\n'
+		printf '        Rectangle { width: 560; height: 76; radius: 14; color: "#2a2a3a"; border.color: "#E95420"; border.width: 2; anchors.horizontalCenter: parent.horizontalCenter\n'
+		printf '          Text { anchors.centerIn: parent; color: "#ffffff"; font.pixelSize: 22; text: "%s" }\n' "${opengl}"
+		printf '          MouseArea { anchors.fill: parent; onClicked: { console.log("UT_RENDER_CHOICE=opengl"); Qt.exit(0); } }\n        }\n'
+		printf '    }\n}\n'
+	} > "${dst}" 2>/dev/null || true
 }
 
 # ============================================================
