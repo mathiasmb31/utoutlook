@@ -306,6 +306,9 @@ function close_command() {
 	# personne ne le tue et il reste orphelin indéfiniment. kill sur notre propre
 	# fils = même label AppArmor, autorisé.
 	if [ -n "${CLIENT_PID}" ] && [ "${CLIENT_PID}" != "0" ] && kill -0 "${CLIENT_PID}" 2>/dev/null; then
+		# v4.1.0: flag wrapper-quit → vrai quit propre (l'app reapera ses
+		# sous-process Chromium) au lieu d'un hide puis SIGKILL.
+		printf 'quit:%s' "$$" > "${UTOUTLOOK_FORCE_QUIT}" 2>/dev/null || true
 		kill -TERM "${CLIENT_PID}" 2>/dev/null || true
 		_w=0
 		while [ ${_w} -lt 5 ] && kill -0 "${CLIENT_PID}" 2>/dev/null; do
@@ -313,6 +316,7 @@ function close_command() {
 			_w=$((_w + 1))
 		done
 		kill -9 "${CLIENT_PID}" 2>/dev/null || true
+		"${WD}"/bin/rm -f "${UTOUTLOOK_FORCE_QUIT}" 2>/dev/null || true
 		wait "${CLIENT_PID}" 2>/dev/null || true # v4.0.99: récupérer le zombie
 	fi
 	# v4.0.58: idem pour un éventuel qmlscene nonetwork.qml lancé par ce wrapper
@@ -453,7 +457,10 @@ export UTOUTLOOK_WRAPPER_MARKER="${UTOUTLOOK_CONFIG_DIR}/.wrapper-start"
 # while dying, which made the NEXT launch slow-then-exit. Kill everything that
 # looks like a previous utoutlook instance, wait for them to die, then clear
 # every lifecycle flag so this launch starts from a clean slate.
-"${WD}"/bin/pkill -9 -f "bin/App/prospect-mail" 2>/dev/null || true
+# v4.1.0: SIGTERM (avec flag wrapper-quit) plutôt que SIGKILL — un SIGKILL
+# du process principal orphelinait ses sous-processus Chromium → zombies.
+printf 'quit:%s' "$$" > "${UTOUTLOOK_FORCE_QUIT}" 2>/dev/null || true
+"${WD}"/bin/pkill -TERM -f "bin/App/prospect-mail" 2>/dev/null || true
 # v4.0.62: pkill/pgrep -f sont aveugles sous AppArmor (ne voient pas les autres
 # process) — tuer AUSSI via les pidfiles enregistrés et le scan /proc/*/exe.
 prospect_alive() {
@@ -467,7 +474,9 @@ kill_prospect_pids() {
 	[ -f "${UTOUTLOOK_PID_FILE}" ] || return 0
 	while IFS= read -r _pid; do
 		_pid=$("${WD}"/bin/tr -d '[:space:]' <<<"${_pid}")
-		[ -n "${_pid}" ] && kill -9 "${_pid}" 2>/dev/null || true
+		# v4.1.0: TERM d'abord (wrapper-quit est posé) — SIGKILL en dernier
+		# recours seulement dans utoutlook_kill_app() après 5 s d'attente.
+		[ -n "${_pid}" ] && kill -TERM "${_pid}" 2>/dev/null || true
 	done < "${UTOUTLOOK_PID_FILE}"
 	utoutlook_kill_by_proc 2>/dev/null || true
 }

@@ -2336,6 +2336,25 @@ test('v4.1.0: icône — WM_CLASS alignée sur le click + démarrage en 6 étape
         'kill_app must not use pkill -0 which matches zombies (v4.1.0)');
     assert.ok(cmd.includes('utoutlook_prospect_running'),
         'wrapper liveness check must ignore zombies (v4.1.0)');
+
+    // Prévention : wrapper-quit transforme le SIGTERM du wrapper en vrai quit
+    // (le swipe-close Lomiri, sans flag, continue de seulement masquer).
+    assert.ok(fs.readFileSync(path.resolve(__dirname, '../src/config.mjs'), 'utf-8')
+              .includes('FORCE_QUIT_FILE'),
+        'a dedicated force-quit flag file must exist (v4.1.0)');
+    const sigterm = main.slice(main.indexOf('process.on("SIGTERM"'),
+                               main.indexOf('app.on("window-all-closed"'));
+    assert.ok(sigterm.includes('FORCE_QUIT_FILE') && sigterm.includes('cleanupAndExit()') &&
+              sigterm.includes('win.hide()'),
+        'SIGTERM must clean-quit with the flag, hide on swipe-close (v4.1.0)');
+    assert.ok(common.includes('printf \'quit:%s\' "${UTOUTLOOK_WRAPPER_PID:-unknown}" > "${UTOUTLOOK_FORCE_QUIT}"'),
+        'wrapper must write the force-quit flag before SIGTERM (v4.1.0)');
+    assert.ok(!cmd.includes('pkill -9 -f "bin/App/prospect-mail"') &&
+              cmd.includes('pkill -TERM -f "bin/App/prospect-mail"') &&
+              cmd.includes('kill -TERM "${_pid}"'),
+        'wrapper must stop SIGKILLing Electron at startup (v4.1.0)');
+    assert.ok(common.includes('kill -TERM "$pid"') && !common.includes('kill -9 "$pid"'),
+        'proc scan must use TERM so Electron can reap its children (v4.1.0)');
 });
 
 test('v4.0.125: bouton Quitter — cleanupAndExit plus court-circuité (app vivante mais invisible)', async () => {
