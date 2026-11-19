@@ -81,6 +81,10 @@ a provoqué OOM + figeage total le 2026-11-04.
 - Surcharge ponctuelle possible (`./build-fast.sh N`, `make jobs=N`) en surveillant `free -h`
 
 
+## Usage du téléphone — interdictions absolues (règle Mathias, 2026-11-19, TOUTES apps)
+
+Uniquement pour déboguer **utoutlook** (adb ciblé, logs de l'app, état du shell). **Interdit et prioritaire** : appels/SMS, toute action pouvant dépenser de l'argent (achat, abonnement, paiement, OpenStore), consultation de données personnelles (contacts, messages, photos, comptes), toucher à une autre app, reboot sans demande explicite. Voir `vibeworkspace/AGENTS.md` §« Usage du téléphone ».
+
 ## Icône jaune / app inconnue Ubuntu Touch (OBLIGATOIRE — règle Mathias, 2026-11-19, TOUTES apps)
 
 **Ne jamais créer de fenêtre QML/QMLScene séparée** (splash, barre de progression) dans une app click : Lomiri la voit comme une app inconnue (`unknown.qtmir` → icône jaune, double icône, splash bloqué, fermetures forcées). Utiliser le splash natif ou afficher le progrès dans la fenêtre principale. Vérifier avec `gdbus introspect --dest com.lomiri.Shell --object-path /com/lomiri/Shell/Launcher --xml | grep unknown_2Eqtmir`. Détails : `base-de-connaissances/ubuntu-touch-commun.md` §2.14 et fiche addendum 23:10.
