@@ -7,8 +7,6 @@ Type=Application
 X-Lomiri-Touch=true
 X-Ubuntu-Touch=true
 X-Ubuntu-XMir-Enable=true
-# v4.2.2: associe la fenêtre Electron à l'ID NON VERSIONNÉ attendu par le
-# Launcher model de Lomiri (favori `appid://utoutlook.mathias_utoutlook`).
-# L'ID versionné (v4.1.9→v4.2.1) faisait créer une icône jaune « inconnue »
-# et bloquait le splash : "app that's not in the Launcher model".
-StartupWMClass=utoutlook.mathias_utoutlook
+# v4.2.3: AUCUN StartupWMClass — retour à l'état v4.0.98 (avant le commit
+# 8a40c2e qui l'avait introduit avec --class et l'icône jaune unknown.qtmir).
+# whatslectron, l'autre app Electron du device, n'en a pas et va bien.
