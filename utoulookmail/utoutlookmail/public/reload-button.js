@@ -58,13 +58,14 @@
         '<text x="14" y="27" font-family="Arial,sans-serif" font-size="12" font-weight="bold" fill="#E95420" text-anchor="middle">2</text>' +
         '</svg>'
     );
-    // Badge UBtouch : même hauteur que les autres, carré (logo rond centré),
-    // purement décoratif — pas de curseur pointer, pas de tabindex.
+    // v4.1.8: badge UBtouch — align-self:stretch le force à prendre EXACTEMENT
+    // la même hauteur que les boutons voisins (au lieu d'un height fixe qui
+    // pouvait décaler). Carré, purement décoratif, pas de curseur pointer.
     const BADGE_STYLE =
-        'width:43px;height:43px;padding:2px;border-radius:14px;cursor:default;' +
+        'width:34px;align-self:stretch;padding:3px;border-radius:12px;cursor:default;' +
         'background:#E95420;border:1px solid #E95420;' +
         'display:flex;align-items:center;justify-content:center;' +
-        'box-shadow:0 2px 10px rgba(0,0,0,.5);';
+        'box-sizing:border-box;box-shadow:0 2px 10px rgba(0,0,0,.5);';
 
     const tr = (key, fallback) =>
         (window.__utoutlookI18n && window.__utoutlookI18n[key]) || fallback;
@@ -242,8 +243,7 @@
             const img = document.createElement('img');
             img.src = UBTOUCH_SVG;
             img.alt = '';
-            img.width = 38; img.height = 38;
-            img.style.cssText = 'display:block;width:38px;height:38px;border-radius:12px;';
+            img.style.cssText = 'display:block;width:100%;height:100%;border-radius:9px;object-fit:contain;';
             ubtouch.appendChild(img);
             bar.insertBefore(ubtouch, reload);
         }
