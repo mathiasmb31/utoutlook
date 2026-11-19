@@ -60,7 +60,7 @@ function launch_prospect() {
 		cleanup
 		echo "tried too more " >${exitcommand}
 		utoutlook_write_qml_i18n
-		qmlscene "${WD}"/qml/nonetwork.qml &
+		qmlscene -I "${UTOUTLOOK_CONFIG_DIR}" "${WD}"/qml/nonetwork.qml &
 		QML_PID=$!  # v4.0.58: pour que close_command puisse le tuer (pas d'orphelin)
 		wait ${QML_PID} 2>/dev/null || true  # le wrapper reste vivant tant que la page nonetwork est affichée
 		exit 0
@@ -106,7 +106,7 @@ function verify_prospect_life() {
 	if [ -f "${rotationflag}" ] && utoutlook_flag_fresh "${rotationflag}" \
 	   && [ -z "${RELAUNCH_QML_PID}" ]; then
 		"${WD}"/bin/rm -f "${rotationflag}" 2>/dev/null || true
-		qmlscene "${WD}"/qml/relaunch.qml > "${UTOUTLOOK_CONFIG_DIR}/relaunch-qml.log" 2>&1 &
+		qmlscene -I "${UTOUTLOOK_CONFIG_DIR}" "${WD}"/qml/relaunch.qml > "${UTOUTLOOK_CONFIG_DIR}/relaunch-qml.log" 2>&1 &
 		RELAUNCH_QML_PID=$!
 		RELAUNCH_QML_SHOWN_AT=${EPOCHSECONDS:-0} # v4.0.107: builtin bash — /usr/bin/date est interdit par AppArmor
 		echo "rotation relaunch screen shown (app still alive, qml pid ${RELAUNCH_QML_PID})"
@@ -196,7 +196,7 @@ function verify_prospect_life() {
 			# tuée dès que le nouvel app répond sur le socket (voir boucle while).
 			if [ -f "${rotationflag}" ] && utoutlook_flag_fresh "${rotationflag}"; then
 				"${WD}"/bin/rm -f "${rotationflag}" 2>/dev/null || true
-				qmlscene "${WD}"/qml/relaunch.qml > "${UTOUTLOOK_CONFIG_DIR}/relaunch-qml.log" 2>&1 &
+				qmlscene -I "${UTOUTLOOK_CONFIG_DIR}" "${WD}"/qml/relaunch.qml > "${UTOUTLOOK_CONFIG_DIR}/relaunch-qml.log" 2>&1 &
 				RELAUNCH_QML_PID=$!
 				RELAUNCH_QML_SHOWN_AT=${EPOCHSECONDS:-0} # v4.0.107: builtin bash — /usr/bin/date est interdit par AppArmor
 				echo "rotation relaunch screen shown (qml pid ${RELAUNCH_QML_PID})"
