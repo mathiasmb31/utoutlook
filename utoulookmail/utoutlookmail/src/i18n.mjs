@@ -97,6 +97,21 @@ const T = {
         fr: 'Quitter', en: 'Quit', es: 'Salir', de: 'Beenden',
         it: 'Esci', pt: 'Sair', zh: '退出', ar: 'خروج',
     },
+    // v4.1.3: bouton « Première installation » dans la barre d'actions de la liste
+    'action.firstInstall': {
+        fr: 'Première installation', en: 'First install', es: 'Primera instalación', de: 'Erste Installation',
+        it: 'Prima installazione', pt: 'Primeira instalação', zh: '首次安装', ar: 'التثبيت الأول',
+    },
+    // v4.1.3: confirmation en page (double-tap) avant le wipe complet
+    'action.firstInstallConfirm': {
+        fr: 'Tout effacer ?', en: 'Wipe everything?', es: '¿Borrar todo?', de: 'Alles löschen?',
+        it: 'Cancella tutto?', pt: 'Apagar tudo?', zh: '全部清除？', ar: 'مسح الكل؟',
+    },
+    // v4.1.3: notification affichée après le wipe, avant la relance
+    'action.firstInstallNotify': {
+        fr: 'Données effacées — redémarrage…', en: 'Data cleared — restarting…', es: 'Datos borrados — reiniciando…', de: 'Daten gelöscht — Neustart…',
+        it: 'Dati cancellati — riavvio…', pt: 'Dados apagados — reiniciando…', zh: '数据已清除 — 正在重启…', ar: 'تم مسح البيانات — جارٍ إعادة التشغيل…',
+    },
     'common.show': {
         fr: 'Afficher', en: 'Show', es: 'Mostrar', de: 'Anzeigen',
         it: 'Mostra', pt: 'Mostrar', zh: '显示', ar: 'إظهار',

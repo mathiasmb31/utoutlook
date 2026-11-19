@@ -2060,16 +2060,41 @@ class MailWindowController {
                 }
                 await ses.cookies.flushStore().catch(() => {});
                 await ses.clearStorageData().catch(() => {});
-                logger.info('First-install: all cookies and storage cleared');
+                // v4.1.3: vraie « première installation » — vider AUSSI les
+                // réglages persistés (electron-store settings.json) pour
+                // repartir exactement comme une installation neuve.
+                try { settings.clear(); } catch (e) { logger.warn('First-install settings clear:', e.message); }
+                logger.info('First-install: cookies, storage and settings cleared');
             } catch (e) {
                 logger.warn('First-install clear failed:', e.message);
             }
+            // v4.1.3: notifier l'utilisateur puis relancer l'application. On
+            // pose restartRequested pour que le handler 'closed' N'écrive PAS
+            // le flag exitclient : le wrapper command.sh relancera donc bien
+            // l'app (modèle éprouvé de l'import de réglages / tray redémarrage).
+            try {
+                const notifTitle = t('app.name');
+                const notifBody = t('action.firstInstallNotify');
+                owner.sendUbportsNotification(notifTitle, notifBody);
+                logger.info('First-install: notification sent');
+            } catch (e) {
+                logger.warn('First-install notification failed:', e.message);
+            }
             // v4.0.10: si appelé depuis le splash, fermer le splash (qui affichera
             // la fenêtre principale via closeSplashWindow) puis recharger
-            if (fromSplash) owner.closeSplashWindow();
-            if (owner.win && !owner.win.isDestroyed()) {
-                owner.win.loadURL('https://outlook.office.com/mail/');
+            if (fromSplash) {
+                owner.closeSplashWindow();
+                if (owner.win && !owner.win.isDestroyed()) {
+                    owner.win.loadURL('https://outlook.office.com/mail/');
+                }
+                return true;
             }
+            global.restartRequested = true;
+            // Laisser le temps à la notification D-Bus de partir avant de tuer
+            // le process (spawn détaché, mais on ménage une petite fenêtre).
+            setTimeout(() => {
+                try { app.exit(0); } catch (e) { logger.warn('First-install exit:', e.message); }
+            }, 600);
             return true;
         });
     }
@@ -3187,6 +3212,10 @@ class MailWindowController {
             reloadMessages: tr['overlay.reloadMessages'],
             reloading: tr['overlay.reloading'], // feedback immédiat au clic
             quitApp: tr['common.quit'], // bouton Quitter (déjà traduit en 8 langues)
+            // v4.1.3: boutons de la barre — first-install + notification
+            actionFirstInstall: tr['action.firstInstall'],
+            actionFirstInstallConfirm: tr['action.firstInstallConfirm'],
+            actionFirstInstallNotify: tr['action.firstInstallNotify'],
         });
         this.win.webContents.executeJavaScript(
             `window.__utoutlookI18n = Object.assign(window.__utoutlookI18n||{}, ${i18nJson});\n` + script
