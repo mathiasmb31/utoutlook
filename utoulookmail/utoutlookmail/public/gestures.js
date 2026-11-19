@@ -122,7 +122,9 @@
     const aboveKeyboardBottom = () => {
         const vv = window.visualViewport;
         const kb = vv ? Math.max(0, window.innerHeight - vv.height - (vv.offsetTop || 0)) : 0;
-        return kb > 0 ? (kb + 20) : Math.round(window.innerHeight * 0.62);
+        // v4.1.0: repli 62 % → 72 % — à 62 % le bouton restait sous le clavier
+        // Maliit sur écran couvert à ~55-65 % (signalé par Mathias).
+        return kb > 0 ? (kb + 24) : Math.round(window.innerHeight * 0.72);
     };
     // v4.0.5: remonte le bouton ⌫ au-dessus du clavier virtuel (Maliit/Wayland est un
     // overlay : visualViewport.height < innerHeight quand le clavier est ouvert) et ne
@@ -204,9 +206,10 @@
         b.id = 'utoutlook-first-install';
         b.textContent = i18n.firstInstall || 'First install';
         b.setAttribute('aria-label', b.textContent);
-        b.style.cssText = 'position:fixed;left:10px;top:10px;padding:8px 14px;border-radius:20px;border:2px solid #E95420;background:rgba(255,255,255,.92);color:#E95420;font:600 13px/1 system-ui,sans-serif;z-index:2147483647;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.15);';
-        // v4.1.0: EN HAUT à gauche — en bas il recouvrait le champ de login
-        // (le clavier Maliit n'arrivait pas, l'input ne prenait pas le focus).
+        b.style.cssText = 'position:fixed;left:26px;top:26px;padding:8px 14px;border-radius:20px;border:2px solid #E95420;background:rgba(255,255,255,.92);color:#E95420;font:600 13px/1 system-ui,sans-serif;z-index:2147483647;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.15);';
+        // v4.1.0 (fix login invisible): éloigné du bord (10 px → 26 px) — un tap
+        // destiné au champ pouvait tomber dessus et ouvrir le dialogue natif.
+        // En bas il recouvrait le champ de login (clavier Maliit bloqué).
         b.addEventListener('mousedown', e => e.preventDefault()); // ne pas voler le focus
         // v3.3.66: window.confirm() is NOT implemented in Electron (always returns
         // false) — the native confirm dialog is shown by the main process via IPC.
@@ -214,10 +217,9 @@
         // within 3s to confirm).
         let armed = false, armTimer = null;
         b.addEventListener('click', async () => {
-            if (window.electronAPI && typeof window.electronAPI.firstInstall === 'function') {
-                await window.electronAPI.firstInstall(); // native dialog inside, wipes + reloads
-                return;
-            }
+            // v4.1.0: plus de raccourci vers le dialogue NATIF (showMessageBox
+            // s'ouvrait hors écran sous Lomiri → blur, OSK fermé, fenêtre
+            // invisible). Confirmation en page UNIQUEMENT (double-tap 3 s).
             if (!armed) {
                 armed = true;
                 const orig = b.textContent;
@@ -234,6 +236,7 @@
             }
             clearTimeout(armTimer);
             armed = false;
+            console.info('[utoutlook] first-install confirmed — wiping session');
             // Fallback: in-page clear, awaiting IndexedDB deletion BEFORE reload
             // (an immediate reload cancels the async deleteDatabase calls).
             try { localStorage.clear(); } catch (_) {}
@@ -260,6 +263,10 @@
                         : Promise.resolve()));
                 }
             } catch (_) {}
+            if (window.electronAPI && typeof window.electronAPI.firstInstall === 'function') {
+                await window.electronAPI.firstInstall(); // wipe partition + reload (côté principal)
+                return;
+            }
             location.reload();
         });
         (document.body || document.documentElement).appendChild(b);
@@ -277,7 +284,7 @@
         const i18n = window.__utoutlookI18n || {};
         const b = document.createElement('button');
         b.id = 'utoutlook-render-mode';
-        b.style.cssText = 'position:fixed;left:10px;top:58px;padding:6px 12px;border-radius:18px;border:2px solid #E95420;background:rgba(255,255,255,.92);color:#E95420;font:600 12px/1 system-ui,sans-serif;z-index:2147483647;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.15);';
+        b.style.cssText = 'position:fixed;left:26px;top:74px;padding:6px 12px;border-radius:18px;border:2px solid #E95420;background:rgba(255,255,255,.92);color:#E95420;font:600 12px/1 system-ui,sans-serif;z-index:2147483647;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.15);';
         // v4.1.0: en haut, sous « Première installation », sans recouvrir l'input.
         b.addEventListener('mousedown', e => e.preventDefault());
         const refresh = async () => {

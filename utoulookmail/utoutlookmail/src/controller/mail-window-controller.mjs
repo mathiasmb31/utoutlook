@@ -1,4 +1,4 @@
-import {app, BrowserWindow, dialog, ipcMain, Menu, shell, clipboard, Notification, nativeImage, nativeTheme, screen, session, powerMonitor, net} from 'electron';
+import {app, BrowserWindow, ipcMain, Menu, shell, clipboard, Notification, nativeImage, nativeTheme, screen, session, powerMonitor, net} from 'electron';
 import {spawn} from 'child_process';
 import getClientFile from './client-injector.mjs';
 import path from 'node:path';
@@ -1985,6 +1985,7 @@ class MailWindowController {
         });
         ipcMain.removeHandler("set-render-mode");
         ipcMain.handle("set-render-mode", (event, mode) => {
+            logger.info(`IPC set-render-mode: ${mode} (sender=${event.sender.id})`);
             // v4.1.0 (revue C13): une page web hostile ne doit pas pouvoir
             // écrire de façon persistante le mode de rendu.
             // v4.1.0: accepter tout compte enregistré (le dernier handler
@@ -2006,10 +2007,15 @@ class MailWindowController {
         // other Microsoft domains on the next login page load. Here we remove every
         // cookie from the partition and clear all storage (localStorage, IndexedDB,
         // cache) — knownEmail lives in localStorage leveldb so it goes too.
-        // Confirmation uses a NATIVE dialog: window.confirm() is not implemented in
-        // Electron and always returns false, which made the in-page confirm inert.
+        // v4.1.0 (fix login invisible): PLUS de boîte de dialogue native.
+        // Sur Lomiri, showMessageBox() s'ouvrait hors écran / sans focus : la
+        // fenêtre principale recevait un blur, le clavier se fermait et le
+        // socket show ne pouvait pas la récupérer (dialogue modal bloquant).
+        // La confirmation se fait désormais CÔTÉ PAGE (double-tap 3 s dans
+        // gestures.js) avant d'appeler ce handler.
         ipcMain.removeHandler("first-install");
         ipcMain.handle("first-install", async (event) => {
+            logger.info(`IPC first-install (sender=${event.sender.id}) — wipe + reload`);
             // v4.1.0: résoudre le contrôleur PROPRE à l'envoyeur — sans ça,
             // le handler du dernier compte effaçait sa partition et refusait
             // les autres (bouton « Première installation » sans effet).
@@ -2017,17 +2023,6 @@ class MailWindowController {
                 (this.splashWindow && event.sender === this.splashWindow.webContents ? this : null);
             if (!owner) return false;
             const fromSplash = !!(this.splashWindow && event.sender === this.splashWindow.webContents);
-            const parentWin = fromSplash ? this.splashWindow : owner.win;
-            const {response} = await dialog.showMessageBox(parentWin, {
-                type: 'warning',
-                title: t('app.name'),
-                message: t('login.firstInstallConfirm'),
-                buttons: [t('common.cancel'), t('login.firstInstallConfirmAction')],
-                defaultId: 0,
-                cancelId: 0,
-                noLink: true,
-            });
-            if (response !== 1) return false;
             try {
                 owner.knownEmail = null;
                 const ses = session.fromPartition(owner.sessionPartition);

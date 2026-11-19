@@ -2141,10 +2141,10 @@ test('v4.0.121: notification clear throttlée + bouton ⌫ au-dessus du clavier'
         'ClearPersistent notification helper must be removed entirely (v4.0.122)');
     assert.ok(!cmd.includes('.notifs-cleared'),
         'old throttle flag must be gone (v4.0.122)');
-    assert.ok(gestures.includes('Math.round(window.innerHeight * 0.62)'),
-        'backspace button must be raised above the Maliit keyboard overlay (v4.0.121/126)');
-    assert.ok(gestures.includes("top:10px") && gestures.includes('syncUtilityButtons'),
-        'utility login buttons must stay at top-left and hide while a field is focused (v4.1.0)');
+    assert.ok(gestures.includes('Math.round(window.innerHeight * 0.72)'),
+        'backspace button must be raised above the Maliit keyboard overlay (v4.0.121/126, 0.72 in v4.1.0)');
+    assert.ok(gestures.includes('top:26px') && gestures.includes('syncUtilityButtons'),
+        'utility login buttons must stay at top-left (clear of the border) and hide while a field is focused (v4.1.0)');
 });
 
 test('v4.0.123: l observer ne clique plus sur le volet de navigation', async () => {
@@ -2596,9 +2596,12 @@ test('v4.1.0 (analyse approfondie): correctifs applicatifs et outillage', async 
         'observer texts must be i18n (renderer #6)');
 
     // boutons login hors du champ + first-install dispatch par envoyeur
-    assert.ok(gestures.includes('top:10px') && gestures.includes('syncUtilityButtons') &&
-              gestures.includes("mousedown', e => e.preventDefault()"),
-        'login utility buttons must not steal/cover the input');
+    assert.ok(gestures.includes('top:26px') && gestures.includes('syncUtilityButtons') &&
+              gestures.includes("mousedown', e => e.preventDefault()") &&
+              gestures.includes('window.innerHeight * 0.72'),
+        'login utility buttons must stay clear of the input and the OSK (v4.1.0)');
+    assert.ok(!ctl.includes('dialog.showMessageBox'),
+        'first-install must not open a native modal dialog (blur + invisible window on Lomiri) (v4.1.0)');
     assert.ok(ctl.includes('static byWebContents') && ctl.includes('const owner = MailWindowController.byWebContents.get(event.sender)'),
         'IPC handlers must dispatch to the controller owning the sender (M4)');
 
