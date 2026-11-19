@@ -63,7 +63,8 @@ cd "$ROOT"
 
 LIVRAISON="livraison/utoutlook-$VERSION"
 KIT="publishstore/utoutlook-$VERSION"
-CLICK="utoulookmail/build/aarch64-linux-gnu/app/${APP}_${VERSION}_arm64.click"
+# v4.1.0: glob sur les architectures (revue F24)
+CLICK=$(ls -1 utoulookmail/build/*/app/"${APP}_${VERSION}_arm64.click" 2>/dev/null | head -1)
 
 echo "=== Préparation livraison $VERSION ==="
 mkdir -p "$LIVRAISON" "$KIT/screenshots"
@@ -99,7 +100,11 @@ cp -f "$CLICK" "$KIT/" 2>/dev/null || true
 
 # whatsnew.txt : généré automatiquement depuis les commits git depuis la dernière version publiée sur OpenStore
 LAST_PUBLISHED=$(curl -sS --max-time 10 "https://open-store.io/api/v4/apps/${APP}" 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['data'].get('version',''))" 2>/dev/null || echo "")
-if [ -z "$LAST_PUBLISHED" ]; then LAST_PUBLISHED="4.0.40"; echo "(API injoignable, fallback sur $LAST_PUBLISHED)"; fi
+if [ -z "$LAST_PUBLISHED" ]; then
+  LAST_PUBLISHED=$(ls -1d livraison/utoutlook-* 2>/dev/null | sed 's|.*utoutlook-||' | sort -V | tail -1)
+  [ -z "$LAST_PUBLISHED" ] && LAST_PUBLISHED="4.0.93"
+  echo "(API injoignable, fallback sur $LAST_PUBLISHED)"
+fi
 echo "Dernière version publiée sur OpenStore: $LAST_PUBLISHED"
 
 # Commits depuis le commit de la dernière version publiée (cherché dans les messages de commit)

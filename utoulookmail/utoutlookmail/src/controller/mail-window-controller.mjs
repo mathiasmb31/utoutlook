@@ -88,7 +88,7 @@ class MailWindowController {
         this.unreadCount = 0;
         this.init();
         // Check both command-line flag and settings for initial minimization
-        const hasMinimizedFlag = global.cmdLine.indexOf("--minimized") !== -1;
+        const hasMinimizedFlag = (global.cmdLine || []).indexOf("--minimized") !== -1;
         const startMinimizedSetting = settings.get("startMinimized");
         this.initialMinimization.domReady = hasMinimizedFlag || startMinimizedSetting;
     }
@@ -164,6 +164,8 @@ class MailWindowController {
      */
     handleZoomCommand(action) {
         if (!this.win || this.win.isDestroyed()) return;
+        // v4.1.0 (revue E27): borne les facteurs reçus sur le socket non authentifié.
+        if (typeof action === 'number') action = Math.min(2, Math.max(0.5, action));
         if (action === 'in') {
             this.currentZoomIndex = Math.min(this.currentZoomIndex + 1, ZOOM_LEVELS.length - 1);
         } else if (action === 'out') {
@@ -1933,11 +1935,18 @@ class MailWindowController {
         });
         // v4.0.127: override manuel du rendu logiciel. Le wrapper lit ce même
         // fichier au prochain lancement (auto + bascule sur crash GPU).
+        // v4.1.0 (revue B9): un handle par compte lève "second handler" dès le
+        // 2ᵉ compte → uncaughtException → app.exit(1). On retire avant d'ajouter.
+        ipcMain.removeHandler("get-render-mode");
         ipcMain.handle("get-render-mode", () => {
             try { return fs.readFileSync(RENDER_MODE_FILE, 'utf-8').trim() || 'auto'; }
             catch (e) { return 'auto'; }
         });
-        ipcMain.handle("set-render-mode", (_event, mode) => {
+        ipcMain.removeHandler("set-render-mode");
+        ipcMain.handle("set-render-mode", (event, mode) => {
+            // v4.1.0 (revue C13): une page web hostile ne doit pas pouvoir
+            // écrire de façon persistante le mode de rendu.
+            if (!this.win || this.win.isDestroyed() || event.sender !== this.win.webContents) return false;
             if (!['auto', 'software', 'hardware'].includes(mode)) return false;
             try {
                 fs.writeFileSync(RENDER_MODE_FILE, mode);
@@ -1956,6 +1965,7 @@ class MailWindowController {
         // cache) — knownEmail lives in localStorage leveldb so it goes too.
         // Confirmation uses a NATIVE dialog: window.confirm() is not implemented in
         // Electron and always returns false, which made the in-page confirm inert.
+        ipcMain.removeHandler("first-install");
         ipcMain.handle("first-install", async (event) => {
             // v4.0.10: accepte aussi la splash window comme sender (bouton
             // first-install sur le splash, ceinture et bretelles)
@@ -2301,7 +2311,7 @@ class MailWindowController {
                 // (preventAutoCloseApp), hideOnClose, and v4.0.84 rotation
                 // relaunch (skipCleanExitFlag) — otherwise app.exit(0) after a
                 // pivot would write exitclient and the wrapper would NOT relaunch.
-                if (!global.preventAutoCloseApp && !global.skipCleanExitFlag) markCleanExit();
+                if (!global.preventAutoCloseApp && !global.skipCleanExitFlag && !global.restartRequested) markCleanExit();
                 logger.info('Window event: close → letting it close');
             }
         });
@@ -2376,8 +2386,12 @@ class MailWindowController {
                 // write the clean-quit flag synchronously so the wrapper
                 // does not relaunch the app.
                 // v4.0.85: skip the flag on rotation relaunch (skipCleanExitFlag).
-                if (!global.skipCleanExitFlag) markCleanExit();
-                app.exit(0);
+                // v4.1.0 (revue A1/A5): ne jamais court-circuiter le quit propre
+                // en cours, ni écrire exitclient sur un relaunch réglages.
+                if (!global.skipCleanExitFlag && !global.restartRequested) markCleanExit();
+                if (!global.utoutlookQuitting && BrowserWindow.getAllWindows().length === 0) {
+                    app.exit(0);
+                }
             }
             global.preventAutoCloseApp = false;
         });
@@ -2649,7 +2663,9 @@ class MailWindowController {
             // v4.0.125: ne pas réveiller le clavier / refocuser une fenêtre
             // pendant le quit (sinon logs blur/focus sur une fenêtre cachée).
             if (global.utoutlookQuitting) return;
-            if (!this.win || this.win.isDestroyed() || !this.mailListReady) return;
+            // v4.1.0 (revue D18): ne pas voler le focus d'une fenêtre masquée
+            // volontairement (swipe-close).
+            if (!this.alive || !this.win.isVisible() || !this.mailListReady) return;
             this.win.webContents.executeJavaScript('document.hasFocus()').then(has => {
                 if (!has && this.win && !this.win.isDestroyed()) {
                     logger.info('v4.0.89: perte de focus document détectée — restauration clavier (win.focus + wakeVirtualKeyboard)');
@@ -3109,6 +3125,7 @@ class MailWindowController {
      * Bascule la visibilité de la fenêtre (show/hide).
      */
     toggleWindow() {
+        if (!this.alive) return; // v4.1.0 (revue D19)
         if (this.win.isVisible()) {
             this.win.hide();
         } else {
@@ -3121,6 +3138,7 @@ class MailWindowController {
      * Recharge la page Outlook.
      */
     reloadWindow() {
+        if (!this.alive) return; // v4.1.0 (revue D19)
         this.initialMinimization.domReady = false;
         this.win.reload();
     }

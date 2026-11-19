@@ -11,7 +11,7 @@ if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
   exit 0
 fi
 
-DEV="XXXX"
+DEV="${DEVICE:-${ADB_SERIAL:-XXXX}}"
 V="${1:-}"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
