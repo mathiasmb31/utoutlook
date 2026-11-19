@@ -2,9 +2,9 @@
 
 <img src="build/icon.png" alt="logo" height="80" align="center" />
 
-[![Build & Release](https://github.com/julian-alarcon/prospect-mail/actions/workflows/build-release.yml/badge.svg)](https://github.com/julian-alarcon/prospect-mail/actions/workflows/build-release.yml)
-[![Latest release](https://img.shields.io/github/v/release/julian-alarcon/prospect-mail)](https://github.com/julian-alarcon/prospect-mail/releases/latest)
-[![GitHub all releases](https://img.shields.io/github/downloads/julian-alarcon/prospect-mail/total)](https://github.com/julian-alarcon/prospect-mail/releases)
+[![Build & Release](https://github.com/mathiasmb31/utoutlook/actions/workflows/build-release.yml/badge.svg)](https://github.com/mathiasmb31/utoutlook/actions/workflows/build-release.yml)
+[![Latest release](https://img.shields.io/github/v/release/mathiasmb31/utoutlook)](https://github.com/mathiasmb31/utoutlook/releases/latest)
+[![GitHub all releases](https://img.shields.io/github/downloads/mathiasmb31/utoutlook/total)](https://github.com/mathiasmb31/utoutlook/releases)
 
 Unofficial email Outlook client using Electron. It uses the
 [Web App](https://www.microsoft.com/en-us/microsoft-365/outlook/web-email-login-for-outlook)
@@ -18,7 +18,7 @@ Available for Linux, Windows (10+) and macOS.
 
 ## Download
 
-The application can be downloaded from [release page](https://github.com/julian-alarcon/prospect-mail/releases).
+The application can be downloaded from [release page](https://github.com/mathiasmb31/utoutlook/releases).
 
 Select the appropriated file depending on your OS:
 
@@ -153,7 +153,7 @@ Clone the repository and run in development mode.
 (You need to have [git](https://git-scm.com/) and node installed)
 
 ```shell
-git clone https://github.com/julian-alarcon/prospect-mail.git
+git clone https://github.com/mathiasmb31/utoutlook.git
 cd prospect-mail
 npm install
 npm start
@@ -211,7 +211,7 @@ coding standards, and the release process.
 
 ## License
 
-[MIT](https://github.com/julian-alarcon/prospect-mail/blob/master/LICENSE) by
-[Julian Alarcon](https://desentropia.com) based on
+[MIT](https://github.com/mathiasmb31/utoutlook/blob/master/LICENSE) by
+[Inspired from Julien Alarcon](https://github.com/mathiasmb31/utoutlook) based on
 [electron-outlook](https://github.com/eNkru/electron-outlook) by
 [Howard J](https://enkru.github.io/)

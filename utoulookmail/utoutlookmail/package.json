@@ -5,7 +5,7 @@
   "type:": "module",
   "main": "src/main.mjs",
   "description": "Unofficial desktop mail client for Microsoft Outlook",
-  "homepage": "https://github.com/julian-alarcon/prospect-mail",
+  "homepage": "https://github.com/mathiasmb31/utoutlook",
   "keywords": [
     "Electron",
     "Outlook",
@@ -15,15 +15,15 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+ssh://github.com/julian-alarcon/prospect-mail"
+    "url": "git+ssh://github.com/mathiasmb31/utoutlook"
   },
   "bugs": {
-    "url": "https://github.com/julian-alarcon/prospect-mail/issues"
+    "url": "https://github.com/mathiasmb31/utoutlook/issues"
   },
   "author": {
-    "name": "Julian Alarcon",
-    "email": "prospect-mail@mail.desentropia.com",
-    "url": "https://github.com/julian-alarcon/"
+    "name": "Inspired from Julien Alarcon",
+    "email": "noreply@github.com",
+    "url": "https://github.com/mathiasmb31/"
   },
   "license": "MIT",
   "engines": {
@@ -55,7 +55,7 @@
     "dmg-license": "^1.0.11"
   },
   "build": {
-    "appId": "io.github.julian-alarcon.prospect-mail",
+    "appId": "io.github.mathiasmb31.utoutlook",
     "compression": "maximum",
     "afterPack": "./build/afterPack.mjs",
     "files": [

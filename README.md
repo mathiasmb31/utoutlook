@@ -3,7 +3,7 @@
 [![CI](https://github.com/mathiasmb31/utoutlook/actions/workflows/ci.yml/badge.svg)](https://github.com/mathiasmb31/utoutlook/actions/workflows/ci.yml)
 [![Build Click](https://github.com/mathiasmb31/utoutlook/actions/workflows/build-click.yml/badge.svg)](https://github.com/mathiasmb31/utoutlook/actions/workflows/build-click.yml)
 
-adapted from original prospectmail package from https://github.com/julian-alarcon/prospect-mail?tab=readme-ov-file#readme
+adapted from original prospectmail package from https://github.com/mathiasmb31/utoutlook?tab=readme-ov-file#readme
 rewritten for UBTOUCH and small devices.
 
 ## Screen sizes
@@ -20,7 +20,7 @@ touch targets, `@media (min-width: 768px)` for tablets, dark theme via
 
 ## License
 
-for prospect-mail Unofficial email Outlook client using Electron. It uses the Web App and wraps it as a standalone application using Electron. This works for personal Outlook.com accounts and professional. MIT by Julian Alarcon based on electron-outlook by Howard J https://github.com/julian-alarcon/prospect-mail/blob/main/README.md
+for prospect-mail Unofficial email Outlook client using Electron. It uses the Web App and wraps it as a standalone application using Electron. This works for personal Outlook.com accounts and professional. Inspired from Julien Alarcon (MIT), based on electron-outlook by Howard J https://github.com/mathiasmb31/utoutlook/blob/main/README.md
 and modified for UBPORT by Mathias.
 
 for patches and ubtouch click package https://github.com/mathiasmb31/prospectmailut
