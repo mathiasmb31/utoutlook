@@ -739,19 +739,19 @@ scaling="$((appScaling / 115)).$(printf '%02d' "$((appScaling % 115))")"
 
 dpioptions="--high-dpi-support=1 --force-device-scale-factor=$scaling  --text-font-size=$textFontSize --span-font-size=$spanFontSize"
 sandboxoptions="--no-sandbox"
-# v4.1.9: WM_CLASS alignée sur l'ID de l'app click VERSIONNÉ — c'est l'ID que
-# Lomiri utilise partout (journal, service content, AppArmor). Avec l'ID non
-# versionné, info_for_app_id échouait ("Failed to create Application for
-# utoutlook.mathias_utoutlook_4.1.0") → icône jaune « ? » / unknown_badge.png.
-# On dérive la version du dossier courant (/opt/click.../utoutlook.mathias/<ver>).
-# v4.2.1: `basename` est un binaire EXTERNE non embarqué dans le click et
-# REFUSÉ par AppArmor (profil click = liste blanche, pas de /usr/bin/* générique).
-# Résultat: basename échoue silencieusement (2>/dev/null || echo "") → _appver
-# vide → --class non versionné → icône jaune, alors même que WD est correct.
-# Reproduction device 21:15: WD=[.../4.2.0] mais appver=[] avec basename,
-# appver=[4.2.0] avec ${WD##*/}. Expansion bash = 100% builtin, AppArmor-safe.
-_appver="${WD##*/}"
-APP_CLASS_ID="utoutlook.mathias_utoutlook${_appver:+_${_appver}}"
+# v4.2.2: RETOUR À L'ID NON VERSIONNÉ — la piste v4.1.9 (ID versionné) était
+# fausse. Preuve device 21:25 (journal du SHELL Lomiri, pas du content-hub) :
+#   WARNING: long App ID encountered: "utoutlook.mathias_utoutlook_4.2.1"
+#   Received a surface count changed event from an app that's not in the
+#   Launcher model, creating icon...
+#   qml: Application requested te be focused but no window for it.
+# Le Launcher model de Lomiri contient l'ID NON VERSIONNÉ (voir le favori
+# dconf `appid://utoutlook.mathias_utoutlook`, identique aux autres apps :
+# `appid://camera.ubports_camera` etc.). Un class versionné crée une icône
+# « inconnue » jaune et empêche Lomiri de retrouver la fenêtre (splash bloqué).
+# On garde l'export APP_CLASS_ID (non versionné) car main.mjs le lit pour
+# app.setDesktopName(). Aucun binaire externe : 100% builtin (AppArmor).
+APP_CLASS_ID="utoutlook.mathias_utoutlook"
 export APP_CLASS_ID
 classoption="--class=${APP_CLASS_ID}"
 # v3.3.8: --in-process-gpu instead of --disable-gpu --disable-software-rasterizer.

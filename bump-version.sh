@@ -28,12 +28,15 @@ for f in $(find . -maxdepth 4 -name package-lock.json \
   sed -i -E "1,12s/(\"version\"[[:space:]]*:[[:space:]]*\")[^\"]+\"/\1$VER\"/" "$f"
   echo "bump: $f (version racine) -> $VER"
 done
-# v4.1.9: synchroniser AUSSI le StartupWMClass du .desktop avec l'ID versionné
-# (Lomiri résout l'icône via cet ID — voir fiche addendum 19:25).
+# v4.2.2: NE PLUS versionner le StartupWMClass du .desktop. Lomiri attend
+# l'ID NON VERSIONNÉ (`appid://utoutlook.mathias_utoutlook` dans le Launcher
+# model) ; la synchronisation v4.1.9→v4.2.1 créait une icône jaune et bloquait
+# le splash. On force la valeur non versionnée (au cas où un ancien bump
+# l'aurait laissée versionnée) et on ne la touche plus aux prochains bumps.
 DESKTOP="$ROOT/utoulookmail/utoutlook.desktop"
 if [ -f "$DESKTOP" ]; then
-  sed -i -E "s/^StartupWMClass=utoutlook\.mathias_utoutlook(_[0-9]+\.[0-9]+\.[0-9]+)?$/StartupWMClass=utoutlook.mathias_utoutlook_$VER/" "$DESKTOP"
-  echo "bump: $DESKTOP StartupWMClass -> utoutlook.mathias_utoutlook_$VER"
+  sed -i -E "s/^StartupWMClass=utoutlook\.mathias_utoutlook(_[0-9]+\.[0-9]+\.[0-9]+)?$/StartupWMClass=utoutlook.mathias_utoutlook/" "$DESKTOP"
+  echo "bump: $DESKTOP StartupWMClass -> utoutlook.mathias_utoutlook (non versionné)"
 fi
 
 [ "$N" -gt 0 ] && echo "OK: $N fichier(s) -> version $VER" || { echo "AUCUN fichier de version trouvé"; exit 1; }
