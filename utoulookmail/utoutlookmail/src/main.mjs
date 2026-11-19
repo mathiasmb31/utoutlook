@@ -163,6 +163,12 @@ class ProspectMail {
         this.accountManager = null;
         this.trayController = null;
         this.isQuitting = false;
+        // v4.0.125: garde-fou DISTINCT de isQuitting. Les handlers before-quit /
+        // will-quit posent isQuitting avant d'appeler cleanupAndExit() — si
+        // cleanupAndExit() utilise isQuitting comme garde, elle sortait
+        // immédiatement et NE FAISAIT RIEN (plus de flag exitclient, heartbeat
+        // toujours vivant, fenêtre masquée au lieu de fermée → app invisible).
+        this.cleanupStarted = false;
         this.socketServer = null;
     }
 
@@ -229,19 +235,24 @@ class ProspectMail {
         app.on("will-quit", (e) => {
             if (this.isQuitting) return;
             e.preventDefault();
-            this.isQuitting = true;
+            // v4.0.125: NE PAS poser isQuitting ici — cleanupAndExit() le pose.
+            // Le poser avant l'appel faisait sortir cleanupAndExit() sur son
+            // garde-fou (`if (this.isQuitting) return`) → quit annulé sans
+            // exitclient, heartbeat vivant, fenêtre masquée (hideOnClose) →
+            // « app vivante mais invisible » après le bouton Quitter.
             this.cleanupAndExit();
         });
 
         app.on("before-quit", (e) => {
             if (this.isQuitting) return;
             e.preventDefault();
-            this.isQuitting = true;
+            // v4.0.125: idem will-quit — laisser cleanupAndExit() poser le flag.
             this.cleanupAndExit();
         });
 
         // 'quit' is not preventable — just clean up
         app.on("quit", () => {
+            global.utoutlookQuitting = true; // v4.0.125: cohérent avec cleanupAndExit
             heartbeatExiting = true;
             clearInterval(heartbeatInterval);
             globalShortcut.unregisterAll();
@@ -338,8 +349,16 @@ class ProspectMail {
     }
 
     async cleanupAndExit() {
-        if (this.isQuitting) return;
+        // v4.0.125: garde sur cleanupStarted, PAS sur isQuitting — les handlers
+        // before-quit/will-quit (et le socket quit) appellent cette méthode, et
+        // isQuitting peut déjà être true sans que le nettoyage ait eu lieu.
+        if (this.cleanupStarted) return;
+        this.cleanupStarted = true;
         this.isQuitting = true;
+        // v4.0.125: signal au contrôleur de fenêtre que c'est un VRAI quit :
+        // son handler 'close' ne doit PAS intercepter hideOnClose (sinon la
+        // fenêtre est masquée au lieu de se fermer et app.quit() est annulé).
+        global.utoutlookQuitting = true;
         // v3.3.28: write the clean-quit flag FIRST, synchronously, before the
         // async cookie flushes below — a SIGKILL during the flush must not
         // lose the flag (the wrapper would relaunch a deliberately quit app).
