@@ -1,6 +1,10 @@
 #!/bin/bash
 # Test rapide utoutlook sur le téléphone (adb 57606579)
-set -e
+# v4.1.10: PAS de `set -e` — c'est un outil de diagnostic : chaque section doit
+# s'afficher même si la précédente échoue (ex. `head -1` ferme le pipe → SIGPIPE
+# côté grep/device → adb retourne non-zéro → avec set -e le script s'arrêtait
+# après « URL courante » et masquait toutes les sections suivantes).
+set +e
 
 if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
   echo "Usage: ./test-rapide.sh [version]"
