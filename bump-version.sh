@@ -19,4 +19,12 @@ for f in $(find . -maxdepth 4 \( -name manifest.json -o -name package.json \) \
     N=$((N+1))
   fi
 done
+# v4.1.9: synchroniser AUSSI le StartupWMClass du .desktop avec l'ID versionné
+# (Lomiri résout l'icône via cet ID — voir fiche addendum 19:25).
+DESKTOP="$ROOT/utoulookmail/utoutlook.desktop"
+if [ -f "$DESKTOP" ]; then
+  sed -i -E "s/^StartupWMClass=utoutlook\.mathias_utoutlook(_[0-9]+\.[0-9]+\.[0-9]+)?$/StartupWMClass=utoutlook.mathias_utoutlook_$VER/" "$DESKTOP"
+  echo "bump: $DESKTOP StartupWMClass -> utoutlook.mathias_utoutlook_$VER"
+fi
+
 [ "$N" -gt 0 ] && echo "OK: $N fichier(s) -> version $VER" || { echo "AUCUN fichier de version trouvé"; exit 1; }

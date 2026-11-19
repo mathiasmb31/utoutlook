@@ -725,10 +725,15 @@ scaling="$((appScaling / 115)).$(printf '%02d' "$((appScaling % 115))")"
 
 dpioptions="--high-dpi-support=1 --force-device-scale-factor=$scaling  --text-font-size=$textFontSize --span-font-size=$spanFontSize"
 sandboxoptions="--no-sandbox"
-# v4.1.0: WM_CLASS alignée sur l'ID de l'app click — sans ça, Lomiri
-# affiche une icône jaune « ? » / « application inconnue » quand c'est le
-# wrapper (et non le launcher) qui relance Electron après un crash/quit.
-classoption="--class=utoutlook.mathias_utoutlook"
+# v4.1.9: WM_CLASS alignée sur l'ID de l'app click VERSIONNÉ — c'est l'ID que
+# Lomiri utilise partout (journal, service content, AppArmor). Avec l'ID non
+# versionné, info_for_app_id échouait ("Failed to create Application for
+# utoutlook.mathias_utoutlook_4.1.0") → icône jaune « ? » / unknown_badge.png.
+# On dérive la version du dossier courant (/opt/click.../utoutlook.mathias/<ver>).
+_appver=$(basename "$WD" 2>/dev/null || echo "")
+APP_CLASS_ID="utoutlook.mathias_utoutlook${_appver:+_${_appver}}"
+export APP_CLASS_ID
+classoption="--class=${APP_CLASS_ID}"
 # v3.3.8: --in-process-gpu instead of --disable-gpu --disable-software-rasterizer.
 # With --disable-software-rasterizer there was NO fallback, and when Chromium
 # tried to spawn a separate GPU process and failed 3x (error_code=1002),
