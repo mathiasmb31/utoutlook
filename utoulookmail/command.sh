@@ -744,7 +744,13 @@ sandboxoptions="--no-sandbox"
 # versionné, info_for_app_id échouait ("Failed to create Application for
 # utoutlook.mathias_utoutlook_4.1.0") → icône jaune « ? » / unknown_badge.png.
 # On dérive la version du dossier courant (/opt/click.../utoutlook.mathias/<ver>).
-_appver=$(basename "$WD" 2>/dev/null || echo "")
+# v4.2.1: `basename` est un binaire EXTERNE non embarqué dans le click et
+# REFUSÉ par AppArmor (profil click = liste blanche, pas de /usr/bin/* générique).
+# Résultat: basename échoue silencieusement (2>/dev/null || echo "") → _appver
+# vide → --class non versionné → icône jaune, alors même que WD est correct.
+# Reproduction device 21:15: WD=[.../4.2.0] mais appver=[] avec basename,
+# appver=[4.2.0] avec ${WD##*/}. Expansion bash = 100% builtin, AppArmor-safe.
+_appver="${WD##*/}"
 APP_CLASS_ID="utoutlook.mathias_utoutlook${_appver:+_${_appver}}"
 export APP_CLASS_ID
 classoption="--class=${APP_CLASS_ID}"

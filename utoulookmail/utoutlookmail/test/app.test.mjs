@@ -1615,6 +1615,15 @@ test('v4.1.11: WD dérivé du vrai cwd (pwd -P), pas de la variable PWD périmé
         'plain $(pwd) without -P must not be used (v4.1.11)');
 });
 
+test('v4.2.1: _appver via expansion bash ${WD##*/}, pas de basename externe (AppArmor)', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    assert.ok(cmd.includes('_appver="${WD##*/}"'),
+        '_appver must use bash parameter expansion, AppArmor-safe (v4.2.1)');
+    assert.ok(!/_appver=\$\(basename/.test(cmd),
+        'external basename must NOT be used: denied by AppArmor, leaves _appver empty (v4.2.1)');
+});
+
 test('v4.1.9: identité fenêtre = app ID VERSIONNÉ (icône jaune Lomiri)', async () => {
     const fs = await import('node:fs');
     const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
