@@ -1604,6 +1604,27 @@ test('v4.1.5: cocarde UBtouch officielle + icône deux doigts sur les boutons', 
         'liste: plus de textContent direct sur le bouton first (v4.1.4)');
 });
 
+test('v4.1.9: identité fenêtre = app ID VERSIONNÉ (icône jaune Lomiri)', async () => {
+    const fs = await import('node:fs');
+    const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    const desktop = fs.readFileSync(path.resolve(__dirname, '../../utoutlook.desktop'), 'utf-8');
+    const bump = fs.readFileSync(path.resolve(__dirname, '../../../bump-version.sh'), 'utf-8');
+    // main.mjs lit l'ID versionné passé par le wrapper
+    assert.ok(main.includes('process.env.APP_CLASS_ID'),
+        'setDesktopName must read APP_CLASS_ID from wrapper (v4.1.9)');
+    // wrapper dérive la version du dossier et l'exporte
+    assert.ok(cmd.includes('APP_CLASS_ID="utoutlook.mathias_utoutlook${_appver') &&
+              cmd.includes('export APP_CLASS_ID') &&
+              cmd.includes('classoption="--class=${APP_CLASS_ID}"'),
+        'wrapper must derive versioned ID and pass it to Electron (v4.1.9)');
+    // desktop versionné + bump synchronisé
+    assert.ok(desktop.includes('StartupWMClass=utoutlook.mathias_utoutlook_4.1.0'),
+        'desktop StartupWMClass must be versioned (v4.1.9)');
+    assert.ok(bump.includes('StartupWMClass=utoutlook.mathias_utoutlook_$VER'),
+        'bump-version.sh must sync StartupWMClass (v4.1.9)');
+});
+
 test('v3.3.22: uncaughtException ne tue plus l\'app au premier coup (exit seulement après 5 en 60s)', async () => {
     const fs = await import('node:fs');
     const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
@@ -2455,13 +2476,13 @@ test('v4.1.0: icône — WM_CLASS alignée sur le click + démarrage en 6 étape
     const desktop = fs.readFileSync(path.resolve(__dirname, '../../utoutlook.desktop'), 'utf-8');
     const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
 
-    assert.ok(desktop.includes('StartupWMClass=utoutlook.mathias_utoutlook'),
-        'desktop file must map the Electron window to the click app (v4.1.0)');
-    assert.ok(main.includes('app.setDesktopName("utoutlook.mathias_utoutlook")'),
-        'Electron desktop name must be the click app ID (v4.1.0)');
-    assert.ok(cmd.includes('classoption="--class=utoutlook.mathias_utoutlook"') &&
+    assert.ok(desktop.includes('StartupWMClass=utoutlook.mathias_utoutlook_4.1.0'),
+        'desktop file must map the Electron window to the versioned click app ID (v4.1.9)');
+    assert.ok(main.includes('app.setDesktopName(process.env.APP_CLASS_ID'),
+        'Electron desktop name must read versioned APP_CLASS_ID from wrapper (v4.1.9)');
+    assert.ok(cmd.includes('classoption="--class=${APP_CLASS_ID}"') &&
               cmd.includes('"$classoption" &'),
-        'wrapper must pass the WM_CLASS switch to prospect-mail (v4.1.0)');
+        'wrapper must pass the versioned WM_CLASS switch to prospect-mail (v4.1.9)');
 
     // Étape 3 → 4 avancée après l'extinction des vieux process (~50 s sinon).
     assert.ok(common.includes('of 6') && common.includes('sur 6'),

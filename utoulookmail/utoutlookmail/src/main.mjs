@@ -164,11 +164,12 @@ const heartbeatInterval = setInterval(() => {
 // This must be set before app is ready
 app.setPath("userData", path.join(app.getPath("appData"), "prospect-mail"));
 
-// v4.1.0: l'identité de la fenêtre doit correspondre à l'ID de l'app click
-// (utoutlook.mathias_utoutlook_<version>). Avec "UToutlookmail", Lomiri ne
-// rattachait pas la fenêtre à l'app après un relance du wrapper → icône
-// jaune « ? » et « application inconnue » dans la barre et le switcher.
-app.setDesktopName("utoutlook.mathias_utoutlook");
+// v4.1.9: l'identité de la fenêtre doit correspondre à l'ID de l'app click
+// VERSIONNÉ (utoutlook.mathias_utoutlook_<version>) — c'est celui que Lomiri
+// utilise pour résoudre l'icône via le service content. Le wrapper command.sh
+// exporte APP_CLASS_ID (dérivé du dossier de version) ; on le lit ici. Avec
+// l'ancien ID non versionné, info_for_app_id échouait → icône jaune « ? ».
+app.setDesktopName(process.env.APP_CLASS_ID || "utoutlook.mathias_utoutlook");
 
 //Store commandline for global purpose
 global.cmdLine = process.argv;
