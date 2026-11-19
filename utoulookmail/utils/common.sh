@@ -360,6 +360,9 @@ utoutlook_set_start_step() {
 	echo "${msg}"
 	# Relancer la barre pour afficher le nouveau libellé, sauf pendant le
 	# tout premier lancement où start_startup_qml() s'en charge déjà.
+	# v4.2.4: barre QML de démarrage désactivée (cause confirmée de l'item
+	# `unknown.qtmir` / icône jaune — voir command.sh en tête de fichier).
+	[ "${UTOUTLOOK_DISABLE_STARTUP_QML:-0}" = "1" ] && return 0
 	if [ "${UTOUTLOOK_STARTUP_LAUNCHING:-0}" != "1" ] && utoutlook_startup_qml_alive; then
 		kill "${STARTUP_QML_PID}" 2>/dev/null || true
 		wait "${STARTUP_QML_PID}" 2>/dev/null || true

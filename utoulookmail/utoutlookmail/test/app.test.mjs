@@ -1635,6 +1635,17 @@ test('v4.2.3: identité fenêtre = état v4.0.98 (aucun --class / StartupWMClass
         'bump-version.sh must not reintroduce StartupWMClass (v4.2.3)');
 });
 
+test('v4.2.4: barre QML de démarrage désactivée — anti unknown.qtmir (icône jaune)', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    const common = fs.readFileSync(path.resolve(__dirname, '../../utils/common.sh'), 'utf-8');
+    assert.ok(cmd.includes('export UTOUTLOOK_DISABLE_STARTUP_QML=1'),
+        'startup QML bar must be disabled (v4.2.4)');
+    assert.ok(common.includes('UTOUTLOOK_DISABLE_STARTUP_QML:-0') &&
+              common.includes('return 0'),
+        'utoutlook_set_start_step must skip QML window when disabled (v4.2.4)');
+});
+
 test('v3.3.22: uncaughtException ne tue plus l\'app au premier coup (exit seulement après 5 en 60s)', async () => {
     const fs = await import('node:fs');
     const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
