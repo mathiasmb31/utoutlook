@@ -271,7 +271,8 @@ test('observer: script uses exponential backoff for retries', async () => {
     const content = fs.readFileSync(observerPath, 'utf-8');
     assert.ok(content.includes('maxRetryDelayMs'),
         'Observer should have a max retry delay cap');
-    assert.ok(content.includes('retryDelay * 2') || content.includes('retryDelay*2'),
+    assert.ok(content.includes('retryDelay * 2') || content.includes('retryDelay*2') ||
+              content.includes('retryState.delay * 2'),
         'Observer should use exponential backoff (doubling delay)');
 });
 
@@ -1504,8 +1505,21 @@ test('v3.3.22: guards this.win null dans les handlers + retry limité à 5 éche
         'show() must guard !this.alive (v3.3.22)');
 
     const obs = fs.readFileSync(path.resolve(__dirname, '../public/unread-number-observer.js'), 'utf-8');
-    assert.ok(obs.includes('deadHandlers') && obs.includes('>= 5'),
+    assert.ok(obs.includes('retryState.dead') && obs.includes('>= 5'),
         'observer must stop retrying a handler after 5 failures (v3.3.22)');
+});
+
+test('v4.1.1: retry persisté entre réinjections (anti-spam « 1/5 » dans wrapper.log)', async () => {
+    const fs = await import('node:fs');
+    const obs = fs.readFileSync(path.resolve(__dirname, '../public/unread-number-observer.js'), 'utf-8');
+    assert.ok(obs.includes('window.__utoutlookRetryState'),
+        'retry counters must survive re-injection on window (v4.1.1)');
+    assert.ok(obs.includes('RETRY_COOLDOWN_MS'),
+        'dead handlers must be revived after a cooldown when Outlook comes back (v4.1.1)');
+    assert.ok(!obs.includes('const handlerFailCount = {}'),
+        'local fail counters must be removed (v4.1.1)');
+    assert.equal((obs.match(/debug\('init monitor'\)/g) || []).length, 1,
+        'only one "init monitor" log per injection (v4.1.1)');
 });
 
 test('v3.3.22: uncaughtException ne tue plus l\'app au premier coup (exit seulement après 5 en 60s)', async () => {
