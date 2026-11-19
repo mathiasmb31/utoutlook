@@ -78,7 +78,9 @@ function launch_prospect() {
 
 	# Wait for notification service to be ready before sending welcome
 	# (D-Bus Postal may not be up yet on first launch / boot)
-	utoutlook_wait_notifications 15
+	# v4.1.0: 6 s suffisent — utoutlook_notify() réessaie déjà 3×2 s si le
+	# bus n'est pas prêt ; 15 s ajoutaient ~10 s à chaque démarrage.
+	utoutlook_wait_notifications 6
 	utoutlook_notify "$(utoutlook_t 'shell.welcome')"
 
 	# v3.3.45: native Wayland client (Lomiri session) — Maliit OSK goes through
@@ -550,7 +552,7 @@ if utoutlook_socket_ping; then
 fi
 # v4.0.37: refuse to launch while a previous instance is still closing (flag
 # set between SIGTERM and the goodbye notification, removed after). Wait up to
-# 15s for the flag to disappear; if it never does (ghost), remove it and launch.
+# 8s for the flag to disappear; if it never does (ghost), remove it and launch.
 # v4.0.61: a closing flag OLDER than this wrapper's start marker is a ghost
 # (previous wrapper was SIGKILLed before finishing the goodbye) — do NOT wait
 # 15s on it, remove it and launch immediately. Only a FRESH flag (previous
@@ -559,12 +561,11 @@ if [ -f "${UTOUTLOOK_CLOSING}" ]; then
 	if utoutlook_flag_fresh "${UTOUTLOOK_CLOSING}"; then
 		echo "app is closing — waiting for goodbye before launching (pid $$)"
 		_i=0
-		while [ ${_i} -lt 5 ] && [ -f "${UTOUTLOOK_CLOSING}" ]; do
-			# v4.0.69: renotifier à chaque itération — une notif D-Bus ne dure que
-			# quelques secondes, le message d'attente doit rester visible pendant
-			# toute la fermeture (jusqu'à 15 s)
+		# v4.1.0: 4×2 s = 8 s au lieu de 5×3 s = 15 s — la notification est
+		# rejouée à chaque tour, inutile d'attendre plus pour un flag frais.
+		while [ ${_i} -lt 4 ] && [ -f "${UTOUTLOOK_CLOSING}" ]; do
 			utoutlook_notify "$(utoutlook_t 'shell.pleaseWait')"
-			sleep_int 3
+			sleep_int 2
 			_i=$((_i + 1))
 		done
 		if [ -f "${UTOUTLOOK_CLOSING}" ]; then
