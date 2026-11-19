@@ -2280,7 +2280,11 @@ class MailWindowController {
 
         // Hide instead of quit on close
         this.win.on("close", (e) => {
-            if (this.win.isVisible() && settings.get("hideOnClose")) {
+            // v4.0.125: pendant un VRAI quit (bouton Quitter / socket quit /
+            // swipe), ne PAS intercepter la fermeture — hideOnClose masquerait
+            // la fenêtre, annulerait app.quit() et laisserait l'app vivante mais
+            // invisible (heartbeat actif, wrapper.log « client is alive »).
+            if (this.win.isVisible() && settings.get("hideOnClose") && !global.utoutlookQuitting) {
                 logger.info('Window event: close intercepted (hideOnClose) → hide');
                 e.preventDefault();
                 this.win.hide();
@@ -2625,6 +2629,9 @@ class MailWindowController {
         // n'envoie alors plus rien. Toutes les 3 s, si la page n'a plus le focus
         // document, on restaure le focus fenêtre + renderer.
         this.keyboardHealthPoll = setInterval(() => {
+            // v4.0.125: ne pas réveiller le clavier / refocuser une fenêtre
+            // pendant le quit (sinon logs blur/focus sur une fenêtre cachée).
+            if (global.utoutlookQuitting) return;
             if (!this.win || this.win.isDestroyed() || !this.mailListReady) return;
             this.win.webContents.executeJavaScript('document.hasFocus()').then(has => {
                 if (!has && this.win && !this.win.isDestroyed()) {
