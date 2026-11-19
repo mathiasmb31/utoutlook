@@ -311,7 +311,12 @@ export class TrayController {
         // Recreate all account windows with the new frame setting
         global.preventAutoCloseApp = true;
         try {
+            // v4.1.0 (revue B8): fermer les fenêtres PUIS retirer les listeners
+            // des anciens contrôleurs, sinon doublons (ipcMain, screen, cookies).
             this.accountManager.quitAll();
+            for (const ctl of this.accountManager.controllers.values()) {
+                try { ctl.destroy(); } catch (e) { logger.warn('destroy failed:', e.message); }
+            }
             this.accountManager.controllers.clear();
             this.accountManager.init();
         } finally {
