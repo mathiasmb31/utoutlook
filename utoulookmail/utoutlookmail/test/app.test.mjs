@@ -2223,6 +2223,48 @@ test('v4.0.127: rendu logiciel auto sur crash GPU + override utilisateur', async
         'toggle labels must be in the i18n catalog (v4.0.127)');
 });
 
+test('v4.0.128: écran de secours QML rendu logiciel / OpenGL sur crash GPU', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    const common = fs.readFileSync(path.resolve(__dirname, '../../utils/common.sh'), 'utf-8');
+    const qml = fs.readFileSync(path.resolve(__dirname, '../../qml/render-rescue.qml'), 'utf-8');
+
+    // Le QML ne peut pas écrire de fichier : il loggue son choix sur stdout.
+    assert.ok(qml.includes('UT_RENDER_CHOICE=software') &&
+              qml.includes('UT_RENDER_CHOICE=opengl') &&
+              qml.includes('Qt.exit(0)'),
+        'rescue buttons must log their choice then quit (v4.0.128)');
+    assert.ok(qml.includes('QmlI18n.RENDER_TITLE') &&
+              qml.includes('QmlI18n.RENDER_SOFTWARE') &&
+              qml.includes('QmlI18n.RENDER_OPENGL'),
+        'rescue screen must use translated labels (v4.0.128)');
+    assert.ok(!qml.includes('import QtQuick.Controls'),
+        'rescue screen must stay pure QtQuick for qmlscene on UT (v4.0.128)');
+
+    // Le wrapper détecte le crash FRAIS avant de consommer le marqueur.
+    assert.ok(common.includes('utoutlook_gpu_crash_is_new()'),
+        'wrapper must detect fresh GPU crashes before resolving mode (v4.0.128)');
+    assert.ok(common.includes('var RENDER_TITLE') &&
+              common.includes('var RENDER_SOFTWARE') &&
+              common.includes('var RENDER_OPENGL'),
+        'QML i18n writer must export the rescue labels (v4.0.128)');
+    for (const needle of ['UToutlook hit a graphics problem', 'UToutlook tuvo un problema gráfico',
+                          'UToutlook hatte ein Grafikproblem', 'UToutlook ha riscontrato un problema grafico',
+                          'O UToutlook teve um problema gráfico', 'UToutlook 遇到图形问题',
+                          'واجه UToutlook مشكلة رسومية', 'UToutlook a rencontré un problème graphique']) {
+        assert.ok(common.includes(needle), `missing rescue-screen translation: ${needle} (v4.0.128)`);
+    }
+
+    // Affiché seulement sans override, 8 s max, puis le choix est persisté.
+    assert.ok(cmd.includes('function show_render_rescue()') &&
+              cmd.includes('GPU_CRASH_NEW=1') &&
+              cmd.includes('UT_RENDER_CHOICE=opengl') &&
+              cmd.includes('UT_RENDER_CHOICE=software'),
+        'wrapper must read the rescue choice markers (v4.0.128)');
+    assert.ok(cmd.includes('show_render_rescue') && cmd.includes('start_startup_qml # réafficher'),
+        'wrapper must restore the progress bar after the rescue screen (v4.0.128)');
+});
+
 test('v4.0.125: bouton Quitter — cleanupAndExit plus court-circuité (app vivante mais invisible)', async () => {
     const fs = await import('node:fs');
     const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');

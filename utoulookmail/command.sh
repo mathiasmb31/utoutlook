@@ -382,6 +382,42 @@ function start_startup_qml() {
 	echo "startup progress screen shown early (qml pid ${STARTUP_QML_PID})"
 }
 
+# v4.0.128: écran de secours rendu logiciel / OpenGL. Affiché uniquement
+# après un crash GPU FRAIS et sans override manuel. Le QML ne peut pas écrire
+# de fichier : il loggue UT_RENDER_CHOICE=... sur stdout puis Qt.exit(0) ;
+# on lit le marqueur dans render-rescue-qml.log. 8 s max, sinon on garde le
+# basculement automatique en logiciel (comportement v4.0.127).
+function show_render_rescue() {
+	local log="${UTOUTLOOK_CONFIG_DIR}/render-rescue-qml.log"
+	local qpid i=0
+	utoutlook_write_qml_i18n
+	: > "${log}" 2>/dev/null || true
+	qmlscene "${WD}"/qml/render-rescue.qml > "${log}" 2>&1 &
+	qpid=$!
+	while [ ${i} -lt 8 ] && kill -0 "${qpid}" 2>/dev/null; do
+		sleep_int 1
+		i=$((i + 1))
+	done
+	if kill -0 "${qpid}" 2>/dev/null; then
+		kill "${qpid}" 2>/dev/null || true
+		wait "${qpid}" 2>/dev/null || true
+		echo "render rescue timeout — keeping automatic software mode"
+		return
+	fi
+	wait "${qpid}" 2>/dev/null || true
+	if "${UTOUTLOOK_BIN}/grep" -qa 'UT_RENDER_CHOICE=opengl' "${log}" 2>/dev/null; then
+		printf 'hardware' > "${UTOUTLOOK_RENDER_MODE_FILE}" 2>/dev/null || true
+		RENDER_MODE="hardware"
+		echo "render rescue: OpenGL chosen"
+	elif "${UTOUTLOOK_BIN}/grep" -qa 'UT_RENDER_CHOICE=software' "${log}" 2>/dev/null; then
+		printf 'software' > "${UTOUTLOOK_RENDER_MODE_FILE}" 2>/dev/null || true
+		RENDER_MODE="software"
+		echo "render rescue: software chosen"
+	else
+		echo "render rescue: no choice marker — keeping automatic software mode"
+	fi
+}
+
 ###init
 declare -i i=0
 start_startup_qml # v4.0.126: écran visible dès la 1re ligne active
@@ -612,7 +648,32 @@ gpuoptions="--in-process-gpu --disable-features=VaapiVideoDecoder,AcceleratedVid
 # v4.0.127: rendu logiciel automatique après un crash GPU (OnePlus N10 et
 # modèles similaires — avis OpenStore du 13/11), avec override fichier.
 # SwiftShader est conservé dans le click depuis cette version (afterPack.mjs).
+# v4.0.128: si le passage en logiciel vient d'un crash GPU FRAIS (et que
+# l'utilisateur n'a pas déjà forcé un mode), laisser un choix visible 8 s
+# avant de lancer Electron. Sinon, appliquer directement (mode auto silencieux).
+GPU_CRASH_NEW=0
+CUR_RENDER_MODE=""
+if [ -f "${UTOUTLOOK_RENDER_MODE_FILE}" ]; then
+	CUR_RENDER_MODE=$("${UTOUTLOOK_BIN}/cat" "${UTOUTLOOK_RENDER_MODE_FILE}" 2>/dev/null | "${UTOUTLOOK_BIN}/tr" -d '[:space:]')
+fi
+if [ -z "${CUR_RENDER_MODE}" ] || [ "${CUR_RENDER_MODE}" = "auto" ]; then
+	if utoutlook_gpu_crash_is_new; then GPU_CRASH_NEW=1; fi
+fi
+
 RENDER_MODE=$(utoutlook_resolve_render_mode)
+
+if [ ${GPU_CRASH_NEW} -eq 1 ]; then
+	# fermer la barre de progression pour que l'écran de secours soit seul
+	if [ -n "${STARTUP_QML_PID}" ]; then
+		kill "${STARTUP_QML_PID}" 2>/dev/null || true
+		wait "${STARTUP_QML_PID}" 2>/dev/null || true
+		STARTUP_QML_PID=""
+	fi
+	show_render_rescue
+	start_startup_qml # réafficher la barre après le choix
+	utoutlook_set_start_step 3
+fi
+
 if [ "${RENDER_MODE}" = "software" ]; then
 	gpuoptions="--disable-gpu --disable-gpu-compositing --use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader --disable-features=VaapiVideoDecoder,AcceleratedVideoDecoder"
 	echo "software rendering enabled (render-mode=${RENDER_MODE})"
