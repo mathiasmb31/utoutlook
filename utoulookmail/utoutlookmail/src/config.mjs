@@ -31,6 +31,9 @@ export const CLOSE_FLAG_FILE = path.join(CONFIG_DIR, 'close');
 export const INIT_FLAG_FILE = path.join(CONFIG_DIR, 'init');
 export const LOGIN_FLAG_FILE = path.join(CONFIG_DIR, 'login');
 export const NOTIF_FLAG_FILE = path.join(CONFIG_DIR, 'notif');
+// v4.0.127: override manuel du mode de rendu (auto|software|hardware), lu par
+// le wrapper command.sh et modifiable depuis le bouton de la page de login.
+export const RENDER_MODE_FILE = path.join(CONFIG_DIR, 'render-mode');
 
 // --- Language file (read by shell scripts for i18n) ---
 export const LANG_FILE = path.join(CONFIG_DIR, 'lang');

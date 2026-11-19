@@ -24,6 +24,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     // First install: wipe all session data (cookies, storage, cache) — v3.3.66
     // invoke (not send): main process shows a native confirm dialog, returns true if wiped
     firstInstall: () => ipcRenderer.invoke("first-install"),
+    // v4.0.127: override du mode de rendu (auto|software|hardware)
+    getRenderMode: () => ipcRenderer.invoke("get-render-mode"),
+    setRenderMode: (mode) => ipcRenderer.invoke("set-render-mode", mode),
     // Dark mode toggle
     toggleDarkMode: () => ipcRenderer.send("toggle-dark-mode"),
 });

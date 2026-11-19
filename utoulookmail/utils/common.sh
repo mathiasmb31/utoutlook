@@ -156,6 +156,18 @@ utoutlook_t() {
 				ar) echo "أعد تشغيل UToutlook Mail" ;;
 				*)  echo "Merci de relancer UToutlook Mail" ;;
 			esac ;;
+		# v4.0.127: notifié quand le mode logiciel est activé automatiquement.
+		"shell.softwareMode")
+			case "${lang}" in
+				en) echo "Software rendering enabled after a graphics crash" ;;
+				es) echo "Renderizado por software activado tras un fallo gráfico" ;;
+				de) echo "Software-Rendering nach einem Grafikfehler aktiviert" ;;
+				it) echo "Rendering software attivato dopo un errore grafico" ;;
+				pt) echo "Renderização por software ativada após falha gráfica" ;;
+				zh) echo "图形崩溃后已启用软件渲染" ;;
+				ar) echo "تم تفعيل العرض البرمجي بعد خطأ رسومي" ;;
+				*)  echo "Rendu logiciel activé après un crash graphique" ;;
+			esac ;;
 		# --- QML screens (v3.3.65: passed to qmlscene via /tmp JS file) ---
 		"qml.noNetwork")
 			case "${lang}" in
@@ -249,6 +261,59 @@ utoutlook_startup_qml_alive() {
 utoutlook_kill_qmlscene() {
 	if utoutlook_startup_qml_alive; then return 0; fi
 	"${UTOUTLOOK_BIN}/pkill" -9 qmlscene 2>/dev/null || true
+}
+
+# ============================================================
+# v4.0.127: mode de rendu — automatique avec override manuel.
+#
+# - ${UTOUTLOOK_RENDER_MODE_FILE} : "software" / "hardware" / "auto" (défaut).
+#   Override utilisateur (fichier modifiable) pour forcer ou annuler le mode.
+# - En "auto" : si wrapper.log contient une signature de crash GPU AJOUTÉE
+#   depuis le dernier lancement, on bascule en rendu logiciel et on le
+#   mémorise dans render-mode (persistant). Sinon on reste en matériel.
+#
+# Un utilisateur bloqué sur un écran transparent ne peut pas ouvrir un
+# réglage dans l'app : la bascule doit donc être automatique, avec un
+# override fichier pour revenir en arrière.
+# ============================================================
+export UTOUTLOOK_RENDER_MODE_FILE="${UTOUTLOOK_CONFIG_DIR}/render-mode"
+export UTOUTLOOK_GPU_CRASH_MARKER="${UTOUTLOOK_CONFIG_DIR}/gpu-crash-line"
+
+utoutlook_resolve_render_mode() {
+	local mode=""
+	if [ -f "${UTOUTLOOK_RENDER_MODE_FILE}" ]; then
+		mode=$("${UTOUTLOOK_BIN}/cat" "${UTOUTLOOK_RENDER_MODE_FILE}" 2>/dev/null | "${UTOUTLOOK_BIN}/tr" -d '[:space:]')
+	fi
+	case "${mode}" in
+		software|on|1) echo "software"; return ;;
+		hardware|off|0) echo "hardware"; return ;;
+	esac
+
+	# Seuls les binaires embarqués (grep/awk/cat/tr) — AppArmor.
+	local last seen
+	last=$("${UTOUTLOOK_BIN}/grep" -an -E "GPU process isn't usable|error_code=1002" \
+		"${UTOUTLOOK_CONFIG_DIR}/wrapper.log" 2>/dev/null | \
+		"${UTOUTLOOK_BIN}/awk" -F: 'END {print $1}')
+	[ -n "${last}" ] || last=0
+	if [ -f "${UTOUTLOOK_GPU_CRASH_MARKER}" ]; then
+		seen=$("${UTOUTLOOK_BIN}/cat" "${UTOUTLOOK_GPU_CRASH_MARKER}" 2>/dev/null | \
+			"${UTOUTLOOK_BIN}/tr" -d '[:space:]')
+		[ -n "${seen}" ] || seen=0
+	else
+		# Premier lancement de cette version : consommer l'historique sans
+		# basculer (les crashes des versions précédentes ne doivent pas
+		# forcer le mode logiciel chez tout le monde).
+		seen=${last}
+	fi
+	# Consommer les crashes déjà vus pour ne pas rebasculer à chaque lancement.
+	printf '%s' "${last}" > "${UTOUTLOOK_GPU_CRASH_MARKER}" 2>/dev/null || true
+
+	if [ "${last}" -gt "${seen}" ] 2>/dev/null; then
+		printf 'software' > "${UTOUTLOOK_RENDER_MODE_FILE}" 2>/dev/null || true
+		echo "software"
+	else
+		echo "hardware"
+	fi
 }
 
 # ============================================================

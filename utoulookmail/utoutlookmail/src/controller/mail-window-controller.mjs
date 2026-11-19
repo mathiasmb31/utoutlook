@@ -16,6 +16,7 @@ import {
     ICON_PATH,
     markCleanExit,
     ROTATION_RELAUNCH_FILE,
+    RENDER_MODE_FILE,
 } from '../config.mjs';
 import {logger} from '../logger.mjs';
 
@@ -1930,6 +1931,23 @@ class MailWindowController {
                 app.quit();
             }
         });
+        // v4.0.127: override manuel du rendu logiciel. Le wrapper lit ce même
+        // fichier au prochain lancement (auto + bascule sur crash GPU).
+        ipcMain.handle("get-render-mode", () => {
+            try { return fs.readFileSync(RENDER_MODE_FILE, 'utf-8').trim() || 'auto'; }
+            catch (e) { return 'auto'; }
+        });
+        ipcMain.handle("set-render-mode", (_event, mode) => {
+            if (!['auto', 'software', 'hardware'].includes(mode)) return false;
+            try {
+                fs.writeFileSync(RENDER_MODE_FILE, mode);
+                logger.info(`v4.0.127: render-mode = ${mode} (effectif au prochain lancement)`);
+                return true;
+            } catch (e) {
+                logger.warn(`v4.0.127: impossible d'écrire render-mode: ${e.message}`);
+                return false;
+            }
+        });
         // v3.3.66: first-install — wipe ALL session data from the main process.
         // The in-page clear (document.cookie/localStorage) only reaches the current
         // origin, and syncCookiesToLiveCom() would re-copy surviving cookies to the
@@ -2988,6 +3006,9 @@ class MailWindowController {
             firstInstall: tr['login.firstInstall'],           // v3.3.63: bouton first-install sur la page de login
             firstInstallConfirm: tr['login.firstInstallConfirm'],
             firstInstallConfirmAction: tr['login.firstInstallConfirmAction'],
+            // v4.0.127: bouton « rendu logiciel » sur la page de login
+            renderSoftwareEnable: tr['render.enable'],
+            renderSoftwareDisable: tr['render.disable'],
         });
         win.webContents.executeJavaScript(
             `window.__utoutlookI18n = Object.assign(window.__utoutlookI18n||{}, ${i18nJson});\n` +

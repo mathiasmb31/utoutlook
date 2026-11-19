@@ -2174,3 +2174,51 @@ test('v4.0.126: splash QML dès la 1re ligne du wrapper + étape i18n', async ()
               qml.includes('Timer {') && qml.includes('stepLoader.source = ""'),
         'startup.qml must reload the translated step label (v4.0.126)');
 });
+
+test('v4.0.127: rendu logiciel auto sur crash GPU + override utilisateur', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    const common = fs.readFileSync(path.resolve(__dirname, '../../utils/common.sh'), 'utf-8');
+    const afterPack = fs.readFileSync(path.resolve(__dirname, '../build/afterPack.mjs'), 'utf-8');
+    const i18n = fs.readFileSync(path.resolve(__dirname, '../src/i18n.mjs'), 'utf-8');
+    const preload = fs.readFileSync(path.resolve(__dirname, '../src/controller/preload.js'), 'utf-8');
+    const gestures = fs.readFileSync(path.resolve(__dirname, '../public/gestures.js'), 'utf-8');
+
+    // Détection auto : signature GPU + marqueur pour ne rebaser qu'une fois.
+    assert.ok(common.includes('utoutlook_resolve_render_mode()'),
+        'shell must resolve the render mode at each launch (v4.0.127)');
+    assert.ok(common.includes('GPU process isn\'t usable|error_code=1002'),
+        'GPU crash signatures must be scanned (v4.0.127)');
+    assert.ok(common.includes('UTOUTLOOK_GPU_CRASH_MARKER') &&
+              common.includes('UTOUTLOOK_RENDER_MODE_FILE'),
+        'auto fallback must be persisted and crashes consumed (v4.0.127)');
+    assert.ok(common.includes('seen=${last}'),
+        'first launch must consume old crash history without switching (v4.0.127)');
+    assert.ok(common.includes('"shell.softwareMode")'),
+        'auto switch must be announced with an i18n notification (v4.0.127)');
+    for (const needle of ['Software rendering enabled', 'Renderizado por software',
+                          'Software-Rendering', 'Rendering software', 'Renderização por software',
+                          '软件渲染', 'العرض البرمجي', 'Rendu logiciel']) {
+        assert.ok(common.includes(needle), `missing software-mode translation: ${needle} (v4.0.127)`);
+    }
+
+    // Le wrapper applique le mode au lancement d'Electron.
+    assert.ok(cmd.includes('RENDER_MODE=$(utoutlook_resolve_render_mode)'),
+        'wrapper must apply the resolved render mode (v4.0.127)');
+    assert.ok(cmd.includes('--use-angle=swiftshader') && cmd.includes('--enable-unsafe-swiftshader'),
+        'software mode must use the SwiftShader backend (v4.0.127)');
+
+    // SwiftShader doit rester dans le click, sinon le mode logiciel est vide.
+    assert.ok(!afterPack.includes("tryRemove('libvk_swiftshader.so')") &&
+              !afterPack.includes("tryRemove('libvulkan.so.1')") &&
+              !afterPack.includes("tryRemove('vk_swiftshader_icd.json')"),
+        'afterPack must keep SwiftShader libs for software rendering (v4.0.127)');
+
+    // Override utilisateur : bouton page de login + IPC, libellés 8 langues.
+    assert.ok(preload.includes('getRenderMode') && preload.includes('setRenderMode'),
+        'preload must expose the render-mode override (v4.0.127)');
+    assert.ok(gestures.includes('ensureRenderModeButton'),
+        'login page must expose the software-rendering toggle (v4.0.127)');
+    assert.ok(i18n.includes("'render.enable'") && i18n.includes("'render.disable'"),
+        'toggle labels must be in the i18n catalog (v4.0.127)');
+});

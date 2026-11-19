@@ -24,12 +24,13 @@ export default async function afterPack(context) {
     }
   };
 
-  // --- Fichiers inutiles sur UT (GPU désactivé, --no-sandbox) ---
+  // --- Fichiers inutiles sur UT (--no-sandbox) ---
   tryRemove('LICENSES.chromium.html');       // 20 Mo — licences, inutile en prod
   tryRemove('LICENSE.electron.txt');          // licence Electron, inutile
-  tryRemove('libvk_swiftshader.so');          // 17 Mo — rendu Vulkan software
-  tryRemove('libvulkan.so.1');                // 2.5 Mo — Vulkan loader
-  tryRemove('vk_swiftshader_icd.json');       // config Vulkan
+  // v4.0.127: CONSERVER SwiftShader + Vulkan (~20 Mo). Le wrapper peut
+  // basculer automatiquement en rendu logiciel après un crash GPU
+  // (utoutlook_resolve_render_mode) — sans ces libs, --use-angle=swiftshader
+  // n'a aucun backend et l'écran reste transparent sur les modèles affectés.
   tryRemove('chrome_crashpad_handler');       // 1.8 Mo — crash reporter
   tryRemove('chrome-sandbox');                // sandbox Chromium (--no-sandbox)
 

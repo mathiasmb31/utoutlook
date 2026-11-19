@@ -603,14 +603,23 @@ scaling="$((appScaling / 115)).$(printf '%02d' "$((appScaling % 115))")"
 dpioptions="--high-dpi-support=1 --force-device-scale-factor=$scaling  --text-font-size=$textFontSize --span-font-size=$spanFontSize"
 sandboxoptions="--no-sandbox"
 # v3.3.8: --in-process-gpu instead of --disable-gpu --disable-software-rasterizer.
-# On the phone there is no reliable hardware GPU and libvk_swiftshader.so was
-# removed from the package: with --disable-software-rasterizer there was NO
-# fallback, and when Chromium still tried to spawn its separate GPU process and
-# failed 3x (error_code=1002, intermittent — memory/timing), it hit
-# FATAL "GPU process isn't usable. Goodbye." and killed the whole app
-# (the intermittent startup crash). In-process GPU never spawns a separate
-# process, so that FATAL can no longer happen; software raster stays enabled.
+# With --disable-software-rasterizer there was NO fallback, and when Chromium
+# tried to spawn a separate GPU process and failed 3x (error_code=1002),
+# it hit FATAL "GPU process isn't usable. Goodbye." and killed the app.
+# In-process GPU avoids that FATAL; software raster stays enabled.
 gpuoptions="--in-process-gpu --disable-features=VaapiVideoDecoder,AcceleratedVideoDecoder"
+
+# v4.0.127: rendu logiciel automatique après un crash GPU (OnePlus N10 et
+# modèles similaires — avis OpenStore du 13/11), avec override fichier.
+# SwiftShader est conservé dans le click depuis cette version (afterPack.mjs).
+RENDER_MODE=$(utoutlook_resolve_render_mode)
+if [ "${RENDER_MODE}" = "software" ]; then
+	gpuoptions="--disable-gpu --disable-gpu-compositing --use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader --disable-features=VaapiVideoDecoder,AcceleratedVideoDecoder"
+	echo "software rendering enabled (render-mode=${RENDER_MODE})"
+	utoutlook_notify "$(utoutlook_t 'shell.softwareMode')"
+else
+	echo "hardware rendering (render-mode=${RENDER_MODE})"
+fi
 
 echo "launch utoutlookmail"
 
