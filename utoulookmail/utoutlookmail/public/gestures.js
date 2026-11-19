@@ -198,14 +198,16 @@
     // de login (le bouton ⌫ est en bas à droite — aucun chevauchement, aucun contenu masqué).
     // Vide cookies + localStorage + sessionStorage + IndexedDB puis recharge la page,
     // pour repartir d'un état vierge quand une session Microsoft bloque (boucle 2FA, etc.). ---
-    // v4.1.4: icône « double tap » explicite (chiffre 2 + deux flèches vers le
-    // bas) en data-URI SVG — compréhensible sans texte, i18n-indépendant.
+    // v4.1.5: icône « double tap » = DEUX DOIGTS stylisés qui tapent (avec
+    // pastille de contact sous chaque doigt) + chiffre 2 — plus explicite que
+    // les flèches d'avant (qui ressemblaient à une flamme). i18n-indépendant.
     const DOUBLE_TAP_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent(
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">' +
-        '<circle cx="12" cy="13" r="9" fill="#E95420"/>' +
-        '<text x="12" y="18" font-family="Arial,sans-serif" font-size="13" font-weight="bold" fill="#fff" text-anchor="middle">2</text>' +
-        '<path d="M7 2 l3 3 -3 3" fill="none" stroke="#E95420" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>' +
-        '<path d="M13 2 l3 3 -3 3" fill="none" stroke="#E95420" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '<rect x="5.5" y="2" width="5" height="11" rx="2.5" fill="#E95420"/>' +
+        '<rect x="13.5" y="2" width="5" height="11" rx="2.5" fill="#E95420"/>' +
+        '<circle cx="8" cy="15.5" r="1.6" fill="#E95420"/>' +
+        '<circle cx="16" cy="15.5" r="1.6" fill="#E95420"/>' +
+        '<text x="12" y="23" font-family="Arial,sans-serif" font-size="9" font-weight="bold" fill="#E95420" text-anchor="middle">2</text>' +
         '</svg>'
     );
 
