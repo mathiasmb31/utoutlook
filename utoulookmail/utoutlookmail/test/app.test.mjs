@@ -1635,6 +1635,16 @@ test('v4.2.3: identité fenêtre = état v4.0.98 (aucun --class / StartupWMClass
         'bump-version.sh must not reintroduce StartupWMClass (v4.2.3)');
 });
 
+test('v4.2.5: quit propre détecté dès la 1re stagnation (avant SIGKILL Lomiri)', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    assert.ok(cmd.includes('utoutlook_exitclient_ours "${exitclient}"') &&
+              cmd.includes('clean quit, wrapper exits now'),
+        'wrapper must exit on first stagnation when exitclient is fresh and ours (v4.2.5)');
+    assert.ok(cmd.includes('at ${stagnantCount}/2'),
+        'early clean-quit check must be inside the stagnation branch (v4.2.5)');
+});
+
 test('v4.2.4: barre QML de démarrage désactivée — anti unknown.qtmir (icône jaune)', async () => {
     const fs = await import('node:fs');
     const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
