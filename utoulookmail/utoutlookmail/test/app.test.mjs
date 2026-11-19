@@ -1208,14 +1208,18 @@ test('command.sh: GPU options must not allow the "GPU process isn\'t usable. Goo
     // --disable-gpu + --disable-software-rasterizer left no fallback (swiftshader
     // lib was stripped from the package): when the separate GPU process failed to
     // spawn 3x (error_code=1002, intermittent), Chromium FATAL'd and killed the app.
-    const m = content.match(/gpuoptions="([^"]*)"/);
-    assert.ok(m, 'gpuoptions must be defined');
-    assert.ok(!m[1].includes('--disable-software-rasterizer'),
-        'must NOT disable software rasterizer — no GPU fallback on the phone (v3.3.8)');
-    assert.ok(!m[1].includes('--disable-gpu '),
-        'must NOT use --disable-gpu (separate GPU process still spawns and can FATAL) (v3.3.8)');
-    assert.ok(m[1].includes('--in-process-gpu'),
-        'must use --in-process-gpu so no separate GPU process is ever spawned (v3.3.8)');
+    // v4.1.0: les flags sont calculés par compute_gpu_options() pour les deux
+    // modes (la bascule auto doit pouvoir les recalculer à chaque relance).
+    const all = [...content.matchAll(/gpuoptions="([^"]*)"/g)].map(m => m[1]);
+    assert.ok(all.length >= 2, 'both hardware and software gpuoptions must be defined (v4.1.0)');
+    for (const opts of all) {
+        assert.ok(!opts.includes('--disable-software-rasterizer'),
+            'must NOT disable software rasterizer — no GPU fallback on the phone (v3.3.8)');
+        assert.ok(opts.includes('--in-process-gpu'),
+            'must use --in-process-gpu so no separate GPU process is ever spawned (v3.3.8)');
+    }
+    assert.ok(all.some(o => o.includes('--disable-gpu')),
+        'software mode must force CPU compositing (Electron 44 has no ANGLE libs) (v4.1.0)');
 });
 
 test('command.sh: on "cleaning" the wrapper RELAUNCHES instead of exiting (v3.3.9)', async () => {
@@ -2245,8 +2249,13 @@ test('v4.0.127: rendu logiciel auto sur crash GPU + override utilisateur', async
     // Le wrapper applique le mode au lancement d'Electron.
     assert.ok(cmd.includes('RENDER_MODE=$(utoutlook_resolve_render_mode)'),
         'wrapper must apply the resolved render mode (v4.0.127)');
-    assert.ok(cmd.includes('--use-angle=swiftshader') && cmd.includes('--enable-unsafe-swiftshader'),
-        'software mode must use the SwiftShader backend (v4.0.127)');
+    // Electron 44 n'embarque plus libEGL.so/libGLESv2.so : les flags ANGLE
+    // swiftshader font échouer le GPU process (1002) puis FATAL → l'app ne
+    // démarre plus. Le mode logiciel doit rester in-process + compositing CPU.
+    assert.ok(cmd.includes('--in-process-gpu --disable-gpu --disable-gpu-compositing --enable-unsafe-swiftshader') &&
+              !cmd.includes('--use-angle=swiftshader') && !cmd.includes('--use-gl=angle') &&
+              cmd.includes('--enable-unsafe-swiftshader'),
+        'software mode must use in-process GPU + CPU compositing, not ANGLE (v4.1.0)');
 
     // SwiftShader doit rester dans le click, sinon le mode logiciel est vide.
     assert.ok(!afterPack.includes("tryRemove('libvk_swiftshader.so')") &&
@@ -2261,6 +2270,25 @@ test('v4.0.127: rendu logiciel auto sur crash GPU + override utilisateur', async
         'login page must expose the software-rendering toggle (v4.0.127)');
     assert.ok(i18n.includes("'render.enable'") && i18n.includes("'render.disable'"),
         'toggle labels must be in the i18n catalog (v4.0.127)');
+});
+
+test('v4.1.0: bascule auto du mode rendu après échec de démarrage, avec message i18n', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    const common = fs.readFileSync(path.resolve(__dirname, '../../utils/common.sh'), 'utf-8');
+
+    assert.ok(cmd.includes('function flip_render_mode()') &&
+              cmd.includes('function compute_gpu_options()') &&
+              cmd.includes('compute_gpu_options "${RENDER_MODE}"') &&
+              cmd.includes('flip_render_mode || utoutlook_notify') &&
+              cmd.includes('flip_render_mode || true') &&
+              cmd.includes('RENDER_FLIPS=0') &&
+              cmd.includes('"${RENDER_FLIPS:-0}" -ge 2'),
+        'wrapper must auto-flip render mode on startup failure, max twice (v4.1.0)');
+    assert.ok(common.includes('"shell.autoFallback")') &&
+              common.includes('Display mode changed automatically') &&
+              common.includes('Mode d\'affichage changé automatiquement'),
+        'auto fallback must be announced in the i18n catalog (v4.1.0)');
 });
 
 test('v4.0.128: écran de secours QML rendu logiciel / OpenGL sur crash GPU', async () => {
@@ -2434,6 +2462,12 @@ test('v4.1.0: icône — WM_CLASS alignée sur le click + démarrage en 6 étape
         'unlock-screen + periodic re-surface must be wired (v4.1.0)');
     assert.ok(main.includes('this.mailController.resurfaceWindow(true);'),
         'socket show must force surface re-integration (v4.1.0)');
+    // Fix "login invisible": le pulse alwaysOnTop seul ne suffit pas — il faut
+    // un vrai re-map de la surface (bounds nudge) et un déclenchement au focus.
+    assert.ok(ctl.includes('setBounds({ ...b, width: b.width + 1') &&
+              ctl.includes('this.win.on("focus", () => {') &&
+              ctl.includes('this.resurfaceWindow(false);'),
+        'login blur must force a real surface re-map on focus (v4.1.0)');
 });
 
 test('v4.0.125: bouton Quitter — cleanupAndExit plus court-circuité (app vivante mais invisible)', async () => {
@@ -2583,6 +2617,9 @@ test('v4.1.0 (analyse approfondie): correctifs applicatifs et outillage', async 
     assert.ok(fs.readFileSync(path.resolve(root, 'check-history.sh'), 'utf-8').includes('--strict'),
         'history confidentiality guard must exist (F1)');
     assert.ok(common.includes('utoutlook_qml_escape'), 'QML strings must be escaped (renderer #8)');
-    assert.ok(fs.readFileSync(path.resolve(root, 'utoulookmail/build-fast.sh'), 'utf-8').includes('rm -f "$PROJECT_DIR/Makefile"'),
-        'build-fast must not let cmake overwrite the Makefile (F4)');
+    const buildFast = fs.readFileSync(path.resolve(root, 'utoulookmail/build-fast.sh'), 'utf-8');
+    assert.ok(buildFast.includes('cmake -G Ninja') &&
+              buildFast.includes('"$PROJECT_DIR/CMakeCache.txt"') &&
+              !buildFast.includes('rm -f "$PROJECT_DIR/Makefile"'),
+        'build-fast must clean in-source cmake artifacts WITHOUT deleting the real Makefile (F4)');
 });

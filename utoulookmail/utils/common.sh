@@ -175,6 +175,18 @@ utoutlook_t() {
 				ar) echo "تم تفعيل العرض البرمجي بعد خطأ رسومي" ;;
 				*)  echo "Rendu logiciel activé après un crash graphique" ;;
 			esac ;;
+		# v4.1.0: notifié quand le wrapper bascule de mode après un échec de démarrage.
+		"shell.autoFallback")
+			case "${lang}" in
+				en) echo "Display mode changed automatically after a startup problem" ;;
+				es) echo "Modo de visualización cambiado automáticamente tras un problema de inicio" ;;
+				de) echo "Anzeigemodus nach einem Startproblem automatisch geändert" ;;
+				it) echo "Modalità di visualizzazione cambiata automaticamente dopo un problema di avvio" ;;
+				pt) echo "Modo de exibição alterado automaticamente após um problema de inicialização" ;;
+				zh) echo "启动出现问题后已自动切换显示模式" ;;
+				ar) echo "تم تغيير وضع العرض تلقائيًا بعد مشكلة في بدء التشغيل" ;;
+				*)  echo "Mode d'affichage changé automatiquement après un problème de démarrage" ;;
+			esac ;;
 		# v4.0.128: écran de secours affiché sur la splash après un crash GPU.
 		"qml.renderRescueTitle")
 			case "${lang}" in
