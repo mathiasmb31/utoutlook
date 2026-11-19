@@ -2107,8 +2107,10 @@ test('v4.0.121: notification clear throttlée + bouton ⌫ au-dessus du clavier'
         'ClearPersistent notification helper must be removed entirely (v4.0.122)');
     assert.ok(!cmd.includes('.notifs-cleared'),
         'old throttle flag must be gone (v4.0.122)');
-    assert.ok(gestures.includes('Math.round(window.innerHeight * 0.38)'),
-        'backspace button must be raised above the Maliit keyboard overlay (v4.0.121)');
+    assert.ok(gestures.includes('Math.round(window.innerHeight * 0.62)'),
+        'backspace button must be raised above the Maliit keyboard overlay (v4.0.121/126)');
+    assert.ok(gestures.includes('placeFirstInstall()'),
+        'first-install button must also be raised above the keyboard (v4.0.126)');
 });
 
 test('v4.0.123: l observer ne clique plus sur le volet de navigation', async () => {
@@ -2135,4 +2137,40 @@ test('v4.0.124: badge non lus préservé sans ouvrir le volet', async () => {
         'inbox lookup must stay DOM-based, not visibility-based (v4.0.124)');
     assert.ok(!obs.includes('btn.click()'),
         'no programmatic click may reopen the nav pane (v4.0.124)');
+});
+
+test('v4.0.126: splash QML dès la 1re ligne du wrapper + étape i18n', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    const common = fs.readFileSync(path.resolve(__dirname, '../../utils/common.sh'), 'utf-8');
+    const qml = fs.readFileSync(path.resolve(__dirname, '../../qml/startup.qml'), 'utf-8');
+
+    // La barre doit être lancée AVANT test_net (6 s de sondes) et avant les
+    // cleanup() successifs — c'était le motif du splash trop tardif.
+    const startIdx = cmd.indexOf('\nstart_startup_qml #');
+    const netIdx = cmd.indexOf('\ntest_net\n');
+    assert.ok(startIdx >= 0 && netIdx >= 0 && startIdx < netIdx,
+        'startup QML must be launched before test_net (v4.0.126)');
+    assert.ok(cmd.includes('utoutlook_set_start_step 2') &&
+              cmd.includes('utoutlook_set_start_step 3') &&
+              cmd.includes('utoutlook_set_start_step 4') &&
+              cmd.includes('utoutlook_set_start_step 5'),
+        'all startup steps must be announced (v4.0.126)');
+
+    // Message d'étape : 8 langues, numéro substitué sans sed (AppArmor).
+    assert.ok(common.includes('"qml.startStep")'),
+        'i18n step message must live in the shell catalog (v4.0.126)');
+    for (const needle of ['Starting up', 'Iniciando', 'Startvorgang', 'Avvio',
+                          'A iniciar', '正在启动', 'جارٍ التشغيل', 'Démarrage']) {
+        assert.ok(common.includes(needle), `missing step translation: ${needle} (v4.0.126)`);
+    }
+    assert.ok(common.includes('msg="${msg//%N/${n}}"'),
+        'step number must be replaced with a bash builtin, not sed (v4.0.126)');
+    assert.ok(common.includes('if utoutlook_startup_qml_alive; then return 0; fi'),
+        'cleanup must preserve our early splash window (v4.0.126)');
+
+    // Le QML recharge le fichier d'étape écrit par le wrapper.
+    assert.ok(qml.includes('Loader {') && qml.includes('/tmp/utoutlook-start-step.qml') &&
+              qml.includes('Timer {') && qml.includes('stepLoader.source = ""'),
+        'startup.qml must reload the translated step label (v4.0.126)');
 });

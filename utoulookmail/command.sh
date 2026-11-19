@@ -67,20 +67,14 @@ function launch_prospect() {
 	fi
 	export APPDIR=${WD}/bin/App/
 
-	# v4.0.106: afficher la barre de progression MAINTENANT — juste après le
-	# cleanup ci-dessus (qui tue les vieux qmlscene) et AVANT l'attente du
-	# service de notifications (jusqu'à 15 s) et le démarrage d'Electron.
-	# L'ancien emplacement (après launch_prospect) était trop tard : la splash
-	# Lomiri était déjà passée. On ferme d'abord une barre précédente éventuelle
-	# (relaunch) pour ne pas en empiler plusieurs.
-	if [ -n "${STARTUP_QML_PID}" ]; then
-		kill "${STARTUP_QML_PID}" 2>/dev/null || true
-		wait "${STARTUP_QML_PID}" 2>/dev/null || true
-		STARTUP_QML_PID=""
+	# v4.0.126: la barre est désormais lancée au tout début du wrapper (avant
+	# test_net et les cleanup). Ici on met seulement à jour l'étape affichée,
+	# et on la relance si elle a disparu entre-temps.
+	utoutlook_set_start_step 4
+	if ! utoutlook_startup_qml_alive; then
+		start_startup_qml
+		utoutlook_set_start_step 4
 	fi
-	qmlscene "${WD}"/qml/startup.qml > "${UTOUTLOOK_CONFIG_DIR}/startup-qml.log" 2>&1 &
-	STARTUP_QML_PID=$!
-	echo "startup progress screen shown (qml pid ${STARTUP_QML_PID})"
 
 	# Wait for notification service to be ready before sending welcome
 	# (D-Bus Postal may not be up yet on first launch / boot)
@@ -94,6 +88,7 @@ function launch_prospect() {
 	# whether OUR client is alive; used to ignore exitclient flags written by
 	# a dying older process during upgrade.
 	CLIENT_PID=$!
+	utoutlook_set_start_step 5 # v4.0.126: Electron lancé, page en chargement
 	# v4.0.65: enregistrer le VRAI pid du fils (kill_prospect_pids/prospect_alive
 	# l'utilisent — le pidfile ne contenait que des pids de wrapper avant)
 	echo "${CLIENT_PID}" >> "${UTOUTLOOK_PID_FILE}" 2>/dev/null || true
@@ -371,9 +366,28 @@ export socketpath="${UTOUTLOOK_SOCKET}"
 # older wrapper (race: old wrapper writes "closed" after the new one cleaned up).
 export UTOUTLOOK_WRAPPER_PID=$$
 
+# v4.0.126: afficher la barre de démarrage LE PLUS TÔT POSSIBLE — ici, avant
+# test_net (jusqu'à 6 s de sondes), avant les 3 cleanup() et avant l'attente
+# du service de notifications (15 s). Les nettoyages ne la tuent plus :
+# utoutlook_kill_qmlscene() préserve notre STARTUP_QML_PID.
+function start_startup_qml() {
+	if utoutlook_startup_qml_alive; then
+		return 0
+	fi
+	utoutlook_write_qml_i18n
+	utoutlook_set_start_step 1
+	"${UTOUTLOOK_BIN}/pkill" -9 qmlscene 2>/dev/null || true
+	qmlscene "${WD}"/qml/startup.qml > "${UTOUTLOOK_CONFIG_DIR}/startup-qml.log" 2>&1 &
+	STARTUP_QML_PID=$!
+	echo "startup progress screen shown early (qml pid ${STARTUP_QML_PID})"
+}
+
 ###init
 declare -i i=0
+start_startup_qml # v4.0.126: écran visible dès la 1re ligne active
+utoutlook_set_start_step 2
 test_net
+utoutlook_set_start_step 3
 export launchtry=1
 
 oldfollow="0"
@@ -604,8 +618,8 @@ echo "----------------------------------------------------------------------"
 
 echo "----------------------------------------------------------------------"
 launch_prospect
-# v4.0.106: la barre est maintenant lancée DANS launch_prospect, avant
-# l'attente notifications — ici on ne fait rien de plus.
+# v4.0.126: la barre est lancée au début du wrapper (voir start_startup_qml),
+# bien avant test_net / cleanup / attente notifications — ici rien de plus.
 
 sleep_int 15
 while true; do

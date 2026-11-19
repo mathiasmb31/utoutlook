@@ -190,6 +190,21 @@ utoutlook_t() {
 				ar) echo "انتهت مهلة الاتصال بخادم outlook. هذه ليست مشكلة حقيقية — يمكنك تشغيل العميل مرة أخرى ;)" ;;
 				*)  echo "Délai dépassé avec le serveur outlook. Ce n'est pas vraiment un problème — vous pouvez relancer le client ;)" ;;
 			esac ;;
+		# v4.0.126: message d'étape affiché par la barre de démarrage QML lancée
+		# dès la 1re ligne du wrapper. %N est remplacé par le numéro d'étape
+		# dans utoutlook_set_start_step() (substitution bash, pas de sed —
+		# AppArmor peut bloquer /usr/bin/sed sur le click installé).
+		"qml.startStep")
+			case "${lang}" in
+				en) echo "Starting up — step %N of 5" ;;
+				es) echo "Iniciando — paso %N de 5" ;;
+				de) echo "Startvorgang — Schritt %N von 5" ;;
+				it) echo "Avvio — passaggio %N di 5" ;;
+				pt) echo "A iniciar — etapa %N de 5" ;;
+				zh) echo "正在启动 — 第 %N 步，共 5 步" ;;
+				ar) echo "جارٍ التشغيل — الخطوة %N من 5" ;;
+				*)  echo "Démarrage — étape %N sur 5" ;;
+			esac ;;
 		*) echo "${key}" ;;
 	esac
 }
@@ -204,6 +219,36 @@ utoutlook_write_qml_i18n() {
 		echo "var EXIT_TIMEOUT = \"$(utoutlook_t 'qml.exitTimeout' | sed 's/\\/\\\\/g; s/"/\\"/g')\";"
 		echo "var RELAUNCH = \"$(utoutlook_t 'qml.relaunch' | sed 's/\\/\\\\/g; s/"/\\"/g')\";"
 	} > "${f}" 2>/dev/null || true
+}
+
+# ============================================================
+# v4.0.126: étape de démarrage affichée par startup.qml.
+# Le wrapper écrit un petit QML (rechargé par un Loader/Timer dans
+# startup.qml) — aucun texte en dur, tout passe par utoutlook_t().
+# La substitution %N utilise le bash builtin (pas de sed sous AppArmor).
+# ============================================================
+export UTOUTLOOK_STEP_QML="/tmp/utoutlook-start-step.qml"
+utoutlook_set_start_step() {
+	local n="$1"
+	local msg
+	msg=$(utoutlook_t 'qml.startStep')
+	msg="${msg//%N/${n}}"
+	{
+		printf 'import QtQuick 2.9\n'
+		printf 'QtObject { property string label: "%s" }\n' "${msg}"
+	} > "${UTOUTLOOK_STEP_QML}" 2>/dev/null || true
+}
+
+# v4.0.126: la barre lancée dès la 1re ligne du wrapper ne doit pas être tuée
+# par les pkill qmlscene des nettoyages successifs (cleanup est appelé 3×).
+utoutlook_startup_qml_alive() {
+	[ -n "${STARTUP_QML_PID:-}" ] || return 1
+	kill -0 "${STARTUP_QML_PID}" 2>/dev/null
+}
+
+utoutlook_kill_qmlscene() {
+	if utoutlook_startup_qml_alive; then return 0; fi
+	"${UTOUTLOOK_BIN}/pkill" -9 qmlscene 2>/dev/null || true
 }
 
 # ============================================================
@@ -257,7 +302,8 @@ utoutlook_kill_app() {
 	# EVERY launch ("startup is very long").
 	if ! "${UTOUTLOOK_BIN}/pkill" -0 prospect-mail 2>/dev/null; then
 		# No process running, nothing to kill
-		"${UTOUTLOOK_BIN}/pkill" -9 qmlscene 2>/dev/null || true
+		# v4.0.126: garder notre barre de démarrage si elle est déjà affichée
+		utoutlook_kill_qmlscene
 		return 0
 	fi
 
@@ -281,7 +327,7 @@ utoutlook_kill_app() {
 	while [ $waited -lt 5 ]; do
 		if ! "${UTOUTLOOK_BIN}/pkill" -0 prospect-mail 2>/dev/null; then
 			# Process exited gracefully
-			"${UTOUTLOOK_BIN}/pkill" -9 qmlscene 2>/dev/null || true
+			utoutlook_kill_qmlscene # v4.0.126: ne pas tuer notre barre
 			return 0
 		fi
 		"${UTOUTLOOK_BIN}/sleep" 1
@@ -290,7 +336,7 @@ utoutlook_kill_app() {
 
 	# Step 3: SIGKILL — process refused to die
 	"${UTOUTLOOK_BIN}/pkill" -9 prospect-mail 2>/dev/null || true
-	"${UTOUTLOOK_BIN}/pkill" -9 qmlscene 2>/dev/null || true
+	utoutlook_kill_qmlscene # v4.0.126: ne pas tuer notre barre
 }
 
 # ============================================================
