@@ -390,9 +390,9 @@ function start_startup_qml() {
 function show_render_rescue() {
 	local log="${UTOUTLOOK_CONFIG_DIR}/render-rescue-qml.log"
 	local qpid i=0
-	utoutlook_write_qml_i18n
+	utoutlook_write_rescue_qml # v4.1.0: généré dans le dossier de l'app (AppArmor)
 	: > "${log}" 2>/dev/null || true
-	qmlscene "${WD}"/qml/render-rescue.qml > "${log}" 2>&1 &
+	qmlscene "${UTOUTLOOK_CONFIG_DIR}"/render-rescue.qml > "${log}" 2>&1 &
 	qpid=$!
 	while [ ${i} -lt 8 ] && kill -0 "${qpid}" 2>/dev/null; do
 		sleep_int 1

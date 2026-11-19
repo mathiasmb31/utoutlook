@@ -1,6 +1,8 @@
 import QtQuick 2.9
 import QtQuick.Window 2.2
-import "/tmp/utoutlook-qml-i18n.js" as QmlI18n
+// v4.1.0: ce fichier sert de MODÈLE — le wrapper génère une copie traduite
+// dans ~/.config/utoutlook.mathias/render-rescue.qml (AppArmor interdit la
+// lecture d'un import JS/QML depuis /tmp sur le click installé).
 
 // v4.0.128: écran de secours affiché PAR LE WRAPPER quand un crash GPU vient
 // d'être détecté (avant de lancer Electron). qmlscene est Qt, indépendant du
@@ -26,7 +28,7 @@ Window {
             color: "#ffffff"
             font.pixelSize: 26
             horizontalAlignment: Text.AlignHCenter
-            text: QmlI18n.RENDER_TITLE || "Graphics problem"
+            text: "Graphics problem"
         }
 
         Rectangle {
@@ -40,7 +42,7 @@ Window {
                 color: "#ffffff"
                 font.pixelSize: 22
                 font.bold: true
-                text: QmlI18n.RENDER_SOFTWARE || "Software rendering"
+                text: "Software rendering"
             }
             MouseArea {
                 anchors.fill: parent
@@ -63,7 +65,7 @@ Window {
                 anchors.centerIn: parent
                 color: "#ffffff"
                 font.pixelSize: 22
-                text: QmlI18n.RENDER_OPENGL || "OpenGL rendering"
+                text: "OpenGL rendering"
             }
             MouseArea {
                 anchors.fill: parent

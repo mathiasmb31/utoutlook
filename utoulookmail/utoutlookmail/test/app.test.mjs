@@ -2169,10 +2169,13 @@ test('v4.0.126: splash QML dès la 1re ligne du wrapper + étape i18n', async ()
     assert.ok(common.includes('if utoutlook_startup_qml_alive; then return 0; fi'),
         'cleanup must preserve our early splash window (v4.0.126)');
 
-    // Le QML recharge le fichier d'étape écrit par le wrapper.
-    assert.ok(qml.includes('Loader {') && qml.includes('/tmp/utoutlook-start-step.qml') &&
-              qml.includes('Timer {') && qml.includes('stepLoader.source = ""'),
-        'startup.qml must reload the translated step label (v4.0.126)');
+    // v4.1.0: AppArmor refuse au qmlscene la lecture d'un .qml dans /tmp —
+    // la barre doit être AUTONOME (aucun fichier externe) sous peine de
+    // laisser l'utilisateur bloqué sur la splash Lomiri.
+    assert.ok(!qml.includes('Loader {') && !qml.includes('source:') && !qml.includes('import "/tmp'),
+        'startup.qml must NOT depend on an external QML file (v4.1.0 regression)');
+    assert.ok(common.includes('UTOUTLOOK_STEP_FILE="${UTOUTLOOK_CONFIG_DIR}/start-step"'),
+        'step info must be written as plain text in the app config dir (v4.1.0)');
 });
 
 test('v4.0.127: rendu logiciel auto sur crash GPU + override utilisateur', async () => {
@@ -2234,12 +2237,13 @@ test('v4.0.128: écran de secours QML rendu logiciel / OpenGL sur crash GPU', as
               qml.includes('UT_RENDER_CHOICE=opengl') &&
               qml.includes('Qt.exit(0)'),
         'rescue buttons must log their choice then quit (v4.0.128)');
-    assert.ok(qml.includes('QmlI18n.RENDER_TITLE') &&
-              qml.includes('QmlI18n.RENDER_SOFTWARE') &&
-              qml.includes('QmlI18n.RENDER_OPENGL'),
-        'rescue screen must use translated labels (v4.0.128)');
+    assert.ok(!qml.includes('/tmp/utoutlook-qml-i18n.js'),
+        'rescue screen must NOT import a /tmp JS file — AppArmor denies it (v4.1.0)');
     assert.ok(!qml.includes('import QtQuick.Controls'),
         'rescue screen must stay pure QtQuick for qmlscene on UT (v4.0.128)');
+    assert.ok(common.includes('utoutlook_write_rescue_qml()') &&
+              common.includes('${UTOUTLOOK_CONFIG_DIR}/render-rescue.qml'),
+        'rescue screen must be generated in the app config dir with labels (v4.1.0)');
 
     // Le wrapper détecte le crash FRAIS avant de consommer le marqueur.
     assert.ok(common.includes('utoutlook_gpu_crash_is_new()'),
