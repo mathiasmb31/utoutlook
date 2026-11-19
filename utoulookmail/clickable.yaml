@@ -18,9 +18,13 @@ build:
 - echo $INSTALL_DIR/bin
 - cd $INSTALL_DIR/bin/App
 - ls
-- v=$(grep -m1 '"version"' "$ROOT/manifest.json" | cut -d'"' -f4)
-- test -f "$ROOT/utoutlookmail/dist/prospect-mail-${v}-arm64.tar.gz"
-- cp "$ROOT/utoutlookmail/dist/prospect-mail-${v}-arm64.tar.gz" $INSTALL_DIR/bin/App/prospect.tar.gz
+# ATTENTION : chaque entrée de `build:` tourne dans un shell/conteneur SEPARÉ avec
+# `set -u` (clickable run_command). Une variable shell posée dans une entrée n'existe
+# donc PAS dans la suivante -> garder tout ce bloc dans la MÊME entrée (bloc `|`).
+- |
+  v=$(grep -m1 '"version"' "$ROOT/manifest.json" | cut -d'"' -f4)
+  test -f "$ROOT/utoutlookmail/dist/prospect-mail-${v}-arm64.tar.gz"
+  cp "$ROOT/utoutlookmail/dist/prospect-mail-${v}-arm64.tar.gz" "$INSTALL_DIR/bin/App/prospect.tar.gz"
 - cd $INSTALL_DIR/bin/App && tar xvfz prospect.tar.gz --strip-components=1 
 - rm -f $INSTALL_DIR/bin/App/prospect.tar.gz
 - gcc $ROOT/utils/mkdir.c -o $ROOT/utils/mkdir
