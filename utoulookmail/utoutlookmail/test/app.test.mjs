@@ -1526,6 +1526,21 @@ test('v4.1.1: retry persisté entre réinjections (anti-spam « 1/5 » dans wrap
         'only one "init monitor" log per injection (v4.1.1)');
 });
 
+test('v4.1.2: cookie auth sauvegardé par batch (anti-tempête login invisible)', async () => {
+    const fs = await import('node:fs');
+    const ctrl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    assert.ok(ctrl.includes('_authCookieBatch'),
+        'auth cookies must be accumulated in a batch, not written one by one (v4.1.2)');
+    assert.ok(ctrl.includes('scheduleAuthCookieFlush'),
+        'batch flush must be debounced (v4.1.2)');
+    assert.ok(ctrl.includes('AUTH_BATCH_MS'),
+        'batch window must be bounded (v4.1.2)');
+    assert.ok(!/v4\.0\.47: auth cookie détecté/.test(ctrl),
+        'per-cookie INFO log must be removed — it caused 334 lines in 3s (v4.1.2)');
+    assert.ok(ctrl.includes('startCookieFlush'),
+        'periodic flush must remain as persistence fallback (v4.1.2)');
+});
+
 test('v3.3.22: uncaughtException ne tue plus l\'app au premier coup (exit seulement après 5 en 60s)', async () => {
     const fs = await import('node:fs');
     const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');

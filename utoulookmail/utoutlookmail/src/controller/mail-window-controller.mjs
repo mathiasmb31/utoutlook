@@ -421,6 +421,43 @@ class MailWindowController {
             } catch (e) { logger.warn('v4.0.46: restore token failed:', e.message); }
         };
 
+        // v4.1.2 (fix login invisible / tempête cookies): au chargement de la page
+        // mail, Microsoft pose des dizaines de cookies d'auth en moins de 3 s.
+        // Chaque événement 'changed' réécrivait AUTH_TOKEN_FILE (lecture + écriture
+        // disque synchrone) ET appelait flushStore() ET loggait en INFO → 334
+        // écritures/flush en ~3 s sur le device. Cette tempête sature le process
+        // renderer au moment précis où la surface Mir est déjà fragile (login),
+        // et corrélait avec la disparition de la fenêtre. On regroupe désormais
+        // l'écriture + le flush dans une fenêtre de 2 s (debounce) et on ne log
+        // plus qu'une ligne récap par lot. Le flush périodique existant
+        // (startCookieFlush) reste le garde-fou de persistance.
+        if (!this._authCookieBatch) this._authCookieBatch = new Map();
+        if (!this._authCookieBatchTimer) this._authCookieBatchTimer = null;
+        const AUTH_BATCH_MS = 2000;
+        const scheduleAuthCookieFlush = () => {
+            if (this._authCookieBatchTimer) return;
+            this._authCookieBatchTimer = setTimeout(() => {
+                this._authCookieBatchTimer = null;
+                const batch = this._authCookieBatch;
+                this._authCookieBatch = new Map();
+                if (!batch || batch.size === 0) return;
+                try {
+                    let tokens = [];
+                    if (fs.existsSync(AUTH_TOKEN_FILE)) {
+                        try { tokens = JSON.parse(fs.readFileSync(AUTH_TOKEN_FILE, 'utf8')); } catch (e) { tokens = []; }
+                    }
+                    if (!Array.isArray(tokens)) tokens = [];
+                    for (const [cname, entry] of batch) {
+                        const idx = tokens.findIndex(t => t.name === cname);
+                        if (idx >= 0) tokens[idx] = entry; else tokens.push(entry);
+                    }
+                    fs.writeFileSync(AUTH_TOKEN_FILE, JSON.stringify(tokens));
+                } catch (e) { logger.warn('v4.1.2: sauvegarde groupée token failed:', e.message); }
+                ses.cookies.flushStore().catch(() => {});
+                logger.info(`v4.1.2: ${batch.size} cookie(s) d'auth sauvegardés + flush (batch ${AUTH_BATCH_MS}ms)`);
+            }, AUTH_BATCH_MS);
+        };
+
         this._on(ses.cookies, 'changed', (_event, cookie, _cause, removed) => {
             if (removed) return;
             const name = cookie.name || '';
@@ -449,35 +486,25 @@ class MailWindowController {
                     } catch (e) { /* ignore */ }
                 })();
             }
-            // Sauvegarder dans un fichier JSON (liste de cookies) — seulement depuis login.live.com
-            // (évite de sauvegarder les copies sync sur autres domaines)
+            // v4.1.2: sauvegarder dans un fichier JSON — seulement depuis
+            // login.live.com (évite les copies sync sur autres domaines). On
+            // accumule dans un batch au lieu d'écrire + flusher + logger à
+            // chaque événement (voir commentaire du debounce plus haut).
             if (domain === 'login.live.com' || domain === '.live.com') {
-                try {
-                    let tokens = [];
-                    if (fs.existsSync(AUTH_TOKEN_FILE)) {
-                        try { tokens = JSON.parse(fs.readFileSync(AUTH_TOKEN_FILE, 'utf8')); } catch (e) { tokens = []; }
-                    }
-                    if (!Array.isArray(tokens)) tokens = [];
-                    // Mettre à jour ou ajouter ce cookie
-                    const idx = tokens.findIndex(t => t.name === name);
-                    const entry = {
-                        name: name, // v4.0.49: garder le préfixe __Host- original — Microsoft exige __Host-MSAAUTH host-only
-                        value: cookie.value,
-                        domain: cookie.domain,
-                        hostOnly: !cookie.domain || !cookie.domain.startsWith('.'), // host-only si pas de domain explicite
-                        path: cookie.path || '/',
-                        httpOnly: cookie.httpOnly || false,
-                        expirationDate: cookie.expirationDate || (Math.floor(Date.now() / 1000) + 365 * 86400),
-                        savedAt: new Date().toISOString(),
-                    };
-                    if (idx >= 0) tokens[idx] = entry; else tokens.push(entry);
-                    fs.writeFileSync(AUTH_TOKEN_FILE, JSON.stringify(tokens));
-                } catch (e) { logger.warn('v4.0.46: sauvegarde token failed:', e.message); }
+                this._authCookieBatch.set(name, {
+                    name: name, // v4.0.49: garder le préfixe __Host- original
+                    value: cookie.value,
+                    domain: cookie.domain,
+                    hostOnly: !cookie.domain || !cookie.domain.startsWith('.'),
+                    path: cookie.path || '/',
+                    httpOnly: cookie.httpOnly || false,
+                    expirationDate: cookie.expirationDate || (Math.floor(Date.now() / 1000) + 365 * 86400),
+                    savedAt: new Date().toISOString(),
+                });
+                scheduleAuthCookieFlush();
             }
-            if (AUTH_COOKIE_NAMES.test(name)) {
-                logger.info(`v4.0.47: auth cookie détecté (${name} sur ${domain}) — sauvegarde + flush`);
-            }
-            ses.cookies.flushStore().catch(() => {});
+            // v4.1.2: plus de log INFO par cookie (334 lignes en 3 s sur device).
+            // Le batch loggue un récap unique. Garder lastMailPageTime à jour.
             this.lastMailPageTime = Date.now();
             // v4.0.47: PLUS de saut direct ici — un MSAAUTH intermédiaire est posé
             // PENDANT le flux de login (avant 2FA), sauter à ce moment interrompt
