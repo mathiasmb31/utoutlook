@@ -20,7 +20,7 @@
     // logo 2025 dark.svg" — pas une approximation. Cadrée sur le carré 73x73.
     // En data-URI : pas de fichier aggiuntif, marche sous AppArmor.
     const UBTOUCH_SVG = 'data:image/svg+xml;utf8,' + encodeURIComponent(
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 73 73">' +
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 30 73 73">' +
         '<path fill="#E95420" d="M72.712 0H0v114.48h72.712z"/>' +
         '<path fill="#fff" d="M16.625 80.772a7.527 7.527 0 1 0 0-15.055 7.527 7.527 0 0 0 0 15.055m31.351-16.506a7.527 7.527 0 1 0 0-15.054 7.527 7.527 0 0 0 0 15.054M33.603 92.62a18.33 18.33 0 0 1-12.501-9.536 10.84 10.84 0 0 1-6.437.79c3.082 7.57 9.62 13.068 17.644 14.788 1.76.378 3.555.56 5.347.55a10.77 10.77 0 0 1-2.204-6.294 18 18 0 0 1-1.846-.3zm12.678 7.567a7.527 7.527 0 1 0 0-15.054 7.527 7.527 0 0 0 0 15.054m10.476-10.291a24.7 24.7 0 0 0 4.782-10.146A24.68 24.68 0 0 0 57.99 61a10.84 10.84 0 0 1-4.233 4.958 18.42 18.42 0 0 1 1.74 12.498 18.4 18.4 0 0 1-2.34 5.833 10.8 10.8 0 0 1 3.602 5.61zM16.044 62.45q.289-.016.573-.015 1.143 0 2.272.243c1.228.263 2.381.727 3.438 1.385a18.37 18.37 0 0 1 14.782-7.907q.048-.856.226-1.695a10.9 10.9 0 0 1 2.058-4.41c-9.468-.75-18.666 4.136-23.351 12.4z"/>' +
         '</svg>'
@@ -31,37 +31,38 @@
 
     const lastTrigger = {reload: 0, quit: 0, first: 0};
 
-    // v4.1.3: style COMMUN aux 4 boutons — même taille, bords légèrement
-    // arrondis (on garde le rendu d'origine des boutons Recharger/Quitter :
-    // mêmes couleurs, même padding, même police ; seul le radius est unifié).
+    // v4.1.7: style COMMUN aux 4 boutons — même taille, bords arrondis.
+    // Réduction du padding/police pour que les 4 tiennent dans 612 px logiques
+    // sans couper les libellés (retour device 19/11 : « Reload messa » tronqué).
+    // white-space:normal + line-height permet un retour à la ligne propre.
     const BTN_STYLE =
-        'padding:10px 22px;border-radius:14px;font:15px sans-serif;cursor:pointer;' +
-        'box-shadow:0 2px 10px rgba(0,0,0,.5);';
+        'padding:7px 10px;border-radius:12px;font:13px/1.15 sans-serif;cursor:pointer;' +
+        'white-space:normal;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.5);';
     const BTN_RELOAD_STYLE = BTN_STYLE +
         'background:rgba(15,15,26,0.92);color:#E95420;border:1px solid #E95420;';
     const BTN_QUIT_STYLE = BTN_STYLE +
         'background:#E95420;color:#fff;border:1px solid #E95420;';
     // Bouton First install : même gabarit que Recharger (fond sombre, texte orange)
     const BTN_FIRST_STYLE = BTN_STYLE +
-        'background:rgba(15,15,26,0.92);color:#E95420;border:1px solid #E95420;min-width:150px;';
+        'background:rgba(15,15,26,0.92);color:#E95420;border:1px solid #E95420;';
     // v4.1.5: icône « double tap » = DEUX DOIGTS stylisés qui tapent (avec
     // pastille de contact sous chaque doigt) + chiffre 2. Plus explicite que
     // les flèches d'avant, qui ressemblaient à une flamme. Même dessin que le
     // bouton de la page de login.
     const DOUBLE_TAP_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent(
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">' +
-        '<rect x="5.5" y="2" width="5" height="11" rx="2.5" fill="#E95420"/>' +
-        '<rect x="13.5" y="2" width="5" height="11" rx="2.5" fill="#E95420"/>' +
-        '<circle cx="8" cy="15.5" r="1.6" fill="#E95420"/>' +
-        '<circle cx="16" cy="15.5" r="1.6" fill="#E95420"/>' +
-        '<text x="12" y="23" font-family="Arial,sans-serif" font-size="9" font-weight="bold" fill="#E95420" text-anchor="middle">2</text>' +
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28">' +
+        '<rect x="5" y="1" width="6" height="12" rx="3" fill="#E95420"/>' +
+        '<rect x="17" y="1" width="6" height="12" rx="3" fill="#E95420"/>' +
+        '<circle cx="8" cy="15" r="2" fill="#E95420"/>' +
+        '<circle cx="20" cy="15" r="2" fill="#E95420"/>' +
+        '<text x="14" y="27" font-family="Arial,sans-serif" font-size="12" font-weight="bold" fill="#E95420" text-anchor="middle">2</text>' +
         '</svg>'
     );
     // Badge UBtouch : même hauteur que les autres, carré (logo rond centré),
     // purement décoratif — pas de curseur pointer, pas de tabindex.
     const BADGE_STYLE =
-        'width:43px;height:43px;padding:0;border-radius:14px;cursor:default;' +
-        'background:rgba(15,15,26,0.92);border:1px solid #E95420;' +
+        'width:43px;height:43px;padding:2px;border-radius:14px;cursor:default;' +
+        'background:#E95420;border:1px solid #E95420;' +
         'display:flex;align-items:center;justify-content:center;' +
         'box-shadow:0 2px 10px rgba(0,0,0,.5);';
 
@@ -241,8 +242,8 @@
             const img = document.createElement('img');
             img.src = UBTOUCH_SVG;
             img.alt = '';
-            img.width = 28; img.height = 28;
-            img.style.cssText = 'display:block;width:28px;height:28px;';
+            img.width = 38; img.height = 38;
+            img.style.cssText = 'display:block;width:38px;height:38px;border-radius:12px;';
             ubtouch.appendChild(img);
             bar.insertBefore(ubtouch, reload);
         }
@@ -261,8 +262,8 @@
             const icon = document.createElement('img');
             icon.src = DOUBLE_TAP_ICON;
             icon.alt = '';
-            icon.width = 18; icon.height = 18;
-            icon.style.cssText = 'display:inline-block;width:18px;height:18px;vertical-align:middle;margin-right:6px;';
+            icon.width = 24; icon.height = 24;
+            icon.style.cssText = 'display:inline-block;width:24px;height:24px;vertical-align:middle;margin-right:5px;';
             const span = document.createElement('span');
             span.className = 'ut-first-label';
             first.appendChild(icon);

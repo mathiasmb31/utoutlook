@@ -1580,17 +1580,17 @@ test('v4.1.5: cocarde UBtouch officielle + icône deux doigts sur les boutons', 
     // Nouveau dessin double-tap : DEUX DOIGTS (rects) + pastilles + chiffre 2.
     for (const [name, src] of [['login', gestures], ['liste', btn]]) {
         assert.ok(src.includes('DOUBLE_TAP_ICON'), `${name}: icône double-tap définie (v4.1.5)`);
-        assert.ok((src.match(/<rect x="5\.5"/g) || []).length >= 1 &&
-                  (src.match(/<rect x="13\.5"/g) || []).length >= 1,
-            `${name}: deux doigts stylisés (v4.1.5)`);
-        assert.ok(src.includes('<circle cx="8" cy="15.5"') &&
-                  src.includes('<circle cx="16" cy="15.5"'),
-            `${name}: pastilles de contact sous les doigts (v4.1.5)`);
+        assert.ok((src.match(/<rect x="5"/g) || []).length >= 1 &&
+                  (src.match(/<rect x="17"/g) || []).length >= 1,
+            `${name}: deux doigts stylisés (v4.1.7)`);
+        assert.ok(src.includes('<circle cx="8" cy="15"') &&
+                  src.includes('<circle cx="20" cy="15"'),
+            `${name}: pastilles de contact sous les doigts (v4.1.7)`);
         assert.ok(!/stroke-linecap="round"/.test(src.slice(src.indexOf('DOUBLE_TAP_ICON'), src.indexOf('DOUBLE_TAP_ICON') + 600)),
             `${name}: plus de flèches « flamme » (v4.1.5)`);
     }
     // VRAIE cocarde Ubuntu Touch officielle (fond orange + path blanc 772 chars).
-    assert.ok(btn.includes('viewBox="0 0 73 73"'), 'cocarde cadrée sur 73x73 (v4.1.5)');
+    assert.ok(btn.includes('viewBox="0 30 73 73"'), 'cocarde recadrée sur toute sa hauteur (v4.1.7)');
     assert.ok(btn.includes('M72.712 0H0v114.48h72.712z'), 'fond orange officiel (v4.1.5)');
     assert.ok(btn.includes('M16.625 80.772'), 'path blanc de la cocarde officielle (v4.1.5)');
     assert.ok(!/r="19" fill="none" stroke/.test(btn), 'plus de faux cercle approximatif (v4.1.5)');
