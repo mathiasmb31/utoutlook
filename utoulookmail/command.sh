@@ -230,6 +230,17 @@ function verify_prospect_life() {
 		# l'écriture du heartbeat, wrapper orphelin, etc.).
 		stagnantCount=$((stagnantCount + 1))
 		echo "heartbeat stagnant (${stagnantCount}/2)"
+		# v4.2.5: SUR DEVICE, Lomiri SIGKILL le wrapper (~3-5 s) dès que la
+		# fenêtre se ferme — avant la 2e stagnation (≈6 s). Résultat : le flag
+		# exitclient n'était jamais lu, le wrapper mourait sans trap EXIT
+		# (pas de notification "goodbye"), et les flags périmés bloquaient le
+		# relance une fois sur deux. Dès la 1re stagnation, si l'app a écrit
+		# un exitclient FRAIS et NOUS APPARTENANT, c'est un vrai quit : sortir
+		# immédiatement (le trap EXIT enverra "goodbye" et nettoiera).
+		if utoutlook_flag_fresh "${exitclient}" && utoutlook_exitclient_ours "${exitclient}"; then
+			echo "exitclient flag present (ours, fresh) at ${stagnantCount}/2 — clean quit, wrapper exits now"
+			exit 0
+		fi
 		if [ ${stagnantCount} -ge 2 ]; then
 			# v3.3.28: heartbeat stopped — but if the app wrote its clean-quit
 			# flag (window closed by swipe / SIGTERM; written synchronously

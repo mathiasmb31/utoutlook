@@ -2440,7 +2440,17 @@ class MailWindowController {
 
         // Window closed
         this.win.on("closed", () => {
-            MailWindowController.byWebContents.delete(this.win.webContents);
+            // v4.2.5: sur device, `this.win.webContents` peut lever
+            // "TypeError: Object has been destroyed" dans l'event 'closed'
+            // (log : exception au moment du bouton Quitter). L'exception
+            // interrompait la suite du handler (closeSplashWindow, timers,
+            // flags de propre fermeture) → pas de notification "goodbye" et
+            // flags périmés qui bloquent le relance une fois sur deux.
+            // On capture le webContents AVANT et on neutralise l'accès.
+            try {
+                const wc = this.win && !this.win.isDestroyed() ? this.win.webContents : null;
+                if (wc) MailWindowController.byWebContents.delete(wc);
+            } catch (e) { /* fenêtre déjà détruite — rien à retirer */ }
             if (this.recreating) {
                 // v4.1.0 (revue E1): basculement du cadre — ne pas écrire
                 // exitclient ni quitter l'app pendant la recreation.

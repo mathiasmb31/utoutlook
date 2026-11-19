@@ -94,6 +94,15 @@ let windowEverVisible = false;
 // looks like it "does not start" while the process and heartbeat are alive.
 let mainWindowEverVisible = false;
 let appInstance = null;
+
+// v4.2.6: écrire un heartbeat SYNCHRONE dès le chargement du module. Sur device,
+// l'intervalle de 2 s mettait parfois 30 s à produire son 1er tick (event loop
+// bloquée par le chargement de l'asar / de la webapp) → le wrapper croyait
+// "heartbeat not started yet" pendant 10×3 s et relançait l'app → splash bloqué
+// une fois sur deux après fermeture. Un write synchrone immédiat garantit que
+// le fichier existe avant même le premier tick.
+try { fs.writeFileSync(HEARTBEAT_FILE, '0'); } catch (e) { /* ignore */ }
+
 const heartbeatInterval = setInterval(() => {
     if (heartbeatExiting) return;
     heartbeatSeconds++;
