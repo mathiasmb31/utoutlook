@@ -457,14 +457,10 @@ export UTOUTLOOK_WRAPPER_MARKER="${UTOUTLOOK_CONFIG_DIR}/.wrapper-start"
 # v4.0.62: pkill/pgrep -f sont aveugles sous AppArmor (ne voient pas les autres
 # process) — tuer AUSSI via les pidfiles enregistrés et le scan /proc/*/exe.
 prospect_alive() {
-	if "${UTOUTLOOK_BIN}/pgrep" -f "bin/App/prospect-mail" >/dev/null 2>&1; then return 0; fi
-	local _pid
-	[ -f "${UTOUTLOOK_PID_FILE}" ] || return 1
-	while IFS= read -r _pid; do
-		_pid=$("${WD}"/bin/tr -d '[:space:]' <<<"${_pid}")
-		[ -n "${_pid}" ] && kill -0 "${_pid}" 2>/dev/null && return 0
-	done < "${UTOUTLOOK_PID_FILE}"
-	return 1
+	# v4.1.0: délègue à utoutlook_prospect_running() qui IGNORE les zombies —
+	# sinon pgrep -f/kill -0 voient les <defunct> (parent 1) comme vivants et
+	# la boucle d'attente tourne 10 s pour rien (~50 s au total sur l'étape 3).
+	utoutlook_prospect_running
 }
 kill_prospect_pids() {
 	local _pid

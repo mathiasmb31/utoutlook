@@ -1659,10 +1659,10 @@ test('v3.3.30: démarrage rapide + wrapper périmé silencieux (pas de kill du n
     // kill_app: fast path — if no prospect-mail is running, return BEFORE the
     // close-flag write + 3s sleep (cleanup calls it 3x per start = 9s lost)
     const killApp = common.slice(common.indexOf('utoutlook_kill_app()'), common.indexOf('utoutlook_cleanup_locks()'));
-    const checkPos = killApp.indexOf('pkill" -0 prospect-mail');
+    const checkPos = killApp.indexOf('if ! utoutlook_prospect_running; then');
     const flagPos = killApp.indexOf('echo "closed:${UTOUTLOOK_WRAPPER_PID:-unknown}" > "${UTOUTLOOK_EXITCOMMAND}"');
     assert.ok(checkPos !== -1 && flagPos !== -1 && checkPos < flagPos,
-        'kill_app must check pkill -0 prospect-mail BEFORE writing the close flag / sleeping (v3.3.30)');
+        'kill_app must check live processes (zombies ignored) BEFORE writing the close flag / sleeping (v3.3.30/v4.1.0)');
     // kill_stale_wrappers: SIGKILL only, never SIGTERM (a TERM runs the EXIT trap
     // which writes the close flag / socket quit and can kill the NEW instance)
     const ksw = common.slice(common.indexOf('utoutlook_kill_stale_wrappers()'), common.indexOf('utoutlook_cleanup_flags()'));
@@ -2327,6 +2327,15 @@ test('v4.1.0: icône — WM_CLASS alignée sur le click + démarrage en 6 étape
               cmd.includes('utoutlook_set_start_step 5') &&
               cmd.includes('utoutlook_set_start_step 6'),
         'all 6 startup steps must be announced (v4.1.0)');
+
+    // Cause racine de la lenteur : les zombies comptés comme vivants.
+    assert.ok(common.includes('utoutlook_pid_is_zombie()') &&
+              common.includes('utoutlook_prospect_running()'),
+        'shell must distinguish zombies from live processes (v4.1.0)');
+    assert.ok(!common.includes('pkill" -0 prospect-mail'),
+        'kill_app must not use pkill -0 which matches zombies (v4.1.0)');
+    assert.ok(cmd.includes('utoutlook_prospect_running'),
+        'wrapper liveness check must ignore zombies (v4.1.0)');
 });
 
 test('v4.0.125: bouton Quitter — cleanupAndExit plus court-circuité (app vivante mais invisible)', async () => {

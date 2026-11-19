@@ -335,6 +335,40 @@ utoutlook_kill_qmlscene() {
 	"${UTOUTLOOK_BIN}/pkill" -9 qmlscene 2>/dev/null || true
 }
 
+# ============================================================
+# v4.1.0: distinguer un VRAI process prospect-mail d'un zombie.
+# `pkill -0` / `kill -0` répondent "vivant" pour un zombie (état Z),
+# or un zombie ne peut pas être tué — il disparaît quand son parent
+# le wait(). Résultat observé sur device : 3 zombies (parent 1) →
+# le wrapper passait 10 s dans sa boucle d'attente + 3 s + 5 s dans
+# utoutlook_kill_app() à chaque cleanup, soit ~50 s bloqués sur l'étape 3.
+# ============================================================
+utoutlook_pid_is_zombie() {
+	local line rest state
+	line=$("${UTOUTLOOK_BIN}/cat" "/proc/$1/stat" 2>/dev/null) || return 1
+	rest="${line##*) }"   # après le dernier ') ' : état + ppid + ...
+	state="${rest%% *}"
+	[ "${state}" = "Z" ]
+}
+
+utoutlook_prospect_running() {
+	local pids p
+	pids=$("${UTOUTLOOK_BIN}/pgrep" -f 'prospect-mail' 2>/dev/null)
+	for p in ${pids}; do
+		utoutlook_pid_is_zombie "${p}" && continue
+		kill -0 "${p}" 2>/dev/null && return 0
+	done
+	# pgrep -f peut être aveugle sous AppArmor : compléter avec le pidfile.
+	[ -f "${UTOUTLOOK_PID_FILE}" ] || return 1
+	while IFS= read -r p; do
+		p=$("${UTOUTLOOK_BIN}/tr" -d '[:space:]' <<<"${p}")
+		[ -n "${p}" ] || continue
+		utoutlook_pid_is_zombie "${p}" && continue
+		kill -0 "${p}" 2>/dev/null && return 0
+	done < "${UTOUTLOOK_PID_FILE}"
+	return 1
+}
+
 # v4.1.0: génère l'écran de secours DANS le dossier de l'app (autorisé
 # AppArmor) avec les libellés traduits intégrés — aucun import depuis /tmp.
 utoutlook_write_rescue_qml() {
@@ -479,8 +513,8 @@ utoutlook_kill_app() {
 	# (normal launch), skip the close flag + 3s sleep entirely — cleanup()
 	# calls this 3x per wrapper start, so the unconditional sleep cost 9s on
 	# EVERY launch ("startup is very long").
-	if ! "${UTOUTLOOK_BIN}/pkill" -0 prospect-mail 2>/dev/null; then
-		# No process running, nothing to kill
+	if ! utoutlook_prospect_running; then
+		# Aucun process VIVANT (les zombies ne comptent pas) — rien à tuer
 		# v4.0.126: garder notre barre de démarrage si elle est déjà affichée
 		utoutlook_kill_qmlscene
 		return 0
@@ -504,8 +538,8 @@ utoutlook_kill_app() {
 	# Step 2: Wait up to 5 seconds for graceful exit
 	local waited=0
 	while [ $waited -lt 5 ]; do
-		if ! "${UTOUTLOOK_BIN}/pkill" -0 prospect-mail 2>/dev/null; then
-			# Process exited gracefully
+		if ! utoutlook_prospect_running; then
+			# Process exited gracefully (zombies ignorés)
 			utoutlook_kill_qmlscene # v4.0.126: ne pas tuer notre barre
 			return 0
 		fi
