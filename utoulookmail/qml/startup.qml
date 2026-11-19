@@ -8,6 +8,10 @@ import QtQuick.Window 2.2
 // v4.0.108: Window (QtQuick.Window) et NON ApplicationWindow (QtQuick.Controls)
 // — ApplicationWindow n'existe pas sous qmlscene sur Ubuntu Touch
 // ("ApplicationWindow is not a type" dans startup-qml.log).
+// v4.0.126: lancée MAINTENANT dès la 1re ligne du wrapper (plus tardivement
+// dans launch_prospect). Ajout d'un message d'étape i18n : le wrapper écrit
+// /tmp/utoutlook-start-step.qml (texte traduit via utoutlook_t), rechargé par
+// le Loader ci-dessous. Toujours aucun QtQuick.Controls.
 Window {
     visible: true
     flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
@@ -44,6 +48,32 @@ Window {
             duration: 1100
             loops: Animation.Infinite
             running: true
+        }
+    }
+
+    // v4.0.126: message d'étape traduit, écrit par le wrapper. Le Loader est
+    // rechargé chaque seconde pour suivre l'avancement sans rouvrir la fenêtre.
+    Loader {
+        id: stepLoader
+        source: "/tmp/utoutlook-start-step.qml"
+    }
+    Text {
+        id: stepText
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.top: track.bottom
+        anchors.topMargin: 18
+        color: "#E95420"
+        font.pixelSize: 20
+        horizontalAlignment: Text.AlignHCenter
+        text: (stepLoader.item && stepLoader.item.label) ? stepLoader.item.label : ""
+    }
+    Timer {
+        interval: 1000
+        running: true
+        repeat: true
+        onTriggered: {
+            stepLoader.source = "";
+            stepLoader.source = "/tmp/utoutlook-start-step.qml";
         }
     }
 }

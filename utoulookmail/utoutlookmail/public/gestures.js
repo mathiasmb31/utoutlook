@@ -116,18 +116,35 @@
     };
     const isField = el => el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
     let lastField = null; // v4.0.1: champ ciblé même si le focus a brièvement bougé
+    // v4.0.126: repli « au-dessus du clavier » partagé par les deux boutons de la
+    // page de login (⌫ et « Première installation »). Sur Lomiri/Wayland le clavier
+    // Maliit est un overlay : visualViewport NE RÉTRÉCIT PAS toujours → kb=0.
+    const aboveKeyboardBottom = () => {
+        const vv = window.visualViewport;
+        const kb = vv ? Math.max(0, window.innerHeight - vv.height - (vv.offsetTop || 0)) : 0;
+        return kb > 0 ? (kb + 20) : Math.round(window.innerHeight * 0.62);
+    };
     // v4.0.5: remonte le bouton ⌫ au-dessus du clavier virtuel (Maliit/Wayland est un
     // overlay : visualViewport.height < innerHeight quand le clavier est ouvert) et ne
     // l'affiche que sur la page de login, uniquement quand un champ de saisie a le focus.
     const positionBsButton = (b) => {
-        const vv = window.visualViewport;
-        const kb = vv ? Math.max(0, window.innerHeight - vv.height - (vv.offsetTop || 0)) : 0;
         // v4.0.121: sous Lomiri/Wayland le clavier Maliit est un overlay et
         // visualViewport NE RÉTRÉCIT PAS toujours → kb=0 → le bouton restait
         // à 14 px du bas, caché par le clavier pendant la saisie du login.
-        // Si le clavier n'est pas mesurable, on le place à 38 % de la hauteur
-        // (au-dessus de l'overlay), sinon juste au-dessus du clavier mesuré.
-        const bottom = kb > 0 ? (kb + 20) : Math.round(window.innerHeight * 0.38);
+        // v4.0.126: 38 % était ENCORE sous le clavier sur les écrans couverts
+        // à ~55 % — on monte le repli à 62 % et, quand le champ actif est
+        // connu, on ancre le bouton au-dessus de ce champ (c'est lui que
+        // Maliit remonte au-dessus du clavier). kb mesuré reste prioritaire.
+        const field = isField(document.activeElement) ? document.activeElement : lastField;
+        let bottom = aboveKeyboardBottom();
+        if (field && field.getBoundingClientRect) {
+            const r = field.getBoundingClientRect();
+            if (r.top > 0 && r.top < window.innerHeight) {
+                bottom = Math.max(bottom, Math.round(window.innerHeight - r.top + 12));
+            }
+        }
+        // bouton de 56 px + marge : ne jamais sortir de l'écran
+        bottom = Math.min(bottom, window.innerHeight - 72);
         b.style.bottom = bottom + 'px';
     };
     const ensureBsButton = () => {
@@ -188,6 +205,16 @@
         b.textContent = i18n.firstInstall || 'First install';
         b.setAttribute('aria-label', b.textContent);
         b.style.cssText = 'position:fixed;left:14px;bottom:14px;padding:8px 14px;border-radius:20px;border:2px solid #E95420;background:rgba(255,255,255,.92);color:#E95420;font:600 13px/1 system-ui,sans-serif;z-index:2147483647;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.15);';
+        // v4.0.126: ce bouton « corriger la session » était lui aussi sous le
+        // clavier Maliit (bottom:14px) pendant la saisie du login.
+        const placeFirstInstall = () => {
+            b.style.bottom = aboveKeyboardBottom() + 'px';
+        };
+        placeFirstInstall();
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', placeFirstInstall);
+            window.visualViewport.addEventListener('scroll', placeFirstInstall);
+        }
         // v3.3.66: window.confirm() is NOT implemented in Electron (always returns
         // false) — the native confirm dialog is shown by the main process via IPC.
         // Fallback without electronAPI: two-tap pattern (tap once to arm, tap again
