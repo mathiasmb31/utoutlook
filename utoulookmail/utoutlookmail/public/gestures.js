@@ -275,6 +275,43 @@
     new MutationObserver(() => ensureFirstInstallButton())
         .observe(document.documentElement, {childList: true, subtree: true});
 
+    // --- v4.0.127: override manuel du rendu logiciel (auto + bascule sur
+    // crash GPU côté wrapper). Bouton sur la page de login, à gauche sous le
+    // bouton « Première installation », avec le même placement anti-clavier. ---
+    const ensureRenderModeButton = () => {
+        if (!LOGIN_HOSTS_RE.test(location.hostname)) return;
+        if (document.getElementById('utoutlook-render-mode')) return;
+        const i18n = window.__utoutlookI18n || {};
+        const b = document.createElement('button');
+        b.id = 'utoutlook-render-mode';
+        b.style.cssText = 'position:fixed;left:14px;padding:8px 14px;border-radius:20px;border:2px solid #E95420;background:rgba(255,255,255,.92);color:#E95420;font:600 13px/1 system-ui,sans-serif;z-index:2147483647;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.15);';
+        const place = () => { b.style.bottom = (aboveKeyboardBottom() + 44) + 'px'; };
+        const refresh = async () => {
+            let mode = 'auto';
+            try { mode = await window.electronAPI.getRenderMode(); } catch (_) {}
+            b.textContent = mode === 'software'
+                ? (i18n.renderSoftwareDisable || 'Disable software rendering')
+                : (i18n.renderSoftwareEnable || 'Enable software rendering');
+        };
+        b.addEventListener('click', async () => {
+            let mode = 'auto';
+            try { mode = await window.electronAPI.getRenderMode(); } catch (_) {}
+            const next = (mode === 'software') ? 'hardware' : 'software';
+            try { await window.electronAPI.setRenderMode(next); } catch (_) {}
+            await refresh(); // effectif au prochain lancement
+        });
+        place();
+        refresh();
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', place);
+            window.visualViewport.addEventListener('scroll', place);
+        }
+        (document.body || document.documentElement).appendChild(b);
+    };
+    ensureRenderModeButton();
+    new MutationObserver(() => ensureRenderModeButton())
+        .observe(document.documentElement, {childList: true, subtree: true});
+
     // --- v3.3.42: masquer le bouton « Options de connexion » ---
     // Sur la page de saisie du mot de passe Microsoft, ce lien mène à la page
     // GitHub (bloquée en v3.3.41 car le clavier XIM n'y tape pas). On le cache.

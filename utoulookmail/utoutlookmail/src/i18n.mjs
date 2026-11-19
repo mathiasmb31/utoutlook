@@ -101,6 +101,19 @@ const T = {
         fr: 'Afficher', en: 'Show', es: 'Mostrar', de: 'Anzeigen',
         it: 'Mostra', pt: 'Mostrar', zh: '显示', ar: 'إظهار',
     },
+    // v4.0.127: override du rendu logiciel (bouton page de login)
+    'render.enable': {
+        fr: 'Activer le rendu logiciel', en: 'Enable software rendering',
+        es: 'Activar renderizado por software', de: 'Software-Rendering aktivieren',
+        it: 'Attiva rendering software', pt: 'Ativar renderização por software',
+        zh: '启用软件渲染', ar: 'تفعيل العرض البرمجي',
+    },
+    'render.disable': {
+        fr: 'Désactiver le rendu logiciel', en: 'Disable software rendering',
+        es: 'Desactivar renderizado por software', de: 'Software-Rendering deaktivieren',
+        it: 'Disattiva rendering software', pt: 'Desativar renderização por software',
+        zh: '禁用软件渲染', ar: 'تعطيل العرض البرمجي',
+    },
     'common.reload': {
         fr: 'Recharger', en: 'Reload', es: 'Recargar', de: 'Neu laden',
         it: 'Ricarica', pt: 'Recarregar', zh: '重新加载', ar: 'إعادة تحميل',
