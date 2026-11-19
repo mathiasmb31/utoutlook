@@ -10,11 +10,46 @@
     const BAR_ID = 'utoutlook-app-actions';
     const RELOAD_ID = 'utoutlook-reload-btn';
     const QUIT_ID = 'utoutlook-quit-btn';
+    // v4.1.3: deux boutons supplémentaires dans la barre de la liste :
+    //   - UBTOUCH_ID : logo Ubuntu Touch ROND, purement décoratif (aucune action).
+    //   - FIRST_ID   : « Première installation » — wipe complet + notif + relance.
+    const UBTOUCH_ID = 'utoutlook-ubtouch-badge';
+    const FIRST_ID = 'utoutlook-first-install-btn';
+    // SVG Ubuntu Touch officiel (cercle orange UBports) en data-URI — pas de
+    // fichier aggiuntif, fonctionne sous AppArmor et dans le preload isolé.
+    const UBTOUCH_SVG = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
+        '<circle cx="32" cy="32" r="32" fill="#E95420"/>' +
+        '<circle cx="32" cy="32" r="19" fill="none" stroke="#fff" stroke-width="2"/>' +
+        '<circle cx="32" cy="32" r="5" fill="#fff"/>' +
+        '</svg>'
+    );
     // Outlook mail : outlook.live.com/mail, outlook.office.com/mail,
     // outlook.office365.com/mail, outlook.cloud.microsoft/mail, outlook.com/mail
     const MAIL_URL = /^https?:\/\/([^/]+\.)?outlook\.(live|office|office365)\.com\/mail|^https?:\/\/([^/]+\.)?outlook\.cloud\.microsoft\/mail|^https?:\/\/outlook\.com\/mail/i;
 
-    const lastTrigger = {reload: 0, quit: 0};
+    const lastTrigger = {reload: 0, quit: 0, first: 0};
+
+    // v4.1.3: style COMMUN aux 4 boutons — même taille, bords légèrement
+    // arrondis (on garde le rendu d'origine des boutons Recharger/Quitter :
+    // mêmes couleurs, même padding, même police ; seul le radius est unifié).
+    const BTN_STYLE =
+        'padding:10px 22px;border-radius:14px;font:15px sans-serif;cursor:pointer;' +
+        'box-shadow:0 2px 10px rgba(0,0,0,.5);';
+    const BTN_RELOAD_STYLE = BTN_STYLE +
+        'background:rgba(15,15,26,0.92);color:#E95420;border:1px solid #E95420;';
+    const BTN_QUIT_STYLE = BTN_STYLE +
+        'background:#E95420;color:#fff;border:1px solid #E95420;';
+    // Bouton First install : même gabarit que Recharger (fond sombre, texte orange)
+    const BTN_FIRST_STYLE = BTN_STYLE +
+        'background:rgba(15,15,26,0.92);color:#E95420;border:1px solid #E95420;min-width:150px;';
+    // Badge UBtouch : même hauteur que les autres, carré (logo rond centré),
+    // purement décoratif — pas de curseur pointer, pas de tabindex.
+    const BADGE_STYLE =
+        'width:43px;height:43px;padding:0;border-radius:14px;cursor:default;' +
+        'background:rgba(15,15,26,0.92);border:1px solid #E95420;' +
+        'display:flex;align-items:center;justify-content:center;' +
+        'box-shadow:0 2px 10px rgba(0,0,0,.5);';
 
     const tr = (key, fallback) =>
         (window.__utoutlookI18n && window.__utoutlookI18n[key]) || fallback;
@@ -59,6 +94,27 @@
             // page, on force un reload complet côté renderer. Le timer meurt
             // avec le contexte JS dès que le reload a lieu → pas de double.
             setTimeout(() => { location.reload(); }, 2000);
+            return;
+        }
+        if (kind === 'first') {
+            // v4.1.3: wipe complet (cookies + réglages) + notification + relance,
+            // côté principal via le handler IPC 'first-install' (déjà robuste).
+            // Feedback immédiat dans la page en attendant la relance.
+            const btn = document.getElementById(FIRST_ID);
+            if (btn) {
+                btn.disabled = true;
+                setLabel(btn, tr('actionFirstInstallNotify', 'Data cleared — restarting…'));
+            }
+            try {
+                if (window.electronAPI && typeof window.electronAPI.firstInstall === 'function') {
+                    window.electronAPI.firstInstall();
+                    return;
+                }
+            } catch (e) { console.warn('[utoutlook] firstInstall IPC failed:', e); }
+            // Repli sans preload : effacement page + reload (le handler principal
+            // n'est pas joignable, on ne peut pas garantir le wipe des réglages).
+            try { localStorage.clear(); sessionStorage.clear(); } catch (_) {}
+            try { location.reload(); } catch (_) {}
             return;
         }
         // Quit : le process principal doit écrire exitclient puis app.quit() —
@@ -132,10 +188,7 @@
             reload = document.createElement('button');
             reload.id = RELOAD_ID;
             reload.type = 'button';
-            reload.style.cssText =
-                'padding:10px 22px;border-radius:24px;font:15px sans-serif;cursor:pointer;' +
-                'background:rgba(15,15,26,0.92);color:#E95420;border:1px solid #E95420;' +
-                'box-shadow:0 2px 10px rgba(0,0,0,.5);';
+            reload.style.cssText = BTN_RELOAD_STYLE;
             reload.addEventListener('click', (e) => {
                 e.preventDefault(); e.stopPropagation(); fire('reload');
             });
@@ -147,18 +200,66 @@
             quit = document.createElement('button');
             quit.id = QUIT_ID;
             quit.type = 'button';
-            quit.style.cssText =
-                'padding:10px 22px;border-radius:24px;font:15px sans-serif;cursor:pointer;' +
-                'background:#E95420;color:#fff;border:1px solid #E95420;' +
-                'box-shadow:0 2px 10px rgba(0,0,0,.5);';
+            quit.style.cssText = BTN_QUIT_STYLE;
             quit.addEventListener('click', (e) => {
                 e.preventDefault(); e.stopPropagation(); fire('quit');
             });
             bar.appendChild(quit);
         }
 
+        // v4.1.3: badge UBtouch — décoratif, aucune action, inséré avant les
+        // autres boutons (logo à gauche, puis Première installation).
+        let ubtouch = document.getElementById(UBTOUCH_ID);
+        if (!ubtouch) {
+            ubtouch = document.createElement('div');
+            ubtouch.id = UBTOUCH_ID;
+            ubtouch.setAttribute('aria-hidden', 'true');
+            ubtouch.style.cssText = BADGE_STYLE;
+            const img = document.createElement('img');
+            img.src = UBTOUCH_SVG;
+            img.alt = '';
+            img.width = 28; img.height = 28;
+            img.style.cssText = 'display:block;width:28px;height:28px;';
+            ubtouch.appendChild(img);
+            bar.insertBefore(ubtouch, reload);
+        }
+
+        // v4.1.3: bouton « Première installation » — double-tap 3 s pour
+        // confirmer (même modèle que le bouton de la page de login), puis
+        // appel IPC firstInstall côté principal (wipe + notif + relance).
+        let first = document.getElementById(FIRST_ID);
+        if (!first) {
+            first = document.createElement('button');
+            first.id = FIRST_ID;
+            first.type = 'button';
+            first.style.cssText = BTN_FIRST_STYLE;
+            let armed = false, armTimer = null;
+            first.addEventListener('click', (e) => {
+                e.preventDefault(); e.stopPropagation();
+                if (!armed) {
+                    armed = true;
+                    const orig = first.textContent;
+                    first.textContent = tr('actionFirstInstallConfirm', 'Wipe everything?');
+                    first.style.background = '#E95420';
+                    first.style.color = '#fff';
+                    armTimer = setTimeout(() => {
+                        armed = false;
+                        first.textContent = orig;
+                        first.style.background = 'rgba(15,15,26,0.92)';
+                        first.style.color = '#E95420';
+                    }, 3000);
+                    return;
+                }
+                clearTimeout(armTimer);
+                armed = false;
+                fire('first');
+            });
+            bar.insertBefore(first, quit);
+        }
+
         setLabel(reload, tr('reloadMessages', 'Reload messages'));
         setLabel(quit, tr('quitApp', 'Quit'));
+        setLabel(first, tr('actionFirstInstall', 'First install'));
         // v4.1.0 (revue renderer #4): la barre doit rester visible SURTOUT
         // quand la liste est cassée (0×0) — c'est le cas à secourir. On ne
         // masque que le bouton Recharger pendant le chargement initial.
@@ -176,6 +277,10 @@
             if (!t || !t.closest) return;
             if (t.closest('#' + RELOAD_ID)) {
                 e.preventDefault(); e.stopPropagation(); fire('reload');
+            } else if (t.closest('#' + FIRST_ID)) {
+                // v4.1.3: le bouton gère son propre double-tap (confirmation) —
+                // en capture on laisse l'événement atteindre le listener du bouton.
+                return;
             } else if (t.closest('#' + QUIT_ID)) {
                 e.preventDefault(); e.stopPropagation(); fire('quit');
             }

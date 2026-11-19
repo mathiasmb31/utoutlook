@@ -1541,6 +1541,38 @@ test('v4.1.2: cookie auth sauvegardé par batch (anti-tempête login invisible)'
         'periodic flush must remain as persistence fallback (v4.1.2)');
 });
 
+test('v4.1.3: barre liste — badge UBtouch décoratif + bouton first-install (i18n 8 langues)', async () => {
+    const fs = await import('node:fs');
+    const btn = fs.readFileSync(path.resolve(__dirname, '../public/reload-button.js'), 'utf-8');
+    const i18n = fs.readFileSync(path.resolve(__dirname, '../src/i18n.mjs'), 'utf-8');
+    const ctrl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    const preload = fs.readFileSync(path.resolve(__dirname, '../src/controller/preload.js'), 'utf-8');
+
+    // Les 4 boutons partagent le MÊME style de base (même taille, bords arrondis).
+    assert.ok(btn.includes('const BTN_STYLE'), 'shared button style (v4.1.3)');
+    assert.ok(btn.includes('border-radius:14px'), 'uniform rounded corners (v4.1.3)');
+    assert.ok(btn.includes("UBTOUCH_ID = 'utoutlook-ubtouch-badge'"), 'UBtouch decorative badge id (v4.1.3)');
+    assert.ok(btn.includes('aria-hidden'), 'UBtouch badge hidden from assistive tech (v4.1.3)');
+    assert.ok(btn.includes('UBTOUCH_SVG'), 'UBtouch round SVG logo (v4.1.3)');
+    assert.ok(btn.includes("FIRST_ID = 'utoutlook-first-install-btn'"), 'first-install button id (v4.1.3)');
+    assert.ok(btn.includes("fire('first')"), 'first-install wired to fire(first) (v4.1.3)');
+    assert.ok(btn.includes("window.electronAPI.firstInstall"), 'first-install uses IPC (v4.1.3)');
+    // Connectique : preload → IPC → handler principal
+    assert.ok(preload.includes('firstInstall: () => ipcRenderer.invoke("first-install")'),
+        'preload exposes firstInstall IPC (v4.1.3)');
+    assert.ok(ctrl.includes('ipcMain.handle("first-install"'), 'main handles first-install IPC (v4.1.3)');
+    assert.ok(ctrl.includes('settings.clear()'), 'first-install clears settings too (v4.1.3)');
+    assert.ok(ctrl.includes('global.restartRequested = true'), 'first-install triggers wrapper relaunch (v4.1.3)');
+    // i18n 8 langues
+    for (const key of ['action.firstInstall', 'action.firstInstallConfirm', 'action.firstInstallNotify']) {
+        assert.ok(i18n.includes(`'${key}':`), `i18n key ${key} (v4.1.3)`);
+        const seg = i18n.slice(i18n.indexOf(`'${key}':`), i18n.indexOf(`'${key}':`) + 400);
+        for (const lang of ['fr', 'en', 'es', 'de', 'it', 'pt', 'zh', 'ar']) {
+            assert.ok(new RegExp(`\\b${lang}:`).test(seg), `${key} has ${lang} (v4.1.3)`);
+        }
+    }
+});
+
 test('v3.3.22: uncaughtException ne tue plus l\'app au premier coup (exit seulement après 5 en 60s)', async () => {
     const fs = await import('node:fs');
     const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
