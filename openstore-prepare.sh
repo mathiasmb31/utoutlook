@@ -96,7 +96,9 @@ EOF
 fi
 
 # Kit publishstore
-cp -f "$CLICK" "$KIT/" 2>/dev/null || true
+# v4.1.0 (revue F15): échouer si le click est absent — le kit ne doit pas paraître prêt.
+[ -n "$CLICK" ] && [ -f "$CLICK" ] || { echo "ERREUR: click ${APP}_${VERSION}_arm64.click introuvable — build d'abord"; exit 1; }
+cp -f "$CLICK" "$KIT/"
 
 # whatsnew.txt : généré automatiquement depuis les commits git depuis la dernière version publiée sur OpenStore
 LAST_PUBLISHED=$(curl -sS --max-time 10 "https://open-store.io/api/v4/apps/${APP}" 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['data'].get('version',''))" 2>/dev/null || echo "")
@@ -180,13 +182,15 @@ if [ "$2" = "--upload" ]; then
     exit 1
   fi
   echo "=== Upload OpenStore $VERSION ==="
-  curl -sS -X POST "https://open-store.io/api/v3/manage/${APP}/revision?apikey=$OPENSTORE_APIKEY" \
+  # v4.1.0: clé API jamais dans la ligne de commande (ps/logs) — curl --config sur stdin
+  printf 'url = "https://open-store.io/api/v3/manage/%s/revision?apikey=%s"\n' "$APP" "$OPENSTORE_APIKEY" | \
+  curl -sS -X POST --config - \
     -H "Expect:" \
     -F "file=@${LIVRAISON}/${APP}_${VERSION}_arm64.click" \
     -F "changelog=<${KIT}/whatsnew.txt"
   echo ""
   echo "=== Vérification store ==="
-  curl -sS "https://open-store.io/api/v4/apps/${APP}" | python3 -c "import json,sys; d=json.load(sys.stdin); print('version:', d.get('version'))"
+  curl -sS "https://open-store.io/api/v4/apps/${APP}" | python3 -c "import json,sys; d=json.load(sys.stdin); print('version:', d['data'].get('version'))"
 else
   echo ""
   echo "Pour uploader après OK de Mathias :"

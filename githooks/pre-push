@@ -5,6 +5,11 @@
 # Activer dans chaque dépôt : git config core.hooksPath githooks
 # Les .click restent en local (git add -f, gitignorés) ; procédure de push
 # filtré : base-de-connaissances/restauration-workspace-vibe-2026-11-06.md
+# v4.1.0: blocage si l'historique contient l'identité personnelle proscrite.
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+if [ -x "$ROOT/check-history.sh" ]; then
+  "$ROOT/check-history.sh" --strict || { echo "push refusé: historique non conforme"; exit 1; }
+fi
 ZERO=0000000000000000000000000000000000000000
 MAX_MB="${MAX_PUSH_FILE_MB:-100}"
 MAX_BYTES=$((MAX_MB * 1024 * 1024))

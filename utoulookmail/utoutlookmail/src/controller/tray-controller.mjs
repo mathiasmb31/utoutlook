@@ -311,6 +311,9 @@ export class TrayController {
         // Recreate all account windows with the new frame setting
         global.preventAutoCloseApp = true;
         try {
+            // v4.1.0 (revue E1): marquer la recreation AVANT de détruire les
+            // fenêtres — le handler 'closed' doit ignorer exitclient/app.exit.
+            for (const ctl of this.accountManager.controllers.values()) ctl.recreating = true;
             // v4.1.0 (revue B8): fermer les fenêtres PUIS retirer les listeners
             // des anciens contrôleurs, sinon doublons (ipcMain, screen, cookies).
             this.accountManager.quitAll();
@@ -433,7 +436,8 @@ export class TrayController {
             // v3.3.28: this quit is a RESTART — the wrapper must relaunch,
             // so cleanupAndExit must NOT write the clean-quit flag.
             global.restartRequested = true;
-            app.relaunch();
+            // v4.1.0 (revue M5): laisser le wrapper relancer — app.relaunch()
+            // faisait deux instances concurrentes (socket/flags partagés).
             app.exit(0);
         } catch (error) {
             logger.error('Import failed:', error);
@@ -514,7 +518,8 @@ export class TrayController {
             // Relaunch application
             // v3.3.28: restart, not a clean quit — wrapper must relaunch.
             global.restartRequested = true;
-            app.relaunch();
+            // v4.1.0 (revue M5): laisser le wrapper relancer — app.relaunch()
+            // faisait deux instances concurrentes (socket/flags partagés).
             app.exit(0);
         } catch (error) {
             dialog.showErrorBox(

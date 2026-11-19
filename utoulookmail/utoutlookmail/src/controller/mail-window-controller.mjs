@@ -17,6 +17,7 @@ import {
     markCleanExit,
     ROTATION_RELAUNCH_FILE,
     RENDER_MODE_FILE,
+    SWIPE_HIDDEN_FILE,
 } from '../config.mjs';
 import {logger} from '../logger.mjs';
 
@@ -39,6 +40,9 @@ const ZOOM_LEVELS = [0.75, 0.85, 1.0, 1.15, 1.3, 1.5];
  * - Splash screen, détection hors-ligne, CSP
  */
 class MailWindowController {
+    // v4.1.0: registry webContents -> contrôleur (dispatch IPC multi-compte).
+    static byWebContents = new Map();
+
     constructor(accountConfig = null) {
         // Per-instance state (was module-level — caused cross-account leaks)
         this.mainMailServiceUrl = null;
@@ -86,6 +90,7 @@ class MailWindowController {
         this.accountName = accountConfig?.name || 'Compte principal';
         this.sessionPartition = accountConfig?.partition || 'persist:utoutlook-default';
         this.unreadCount = 0;
+        this.recreating = false; // v4.1.0 (revue E1)
         // v4.1.0 (revue B8): registre des listeners pour destroy().
         this._listeners = [];
         this._ipcHandleChannels = ['get-render-mode', 'set-render-mode', 'first-install'];
@@ -1195,6 +1200,7 @@ class MailWindowController {
                              'rotationPoll', 'keyboardHealthPoll', 'surfaceHealthPoll', 'listWatchdog']) {
             if (this[timer]) { try { clearInterval(this[timer]); } catch (e) {} this[timer] = null; }
         }
+        if (this.win) MailWindowController.byWebContents.delete(this.win.webContents);
         this.win = null;
         this.splashWindow = null;
         logger.info('MailWindowController destroyed (listeners removed)');
@@ -1271,6 +1277,8 @@ class MailWindowController {
                 preload: path.resolve(__dirnameNew, 'splash-preload.js'),
             },
         });
+        // v4.1.0: enregistrer l'envoyeur pour le dispatch des handlers IPC.
+        if (this.win) MailWindowController.byWebContents.set(this.win.webContents, this);
 
         this.splashWindow.setMenu(null);
         // Pass translations via query params
@@ -1979,7 +1987,9 @@ class MailWindowController {
         ipcMain.handle("set-render-mode", (event, mode) => {
             // v4.1.0 (revue C13): une page web hostile ne doit pas pouvoir
             // écrire de façon persistante le mode de rendu.
-            if (!this.win || this.win.isDestroyed() || event.sender !== this.win.webContents) return false;
+            // v4.1.0: accepter tout compte enregistré (le dernier handler
+            // enregistré gagne avec ipcMain.handle).
+            if (!MailWindowController.byWebContents.has(event.sender)) return false;
             if (!['auto', 'software', 'hardware'].includes(mode)) return false;
             try {
                 fs.writeFileSync(RENDER_MODE_FILE, mode);
@@ -2000,12 +2010,14 @@ class MailWindowController {
         // Electron and always returns false, which made the in-page confirm inert.
         ipcMain.removeHandler("first-install");
         ipcMain.handle("first-install", async (event) => {
-            // v4.0.10: accepte aussi la splash window comme sender (bouton
-            // first-install sur le splash, ceinture et bretelles)
-            const fromMain = this.win && !this.win.isDestroyed() && event.sender === this.win.webContents;
-            const fromSplash = this.splashWindow && !this.splashWindow.isDestroyed() && event.sender === this.splashWindow.webContents;
-            if (!fromMain && !fromSplash) return false;
-            const parentWin = fromSplash ? this.splashWindow : this.win;
+            // v4.1.0: résoudre le contrôleur PROPRE à l'envoyeur — sans ça,
+            // le handler du dernier compte effaçait sa partition et refusait
+            // les autres (bouton « Première installation » sans effet).
+            const owner = MailWindowController.byWebContents.get(event.sender) ||
+                (this.splashWindow && event.sender === this.splashWindow.webContents ? this : null);
+            if (!owner) return false;
+            const fromSplash = !!(this.splashWindow && event.sender === this.splashWindow.webContents);
+            const parentWin = fromSplash ? this.splashWindow : owner.win;
             const {response} = await dialog.showMessageBox(parentWin, {
                 type: 'warning',
                 title: t('app.name'),
@@ -2017,8 +2029,8 @@ class MailWindowController {
             });
             if (response !== 1) return false;
             try {
-                this.knownEmail = null;
-                const ses = session.fromPartition(this.sessionPartition);
+                owner.knownEmail = null;
+                const ses = session.fromPartition(owner.sessionPartition);
                 const cookies = await ses.cookies.get({});
                 for (const c of cookies) {
                     const url = `${c.secure ? 'https' : 'http'}://${c.domain.replace(/^\./, '')}${c.path || '/'}`;
@@ -2032,9 +2044,9 @@ class MailWindowController {
             }
             // v4.0.10: si appelé depuis le splash, fermer le splash (qui affichera
             // la fenêtre principale via closeSplashWindow) puis recharger
-            if (fromSplash) this.closeSplashWindow();
-            if (this.win && !this.win.isDestroyed()) {
-                this.win.loadURL('https://outlook.office.com/mail/');
+            if (fromSplash) owner.closeSplashWindow();
+            if (owner.win && !owner.win.isDestroyed()) {
+                owner.win.loadURL('https://outlook.office.com/mail/');
             }
             return true;
         });
@@ -2171,8 +2183,22 @@ class MailWindowController {
         // did-finish-load never fires — close the splash so the user is not
         // left staring at the spinner.
         this.win.webContents.on('render-process-gone', (_event, details) => {
-            logger.error(`Renderer process gone: ${JSON.stringify(details)} — closing splash`);
+            logger.error(`Renderer process gone: ${JSON.stringify(details)} — reloading`);
             this.closeSplashWindow();
+            // v4.1.0 (revue M6): avant, l'app restait vivante avec une page
+            // blanche et le wrapper voyait un heartbeat normal → aucune
+            // relance. On recharge la page; si ça échoue encore, on quitte
+            // proprement pour que le wrapper relance.
+            if (this.renderReloadTries >= 2) {
+                logger.error('Renderer gone twice — clean quit for wrapper relaunch');
+                try { markCleanExit(); } catch (e) { /* ignore */ }
+                app.quit();
+                return;
+            }
+            this.renderReloadTries = (this.renderReloadTries || 0) + 1;
+            setTimeout(() => {
+                if (this.alive) this.win.reload();
+            }, 1500);
         });
 
         // Insert styles and observer on DOM ready.
@@ -2360,6 +2386,14 @@ class MailWindowController {
 
         // Window closed
         this.win.on("closed", () => {
+            MailWindowController.byWebContents.delete(this.win.webContents);
+            if (this.recreating) {
+                // v4.1.0 (revue E1): basculement du cadre — ne pas écrire
+                // exitclient ni quitter l'app pendant la recreation.
+                logger.info('closed during recreation — ignoring clean-exit');
+                this.win = null;
+                return;
+            }
             this.win = null;
             this.closeSplashWindow();
             if (this.cacheWatcher) {
@@ -2677,9 +2711,16 @@ class MailWindowController {
         // sur device), réintègre périodiquement la surface Mir si la fenêtre
         // est censée être visible. Pas de focus volé : stealFocus = false.
         this.surfaceHealthPoll = setInterval(() => {
-            if (this.alive && this.win.isVisible() && !global.utoutlookQuitting) {
-                this.resurfaceWindow(false);
-            }
+            if (!this.alive || global.utoutlookQuitting) return;
+            // v4.1.0 (revue E2): fenêtre masquée par un swipe-close — la
+            // laisser masquée, malgré isVisible() qui reste true côté Electron.
+            try {
+                if (fs.existsSync(SWIPE_HIDDEN_FILE)) {
+                    if (this.win.isVisible()) this.win.hide();
+                    return;
+                }
+            } catch (e) { /* ignore */ }
+            if (this.win.isVisible()) this.resurfaceWindow(false);
         }, 30000);
         // v4.0.66: sur UT, un pivot ne déclenche PAS display-metrics-changed ni
         // webContents resize (vérifié dans les logs : 0 événement) — la rotation
@@ -2699,6 +2740,7 @@ class MailWindowController {
             // v4.1.0 (revue D18): ne pas voler le focus d'une fenêtre masquée
             // volontairement (swipe-close).
             if (!this.alive || !this.win.isVisible() || !this.mailListReady) return;
+            try { if (fs.existsSync(SWIPE_HIDDEN_FILE)) return; } catch (e) { /* ignore */ }
             this.win.webContents.executeJavaScript('document.hasFocus()').then(has => {
                 if (!has && this.win && !this.win.isDestroyed()) {
                     logger.info('v4.0.89: perte de focus document détectée — restauration clavier (win.focus + wakeVirtualKeyboard)');
@@ -3050,6 +3092,11 @@ class MailWindowController {
             appName: tr['app.name'],
             emptyTitle: tr['empty.title'],
             emptyBody: tr['empty.body'],
+            observerDomChanged: tr['observer.domChanged'],
+            reminderFallback: tr['notif.calendar.reminderFallback'],
+            calendarAt: tr['notif.calendar.at'],
+            calendarUntil: tr['notif.calendar.until'],
+            calendarLocation: tr['notif.calendar.location'],
         });
         // executeJavaScript returns a Promise — catch rejections to avoid
         // unhandled rejections when the page is navigating or not ready.
@@ -3186,6 +3233,7 @@ class MailWindowController {
      */
     resurfaceWindow(stealFocus = false) {
         if (!this.alive || global.utoutlookQuitting) return;
+        try { if (fs.existsSync(SWIPE_HIDDEN_FILE)) return; } catch (e) { /* ignore */ }
         if (!this.win.isVisible()) {
             try { this.win.show(); } catch (e) { /* ignore */ }
         }

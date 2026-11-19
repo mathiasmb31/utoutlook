@@ -13,6 +13,7 @@ import {
     KILLED_CLIENT_FILE,
     CLOSE_FLAG_FILE,
     FORCE_QUIT_FILE,
+    SWIPE_HIDDEN_FILE,
     markCleanExit,
 } from './config.mjs';
 import fs from 'node:fs';
@@ -291,8 +292,9 @@ class ProspectMail {
                 return;
             }
             logger.info('SIGTERM received — hiding window instead of exiting (UT swipe-close)');
-            if (this.mailController && this.mailController.win && !this.mailController.win.isDestroyed()) {
-                this.mailController.win.hide();
+            // v4.1.0: masquer TOUS les comptes, pas seulement le principal.
+            for (const ctl of (this.accountManager?.controllers?.values() || [])) {
+                if (ctl.win && !ctl.win.isDestroyed()) ctl.win.hide();
             }
         });
 
@@ -314,6 +316,8 @@ class ProspectMail {
                 // v4.0.27: launcher tap while the app is already running (hidden
                 // after swipe-close) — re-show the main window.
                 logger.info("Socket: show command received");
+                // v4.1.0: un tap sur le launcher annule le masquage swipe-close.
+                try { fs.unlinkSync(SWIPE_HIDDEN_FILE); } catch (e) { /* ignore */ }
                 if (this.mailController) {
                     this.mailController.show();
                     // v4.1.0: show() sur une fenêtre déjà "visible" ne fait rien

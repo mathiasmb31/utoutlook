@@ -711,7 +711,7 @@ test('observer: new-mail notification compares against previous count (hotfix #1
 
     // The new-mail notification must compare unread against the PREVIOUS count,
     // not the just-updated state.lastUnreadCount (which equals unread → always false).
-    assert.ok(content.includes('unread > previousUnreadCount && !checkOnlyZeroUnread'),
+    assert.ok(content.includes('unread > previousUnreadCount && !silentNotifications'),
         'New-mail notification should compare unread > previousUnreadCount');
 
     // The zero-unread confirmation must also key off the previous count.
@@ -2139,8 +2139,8 @@ test('v4.0.121: notification clear throttlée + bouton ⌫ au-dessus du clavier'
         'old throttle flag must be gone (v4.0.122)');
     assert.ok(gestures.includes('Math.round(window.innerHeight * 0.62)'),
         'backspace button must be raised above the Maliit keyboard overlay (v4.0.121/126)');
-    assert.ok(gestures.includes('placeFirstInstall()'),
-        'first-install button must also be raised above the keyboard (v4.0.126)');
+    assert.ok(gestures.includes("top:10px") && gestures.includes('syncUtilityButtons'),
+        'utility login buttons must stay at top-left and hide while a field is focused (v4.1.0)');
 });
 
 test('v4.0.123: l observer ne clique plus sur le volet de navigation', async () => {
@@ -2524,4 +2524,65 @@ test('v4.1.0 (revue B8): destroy() retire les listeners à la recréation', asyn
     assert.ok(ctrl.includes("this._on(app, 'browser-window-created'") &&
               ctrl.includes("this._on(powerMonitor, 'unlock-screen'"),
         'app/powerMonitor/screen listeners must be registered through _on');
+});
+
+test('v4.1.0 (analyse approfondie): correctifs applicatifs et outillage', async () => {
+    const fs = await import('node:fs');
+    const root = path.resolve(__dirname, '../../..');
+    const cmd = fs.readFileSync(path.resolve(root, 'utoulookmail/command.sh'), 'utf-8');
+    const common = fs.readFileSync(path.resolve(root, 'utoulookmail/utils/common.sh'), 'utf-8');
+    const clickable = fs.readFileSync(path.resolve(root, 'utoulookmail/clickable.yaml'), 'utf-8');
+    const ctl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    const tray = fs.readFileSync(path.resolve(__dirname, '../src/controller/tray-controller.mjs'), 'utf-8');
+    const obs = fs.readFileSync(path.resolve(__dirname, '../public/unread-number-observer.js'), 'utf-8');
+    const gestures = fs.readFileSync(path.resolve(__dirname, '../public/gestures.js'), 'utf-8');
+    const reload = fs.readFileSync(path.resolve(__dirname, '../public/reload-button.js'), 'utf-8');
+    const store = fs.readFileSync(path.resolve(root, 'openstore-prepare.sh'), 'utf-8');
+    const ci = fs.readFileSync(path.resolve(root, '.github/workflows/build-click.yml'), 'utf-8');
+
+    // socket sans python3 (non embarqué) — helper C dédié
+    assert.ok(!common.includes('python3') && common.includes('socketcli'),
+        'socket helpers must use the embedded C helper, not python3 (F3)');
+    assert.ok(clickable.includes('socketcli.c -o') && clickable.includes('prospect-mail-${v}-arm64.tar.gz'),
+        'socket helper compiled and tar.gz selected by manifest version (F5)');
+
+    // swipe-close: fenêtre masquée, watchdog neutralisé
+    assert.ok(cmd.includes('UTOUTLOOK_SWIPE_HIDDEN') && cmd.includes('LOMIRI_TERM:-0') ,
+        'wrapper must flag swipe-close (E2)');
+    assert.ok(ctl.includes('SWIPE_HIDDEN_FILE') && ctl.includes('if (this.recreating)'),
+        'controller must honour swipe-hidden and ignore closed during recreation (E1/E2)');
+    assert.ok(tray.includes('ctl.recreating = true') && !tray.includes('app.relaunch();'),
+        'tray must flag recreation and let the wrapper relaunch (E1/M5)');
+
+    // observer: badge toujours à jour, notifications pas supprimées par le timer
+    assert.ok(obs.includes('silentNotifications') && obs.includes('updateUnreadDebounced(unread);') &&
+              obs.includes('observeTarget = leftPanel || document.body'),
+        'observer must update badge and keep detecting without the pane (renderer #1/#2)');
+    assert.ok(obs.includes('tr(\'observerDomChanged\')') && obs.includes('tr(\'reminderFallback\')'),
+        'observer texts must be i18n (renderer #6)');
+
+    // boutons login hors du champ + first-install dispatch par envoyeur
+    assert.ok(gestures.includes('top:10px') && gestures.includes('syncUtilityButtons') &&
+              gestures.includes("mousedown', e => e.preventDefault()"),
+        'login utility buttons must not steal/cover the input');
+    assert.ok(ctl.includes('static byWebContents') && ctl.includes('const owner = MailWindowController.byWebContents.get(event.sender)'),
+        'IPC handlers must dispatch to the controller owning the sender (M4)');
+
+    // reload button visible when the list is broken
+    assert.ok(reload.includes("reload.style.display = listReady() ? '' : 'none'") &&
+              !reload.includes("a.style.setProperty('overflow', 'visible'"),
+        'reload button must be available on broken lists without breaking scroll (renderer #4/#5)');
+    assert.ok(ctl.includes('render-process-gone') && ctl.includes('this.win.reload()'),
+        'dead renderer must trigger a reload (M6)');
+
+    // release/outillage
+    assert.ok(store.includes("d['data'].get('version')") && store.includes('--config -'),
+        'OpenStore API v4 and API key must be handled correctly (F7/F8)');
+    assert.ok(!ci.includes('*.click') && ci.includes('*.tar.gz'),
+        'CI must never publish .click files (F2)');
+    assert.ok(fs.readFileSync(path.resolve(root, 'check-history.sh'), 'utf-8').includes('--strict'),
+        'history confidentiality guard must exist (F1)');
+    assert.ok(common.includes('utoutlook_qml_escape'), 'QML strings must be escaped (renderer #8)');
+    assert.ok(fs.readFileSync(path.resolve(root, 'utoulookmail/build-fast.sh'), 'utf-8').includes('rm -f "$PROJECT_DIR/Makefile"'),
+        'build-fast must not let cmake overwrite the Makefile (F4)');
 });

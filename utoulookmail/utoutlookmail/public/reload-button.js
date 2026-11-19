@@ -96,10 +96,12 @@
             a.style.setProperty('display', 'flex', 'important');
             a.style.setProperty('visibility', 'visible', 'important');
             a.style.setProperty('opacity', '1', 'important');
-            a.style.setProperty('height', h + 'px', 'important');
+            // v4.1.0 (revue renderer #5): ne PAS figer overflow/height sur
+            // le conteneur scrollable — ça supprimait le défilement interne
+            // et envoyait la fin de liste sous la barre d'actions.
+            a.style.setProperty('height', 'auto', 'important');
             a.style.setProperty('min-height', h + 'px', 'important');
-            a.style.setProperty('max-height', 'none', 'important');
-            a.style.setProperty('overflow', 'visible', 'important');
+            a.style.removeProperty('overflow');
             a = a.parentElement;
         }
         // v4.0.104: réautoriser les taps sur les lignes (Outlook met
@@ -157,8 +159,11 @@
 
         setLabel(reload, tr('reloadMessages', 'Reload messages'));
         setLabel(quit, tr('quitApp', 'Quit'));
-        // v4.0.103: barre entière masquée tant que la liste n'est pas chargée.
-        bar.style.display = onMailPage() && listReady() ? 'flex' : 'none';
+        // v4.1.0 (revue renderer #4): la barre doit rester visible SURTOUT
+        // quand la liste est cassée (0×0) — c'est le cas à secourir. On ne
+        // masque que le bouton Recharger pendant le chargement initial.
+        bar.style.display = onMailPage() ? 'flex' : 'none';
+        reload.style.display = listReady() ? '' : 'none';
         unhideList(); // v4.0.98: garder la liste visible après les re-render SPA
         syncNavState(); // v4.0.118: mémoriser un masquage automatique (paysage)
     };
@@ -256,7 +261,11 @@
         if (!window.__utoutlookAppActionsTimer) {
             window.__utoutlookAppActionsTimer = setInterval(ensure, 3000);
         }
-        watchNavToggle(); // v4.0.114: mémoriser les taps sur le bouton du volet
+        // v4.1.0 (revue #10): un seul listener de volet, même après réinjection.
+        if (!window.__utoutlookNavWatch) {
+            window.__utoutlookNavWatch = true;
+            watchNavToggle();
+        }
     };
 
     if (document.readyState === 'loading') {
