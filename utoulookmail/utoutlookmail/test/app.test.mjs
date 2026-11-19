@@ -2355,6 +2355,14 @@ test('v4.1.0: icône — WM_CLASS alignée sur le click + démarrage en 6 étape
         'wrapper must stop SIGKILLing Electron at startup (v4.1.0)');
     assert.ok(common.includes('kill -TERM "$pid"') && !common.includes('kill -9 "$pid"'),
         'proc scan must use TERM so Electron can reap its children (v4.1.0)');
+
+    // Course entre deux wrappers : le pidfile doit être écrit dès la 1re ligne
+    // et un wrapper périmé doit sortir au lieu de tuer le plus récent.
+    assert.ok(cmd.indexOf('echo $$ > "${UTOUTLOOK_DATA_DIR}/wrapper.pid"') <
+              cmd.indexOf('test_net\n'),
+        'wrapper must claim the pidfile before any long wait (v4.1.0)');
+    assert.ok(common.includes('wrapper $self périmé (owner=$p) — sortie immédiate'),
+        'stale wrapper must exit instead of killing the newer one (v4.1.0)');
 });
 
 test('v4.0.125: bouton Quitter — cleanupAndExit plus court-circuité (app vivante mais invisible)', async () => {
