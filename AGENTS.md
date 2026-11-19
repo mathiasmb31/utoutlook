@@ -83,7 +83,7 @@ a provoqué OOM + figeage total le 2026-11-04.
 
 ## Identité d'app Ubuntu Touch (OBLIGATOIRE — règle Mathias, 2026-11-19, TOUTES apps)
 
-**L'ID d'app vu par Lomiri est TOUJOURS NON VERSIONNÉ** (`utoutlook.mathias_utoutlook`) — jamais dans `--class`, `setDesktopName()`, `StartupWMClass`, ni les favoris dconf `appid://...`. `bump-version.sh` ne re-versionne jamais l'ID. Un ID versionné → icône jaune + splash bloqué (`long App ID encountered` dans le journal du shell). Voir `base-de-connaissances/ubuntu-touch-commun.md` §2.14 et fiche addendum 21:40.
+**Ne PAS personnaliser l'identité de la fenêtre** : ni `--class`, ni `StartupWMClass`, ni `app.setDesktopName("<id d'app>")` (la valeur historique `"UToutlookmail"` est conservée, c'est une chaîne libre). Ces 3 réglages ajoutés en v4.1.0 ont créé l'icône jaune `unknown.qtmir` ; retour à l'état v4.0.98 en v4.2.3. Watchdog préservé (lancement en `&`, pas `exec`). Voir `base-de-connaissances/ubuntu-touch-commun.md` §2.14 et fiche addendum 22:15.
 
 ## Build manuel (OBLIGATOIRE — règle Mathias, 2026-11-17)
 
