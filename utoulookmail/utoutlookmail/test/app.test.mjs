@@ -1604,6 +1604,17 @@ test('v4.1.5: cocarde UBtouch officielle + icône deux doigts sur les boutons', 
         'liste: plus de textContent direct sur le bouton first (v4.1.4)');
 });
 
+test('v4.1.11: WD dérivé du vrai cwd (pwd -P), pas de la variable PWD périmée', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    assert.ok(cmd.includes('export WD="$(pwd -P 2>/dev/null || pwd)"'),
+        'WD must use pwd -P builtin, not $PWD env (stale under Lomiri/setsid) (v4.1.11)');
+    assert.ok(cmd.includes('*utoutlook.mathias*)') && cmd.includes('${_SRC%/bin/command.sh}'),
+        'WD must have a fallback derived from $0 when cwd is not the click dir (v4.1.11)');
+    assert.ok(!/export WD=\$\(pwd\)/.test(cmd),
+        'plain $(pwd) without -P must not be used (v4.1.11)');
+});
+
 test('v4.1.9: identité fenêtre = app ID VERSIONNÉ (icône jaune Lomiri)', async () => {
     const fs = await import('node:fs');
     const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
