@@ -1615,30 +1615,24 @@ test('v4.1.11: WD dérivé du vrai cwd (pwd -P), pas de la variable PWD périmé
         'plain $(pwd) without -P must not be used (v4.1.11)');
 });
 
-test('v4.2.2: identité fenêtre = app ID NON VERSIONNÉ (Launcher model Lomiri)', async () => {
+test('v4.2.3: identité fenêtre = état v4.0.98 (aucun --class / StartupWMClass)', async () => {
     const fs = await import('node:fs');
     const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
     const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
     const desktop = fs.readFileSync(path.resolve(__dirname, '../../utoutlook.desktop'), 'utf-8');
     const bump = fs.readFileSync(path.resolve(__dirname, '../../../bump-version.sh'), 'utf-8');
-    // Le wrapper exporte un ID non versionné (aucun calcul de version, aucun
-    // binaire externe) et le passe à Electron via --class.
-    assert.ok(cmd.includes('APP_CLASS_ID="utoutlook.mathias_utoutlook"') &&
-              cmd.includes('export APP_CLASS_ID') &&
-              cmd.includes('classoption="--class=${APP_CLASS_ID}"'),
-        'wrapper must pass the NON-versioned app ID to Electron (v4.2.2)');
-    assert.ok(!/_appver|basename/.test(cmd),
-        'no version derivation: Lomiri expects the non-versioned ID (v4.2.2)');
-    // main.mjs lit cet ID (ou le même en fallback)
-    assert.ok(main.includes('process.env.APP_CLASS_ID') &&
-              main.includes('"utoutlook.mathias_utoutlook"'),
-        'setDesktopName must use the non-versioned ID (v4.2.2)');
-    // desktop non versionné + bump ne le re-versionne pas
-    assert.ok(/^StartupWMClass=utoutlook\.mathias_utoutlook$/m.test(desktop),
-        'desktop StartupWMClass must be NON-versioned (v4.2.2)');
-    assert.ok(bump.includes('StartupWMClass=utoutlook.mathias_utoutlook/') &&
-              !bump.includes('StartupWMClass=utoutlook.mathias_utoutlook_$VER'),
-        'bump-version.sh must NOT re-version StartupWMClass (v4.2.2)');
+    // Retour exact à v4.0.98 : pas de --class, pas de calcul d'identité.
+    const cmdCode = cmd.split('\n').filter(l => !l.trimStart().startsWith('#')).join('\n');
+    assert.ok(!/classoption|--class=/.test(cmdCode),
+        'wrapper must NOT pass any --class to Electron: causes unknown.qtmir yellow icon (v4.2.3)');
+    assert.ok(cmd.includes('prospect-mail "$dpioptions" "$sandboxoptions" "$gpuoptions" &'),
+        'wrapper must keep the background launch (watchdog intact) (v4.2.3)');
+    assert.ok(main.includes('app.setDesktopName("UToutlookmail")'),
+        'setDesktopName must be the exact v4.0.98 value (v4.2.3)');
+    assert.ok(!/^StartupWMClass=/m.test(desktop),
+        'desktop must have NO StartupWMClass (v4.2.3)');
+    assert.ok(!/^[^#]*sed -i[^\n]*StartupWMClass=/m.test(bump),
+        'bump-version.sh must not reintroduce StartupWMClass (v4.2.3)');
 });
 
 test('v3.3.22: uncaughtException ne tue plus l\'app au premier coup (exit seulement après 5 en 60s)', async () => {
@@ -2492,13 +2486,12 @@ test('v4.1.0: icône — WM_CLASS alignée sur le click + démarrage en 6 étape
     const desktop = fs.readFileSync(path.resolve(__dirname, '../../utoutlook.desktop'), 'utf-8');
     const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
 
-    assert.ok(/^StartupWMClass=utoutlook\.mathias_utoutlook$/m.test(desktop),
-        'desktop file must map the Electron window to the NON-versioned app ID (v4.2.2)');
-    assert.ok(main.includes('app.setDesktopName(process.env.APP_CLASS_ID'),
-        'Electron desktop name must read the non-versioned APP_CLASS_ID from wrapper (v4.2.2)');
-    assert.ok(cmd.includes('classoption="--class=${APP_CLASS_ID}"') &&
-              cmd.includes('"$classoption" &'),
-        'wrapper must pass the non-versioned WM_CLASS switch to prospect-mail (v4.2.2)');
+    assert.ok(!/^StartupWMClass=/m.test(desktop),
+        'desktop file must have no StartupWMClass (v4.2.3, back to v4.0.98)');
+    assert.ok(main.includes('app.setDesktopName("UToutlookmail")'),
+        'Electron desktop name must be the v4.0.98 value (v4.2.3)');
+    assert.ok(cmd.includes('prospect-mail "$dpioptions" "$sandboxoptions" "$gpuoptions" &'),
+        'wrapper must keep launching Electron in background with no --class (v4.2.3)');
 
     // Étape 3 → 4 avancée après l'extinction des vieux process (~50 s sinon).
     assert.ok(common.includes('of 6') && common.includes('sur 6'),

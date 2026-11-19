@@ -164,14 +164,11 @@ const heartbeatInterval = setInterval(() => {
 // This must be set before app is ready
 app.setPath("userData", path.join(app.getPath("appData"), "prospect-mail"));
 
-// v4.2.2: l'identité de la fenêtre doit correspondre à l'ID NON VERSIONNÉ
-// attendu par le Launcher model de Lomiri (favori dconf
-// `appid://utoutlook.mathias_utoutlook`, comme `appid://camera.ubports_camera`
-// pour les autres apps). La tentative v4.1.9→v4.2.1 avec un ID versionné
-// faisait créer une icône jaune « inconnue » ("app that's not in the Launcher
-// model") et bloquait le splash. Le wrapper exporte APP_CLASS_ID (désormais
-// non versionné) ; le fallback reste le même ID pour robustesse.
-app.setDesktopName(process.env.APP_CLASS_ID || "utoutlook.mathias_utoutlook");
+// v4.2.3: retour EXACT à l'état v4.0.98 (avant commit 8a40c2e / v4.1.0).
+// `setDesktopName("utoutlook.mathias_utoutlook")` + `--class` + StartupWMClass
+// ont introduit l'icône jaune `unknown.qtmir` et le blocage du lancement.
+// whatslectron (autre app Electron, sans ces 3 réglages) n'a pas le problème.
+app.setDesktopName("UToutlookmail");
 
 //Store commandline for global purpose
 global.cmdLine = process.argv;

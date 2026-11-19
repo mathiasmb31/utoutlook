@@ -136,7 +136,7 @@ function launch_prospect() {
 
 	# v3.3.45: native Wayland client (Lomiri session) — Maliit OSK goes through
 	# the Wayland text-input protocol, password fields included (as in 3.2.x).
-	"${WD}"/bin/App/prospect-mail "$dpioptions" "$sandboxoptions" "$gpuoptions" "$classoption" &
+	"${WD}"/bin/App/prospect-mail "$dpioptions" "$sandboxoptions" "$gpuoptions" &
 	# v4.0.11: capture client PID — kill -0 (builtin, AppArmor-safe) tells us
 	# whether OUR client is alive; used to ignore exitclient flags written by
 	# a dying older process during upgrade.
@@ -739,21 +739,14 @@ scaling="$((appScaling / 115)).$(printf '%02d' "$((appScaling % 115))")"
 
 dpioptions="--high-dpi-support=1 --force-device-scale-factor=$scaling  --text-font-size=$textFontSize --span-font-size=$spanFontSize"
 sandboxoptions="--no-sandbox"
-# v4.2.2: RETOUR À L'ID NON VERSIONNÉ — la piste v4.1.9 (ID versionné) était
-# fausse. Preuve device 21:25 (journal du SHELL Lomiri, pas du content-hub) :
-#   WARNING: long App ID encountered: "utoutlook.mathias_utoutlook_4.2.1"
-#   Received a surface count changed event from an app that's not in the
-#   Launcher model, creating icon...
-#   qml: Application requested te be focused but no window for it.
-# Le Launcher model de Lomiri contient l'ID NON VERSIONNÉ (voir le favori
-# dconf `appid://utoutlook.mathias_utoutlook`, identique aux autres apps :
-# `appid://camera.ubports_camera` etc.). Un class versionné crée une icône
-# « inconnue » jaune et empêche Lomiri de retrouver la fenêtre (splash bloqué).
-# On garde l'export APP_CLASS_ID (non versionné) car main.mjs le lit pour
-# app.setDesktopName(). Aucun binaire externe : 100% builtin (AppArmor).
-APP_CLASS_ID="utoutlook.mathias_utoutlook"
-export APP_CLASS_ID
-classoption="--class=${APP_CLASS_ID}"
+# v4.2.3: RETOUR À L'ÉTAT v4.0.98 — plus AUCUN --class, plus aucun
+# APP_CLASS_ID. C'est le commit 8a40c2e (v4.1.0) qui a INTRODUIT
+# `--class=utoutlook.mathias_utoutlook` + StartupWMClass + setDesktopName
+# et, dans la foulée, l'icône jaune `unknown.qtmir` (le user confirme :
+# aucun problème en v4.0.98). whatslectron, l'autre app Electron du device,
+# ne passe aucun --class et n'a pas d'icône jaune. On restaure donc
+# exactement le comportement v4.0.98 : Electron garde son identité par
+# défaut, le wrapper reste process principal (watchdog préservé).
 # v3.3.8: --in-process-gpu instead of --disable-gpu --disable-software-rasterizer.
 # With --disable-software-rasterizer there was NO fallback, and when Chromium
 # tried to spawn a separate GPU process and failed 3x (error_code=1002),
