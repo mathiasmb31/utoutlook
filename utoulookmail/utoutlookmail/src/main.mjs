@@ -152,8 +152,11 @@ const heartbeatInterval = setInterval(() => {
 // This must be set before app is ready
 app.setPath("userData", path.join(app.getPath("appData"), "prospect-mail"));
 
-// Set desktop name for proper notification handling on Linux
-app.setDesktopName("UToutlookmail");
+// v4.1.0: l'identité de la fenêtre doit correspondre à l'ID de l'app click
+// (utoutlook.mathias_utoutlook_<version>). Avec "UToutlookmail", Lomiri ne
+// rattachait pas la fenêtre à l'app après un relance du wrapper → icône
+// jaune « ? » et « application inconnue » dans la barre et le switcher.
+app.setDesktopName("utoutlook.mathias_utoutlook");
 
 //Store commandline for global purpose
 global.cmdLine = process.argv;

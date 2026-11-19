@@ -38,10 +38,13 @@ UTOUTLOOK_BIN="${WD}/bin"
 # Falls back to LANG env var, then to 'fr'
 # ============================================================
 utoutlook_get_lang() {
+	# v4.1.0: binaires EMBARQUÉS — /usr/bin/tr et /usr/bin/cut sont refusés
+	# par AppArmor sur le click installé (wrapper.log: "tr: Permission denied")
+	# → la langue retombait toujours en français.
 	if [ -f "${UTOUTLOOK_LANG_FILE}" ]; then
-		cat "${UTOUTLOOK_LANG_FILE}" 2>/dev/null | tr -d '[:space:]'
+		"${UTOUTLOOK_BIN}/cat" "${UTOUTLOOK_LANG_FILE}" 2>/dev/null | "${UTOUTLOOK_BIN}/tr" -d '[:space:]'
 	else
-		echo "${LANG:-fr}" | cut -d_ -f1 | cut -d. -f1
+		echo "${LANG:-fr}" | "${UTOUTLOOK_BIN}/cut" -d_ -f1 | "${UTOUTLOOK_BIN}/cut" -d. -f1
 	fi
 }
 
@@ -242,14 +245,14 @@ utoutlook_t() {
 		# AppArmor peut bloquer /usr/bin/sed sur le click installé).
 		"qml.startStep")
 			case "${lang}" in
-				en) echo "Starting up — step %N of 5" ;;
-				es) echo "Iniciando — paso %N de 5" ;;
-				de) echo "Startvorgang — Schritt %N von 5" ;;
-				it) echo "Avvio — passaggio %N di 5" ;;
-				pt) echo "A iniciar — etapa %N de 5" ;;
-				zh) echo "正在启动 — 第 %N 步，共 5 步" ;;
-				ar) echo "جارٍ التشغيل — الخطوة %N من 5" ;;
-				*)  echo "Démarrage — étape %N sur 5" ;;
+				en) echo "Starting up — step %N of 6" ;;
+				es) echo "Iniciando — paso %N de 6" ;;
+				de) echo "Startvorgang — Schritt %N von 6" ;;
+				it) echo "Avvio — passaggio %N di 6" ;;
+				pt) echo "A iniciar — etapa %N de 6" ;;
+				zh) echo "正在启动 — 第 %N 步，共 6 步" ;;
+				ar) echo "جارٍ التشغيل — الخطوة %N من 6" ;;
+				*)  echo "Démarrage — étape %N sur 6" ;;
 			esac ;;
 		*) echo "${key}" ;;
 	esac
