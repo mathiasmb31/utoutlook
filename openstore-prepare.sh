@@ -112,7 +112,9 @@ else
 fi
 
 # Ligne one-shot (session de débogage) — à VIDER pour les versions suivantes :
-DEBUG_SESSION_NOTE="Sign-in and 2FA work reliably again on the phone: no more login loop after quitting/relaunching, no more \"header too long\" error after the Authenticator approval, no more empty message list after rotating the screen, and closing the app no longer leaves hidden processes running. A very difficult debugging session went into fixing these — thanks for testing each build on the phone."
+# v4.1.0: version COURTE et simplifiée demandée par Mathias. ASCII uniquement
+# (garde-fou store : aucun caractère accenté dans whatsnew.txt).
+DEBUG_SESSION_NOTE="HARD DEBUG SESSION :) - A long debugging session on the phone went into this release: more reliable startup, a visible progress screen, the right app icon, and cleaner quitting and relaunching. Thanks for testing every build!"
 
 # Commits (français) -> traduction auto en anglais : le whatsnew du store DOIT être en anglais
 RAW_COMMITS=$(git log "$RANGE" --format="- %s" 2>/dev/null | sed 's/ — Tests [0-9/]*\. Version [0-9.]*\.//; s/Tests [0-9/]*\. Version [0-9.]*\.//' | head -60)
