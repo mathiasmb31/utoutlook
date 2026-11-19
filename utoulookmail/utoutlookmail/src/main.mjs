@@ -12,6 +12,7 @@ import {
     EXIT_CLIENT_FILE,
     KILLED_CLIENT_FILE,
     CLOSE_FLAG_FILE,
+    FORCE_QUIT_FILE,
     markCleanExit,
 } from './config.mjs';
 import fs from 'node:fs';
@@ -63,6 +64,9 @@ fs.mkdirSync(CONFIG_DIR, {recursive: true});
 // 2s after launch ("app does not start", ~1 launch in 2-3, race-dependent).
 const PROCESS_START = Date.now();
 try { fs.unlinkSync(CLOSE_FLAG_FILE); } catch (e) { /* ignore */ }
+// v4.1.0: un flag périmé (SIGTERM d'une session précédente) ne doit jamais
+// faire quitter ce nouveau process — on le supprime au démarrage.
+try { fs.unlinkSync(FORCE_QUIT_FILE); } catch (e) { /* ignore */ }
 
 // v3.3.28: markCleanExit() lives in config.mjs (shared with the window
 // controller) — it writes the exitclient flag SYNCHRONOUSLY before every
@@ -267,11 +271,23 @@ class ProspectMail {
         });
 
         process.on("SIGTERM", () => {
-            // v4.0.36: on Ubuntu Touch, a swipe-close sends SIGTERM to the app
-            // process. Exiting here kills the process mid-flight and the next
-            // launcher tap races a dying process (intermittent "nothing happens").
-            // Instead: hide the window and stay alive (notifications keep
-            // flowing); the next tap re-shows via the socket show command.
+            // v4.1.0: deux SIGTERM très différents :
+            //  - wrapper (utoutlook_kill_app) écrit wrapper-quit juste avant :
+            //    on fait un VRAI quit propre. Le process reapera ses enfants
+            //    Chromium → pas de zombies/orphelins, plus besoin de SIGKILL.
+            //  - swipe-close Lomiri : pas de flag → on masque la fenêtre et on
+            //    reste vivant pour les notifications (comportement v4.0.36).
+            let wrapperQuit = false;
+            try {
+                if (fs.existsSync(FORCE_QUIT_FILE)) {
+                    wrapperQuit = fs.statSync(FORCE_QUIT_FILE).mtimeMs >= PROCESS_START;
+                }
+            } catch (e) { /* flag illisible → traiter comme un swipe */ }
+            if (wrapperQuit) {
+                logger.info('SIGTERM from wrapper (wrapper-quit flag) — clean quit');
+                this.cleanupAndExit();
+                return;
+            }
             logger.info('SIGTERM received — hiding window instead of exiting (UT swipe-close)');
             if (this.mailController && this.mailController.win && !this.mailController.win.isDestroyed()) {
                 this.mailController.win.hide();

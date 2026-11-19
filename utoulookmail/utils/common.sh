@@ -28,6 +28,10 @@ export UTOUTLOOK_EXITCOMMAND="${UTOUTLOOK_CONFIG_DIR}/close"
 # goodbye notification). A fresh closing flag means "app is quitting, do not
 # relaunch yet" — new launches are refused with a "please wait" message.
 export UTOUTLOOK_CLOSING="${UTOUTLOOK_CONFIG_DIR}/closing"
+# v4.1.0: flag écrit avant un SIGTERM « méchant » du wrapper pour que
+# l'app fasse un quit propre (au lieu de masquer la fenêtre → SIGKILL +
+# orphelins/zombies). Même chemin que FORCE_QUIT_FILE côté Electron.
+export UTOUTLOOK_FORCE_QUIT="${UTOUTLOOK_CONFIG_DIR}/wrapper-quit"
 export UTOUTLOOK_SOCKET="${UTOUTLOOK_CONFIG_DIR}/utoutlook.sock"
 
 # --- Binary shortcuts (embedded in click, AppArmor-confined) ---
@@ -529,6 +533,10 @@ utoutlook_kill_app() {
 	# et ignore ceux écrits avant son démarrage (mtime guard, v3.3.5).
 	# v4.0.14: embed wrapper PID (if known) so the app only honors OUR close flag
 	echo "closed:${UTOUTLOOK_WRAPPER_PID:-unknown}" > "${UTOUTLOOK_EXITCOMMAND}" 2>/dev/null || true
+	# v4.1.0: marquer ce SIGTERM comme venant du wrapper. L'app fait alors un
+	# vrai cleanupAndExit() (elle reapera ses enfants Chromium) au lieu de
+	# masquer la fenêtre — évitant le SIGKILL et ses zombies orphelins.
+	printf 'quit:%s' "${UTOUTLOOK_WRAPPER_PID:-unknown}" > "${UTOUTLOOK_FORCE_QUIT}" 2>/dev/null || true
 	# ~3s pour laisser l'ancien process sortir proprement
 	"${UTOUTLOOK_BIN}/sleep" 3 2>/dev/null || /bin/sleep 3 2>/dev/null || true
 
@@ -540,6 +548,7 @@ utoutlook_kill_app() {
 	while [ $waited -lt 5 ]; do
 		if ! utoutlook_prospect_running; then
 			# Process exited gracefully (zombies ignorés)
+			"${UTOUTLOOK_BIN}/rm" -f "${UTOUTLOOK_FORCE_QUIT}" 2>/dev/null || true
 			utoutlook_kill_qmlscene # v4.0.126: ne pas tuer notre barre
 			return 0
 		fi
@@ -547,8 +556,10 @@ utoutlook_kill_app() {
 		waited=$((waited + 1))
 	done
 
-	# Step 3: SIGKILL — process refused to die
+	# Step 3: SIGKILL — dernier recours uniquement (version antérieure qui
+	# ne connaît pas encore wrapper-quit, ou process réellement pendu).
 	"${UTOUTLOOK_BIN}/pkill" -9 prospect-mail 2>/dev/null || true
+	"${UTOUTLOOK_BIN}/rm" -f "${UTOUTLOOK_FORCE_QUIT}" 2>/dev/null || true
 	utoutlook_kill_qmlscene # v4.0.126: ne pas tuer notre barre
 }
 
@@ -685,10 +696,11 @@ utoutlook_kill_by_proc() {
 	local pids
 	pids=$("${UTOUTLOOK_BIN}/ls" -l /proc/*/exe 2>/dev/null | \
 		"${UTOUTLOOK_BIN}/grep" "prospect-mail" | \
-		grep -v daemon | \
+		"${UTOUTLOOK_BIN}/grep" -v daemon | \
 		"${UTOUTLOOK_BIN}/awk" -F'/' '{print $3}')
 	for pid in $pids; do
-		kill -9 "$pid" 2>/dev/null || true
+		# v4.1.0: TERM pour laisser l'app reaper ses enfants (SIGKILL = zombies)
+		kill -TERM "$pid" 2>/dev/null || true
 	done
 }
 
