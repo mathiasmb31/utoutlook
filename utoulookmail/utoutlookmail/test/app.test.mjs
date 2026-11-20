@@ -1629,6 +1629,15 @@ test('v4.2.3: identité fenêtre = état v4.0.98 (aucun --class / StartupWMClass
         'bump-version.sh must not reintroduce StartupWMClass (v4.2.3)');
 });
 
+test('v4.3.5: debounce rotation — capteur USB ne fait plus planter l app', async () => {
+    const fs = await import('node:fs');
+    const ctl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    assert.ok(ctl.includes('_pendingRotationKey !== keyOriented'),
+        'rotation needs 3 consecutive ticks before triggering (v4.3.5)');
+    assert.ok(ctl.includes('recentDisplayKeys.includes(keyOriented)) this._pendingRotationKey = null'),
+        'transient orientation must be forgotten when returning to a known state (v4.3.5)');
+});
+
 test('v4.3.3: goodbye envoye par Electron au quit, pas par le wrapper', async () => {
     const fs = await import('node:fs');
     const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');

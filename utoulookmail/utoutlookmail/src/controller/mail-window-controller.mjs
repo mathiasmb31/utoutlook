@@ -2860,9 +2860,22 @@ class MailWindowController {
                     this.recentDisplayKeys = [keyOriented];
                     return;
                 }
+                // v4.3.5: oublier un état transitoire dès qu'on revient à un
+                // état connu (capteur USB : portrait → paysage → portrait).
+                if (this.recentDisplayKeys.includes(keyOriented)) this._pendingRotationKey = null;
                 // v4.0.77: déclenche si l'état courant n'a pas été vu récemment
                 // (détecte A→B→A rapide) ; intervalle 500 ms pour la réactivité.
                 if (!this.recentDisplayKeys.includes(keyOriented)) {
+                    // v4.3.5: DEBOUNCE — le débranchement/rebranchement USB fait
+                    // délirer l'accéléromètre (journal 20/11 12:12:57-12:13:00 :
+                    // portrait → paysage → inconnu en 2 s) → fausse rotation →
+                    // relaunch.qml → perte de la session Mir → app paraît plantée.
+                    // On n'accepte un nouvel état que s'il persiste 3 ticks (1,5 s).
+                    if (this._pendingRotationKey !== keyOriented) {
+                        this._pendingRotationKey = keyOriented;
+                        return;
+                    }
+                    this._pendingRotationKey = null;
                     this.lastRotationTime = Date.now(); // v4.0.78: pour le watchdog liste vide
                     // v4.0.99: réécrire le flag de rotation pour le wrapper —
                     // depuis v4.0.94 l'app ne quitte plus au pivot, donc le
