@@ -74,6 +74,8 @@ utoutlook_t() {
 				pt) echo "UToutlook Mail está a iniciar, aguarde…" ;;
 				zh) echo "UToutlook Mail 正在启动，请稍候…" ;;
 				ar) echo "جارٍ بدء UToutlook Mail، يرجى الانتظار…" ;;
+				ca) echo "UToutlook Mail s'està iniciant, espereu…" ;;
+				eu) echo "UToutlook Mail abiarazten ari da, itxaron..." ;;
 				*)  echo "UToutlook Mail démarre, veuillez patienter…" ;;
 			esac ;;
 		"shell.waitClose")
@@ -85,6 +87,8 @@ utoutlook_t() {
 				pt) echo "Aguarde o fecho do UToutlook" ;;
 				zh) echo "请等待 UToutlook 关闭" ;;
 				ar) echo "الرجاء الانتظار حتى يغلق UToutlook" ;;
+				ca) echo "Espereu que es tanqui UToutlook" ;;
+				eu) echo "Itxaron UToutlook itxi arte" ;;
 				*)  echo "Veuillez attendre la fermeture d'UToutlook" ;;
 			esac ;;
 		"shell.cleaning")
@@ -96,6 +100,8 @@ utoutlook_t() {
 				pt) echo "Limpando UToutlook Mail" ;;
 				zh) echo "正在清理 UToutlook Mail" ;;
 				ar) echo "جارٍ تنظيف UToutlook Mail" ;;
+				ca) echo "Neteja del correu d’Outlook de la UT" ;;
+				eu) echo "UToutlook Posta garbitzen" ;;
 				*)  echo "Nettoyage d'UToutlook Mail" ;;
 			esac ;;
 		"shell.noNetwork")
@@ -107,6 +113,8 @@ utoutlook_t() {
 				pt) echo "Sem acesso à rede... a encerrar" ;;
 				zh) echo "无网络访问...正在退出" ;;
 				ar) echo "لا يوجد وصول للشبكة... جارٍ الخروج" ;;
+				ca) echo "No hi ha accés a la xarxa... s'està tancant" ;;
+				eu) echo "Ez dago sare-sarbererik... ixten" ;;
 				*)  echo "Pas d'accès réseau... fermeture" ;;
 			esac ;;
 		"shell.goodbye")
@@ -118,6 +126,8 @@ utoutlook_t() {
 				pt) echo "Adeus UToutlook Mail!" ;;
 				zh) echo "再见 UToutlook Mail！" ;;
 				ar) echo "وداعاً UToutlook Mail!" ;;
+				ca) echo "Adéu, UToutlook Mail!" ;;
+				eu) echo "Agur UToutlook Mail!" ;;
 				*)  echo "Au revoir UToutlook Mail !" ;;
 			esac ;;
 		"shell.resetDone")
@@ -129,6 +139,8 @@ utoutlook_t() {
 				pt) echo "Redefinição concluída... inicie o UToutlook Mail" ;;
 				zh) echo "重置完成...请启动 UToutlook Mail" ;;
 				ar) echo "اكتمل إعادة التعيين... شغّل UToutlook Mail" ;;
+				ca) echo "S'ha completat el restabliment... Inicieu UToutlook Mail" ;;
+				eu) echo "Berrezarpena eginda... abiarazi UToutlook Mail" ;;
 				*)  echo "Réinitialisation effectuée... lancez UToutlook Mail" ;;
 			esac ;;
 		"shell.waitingClose")
@@ -140,6 +152,8 @@ utoutlook_t() {
 				pt) echo "A aguardar o fecho do UToutlook…" ;;
 				zh) echo "等待 UToutlook 关闭…" ;;
 				ar) echo "في انتظار إغلاق UToutlook…" ;;
+				ca) echo "S’està esperant que es tanqui l’UToutlook…" ;;
+				eu) echo "UToutlook itxi arte itxaroten..." ;;
 				*)  echo "En attente de fermeture d’UToutlook…" ;;
 			esac ;;
 		"shell.pleaseWait")
@@ -151,6 +165,8 @@ utoutlook_t() {
 				pt) echo "Aguarde um momento…" ;;
 				zh) echo "请稍候…" ;;
 				ar) echo "الرجاء الانتظار…" ;;
+				ca) echo "Espereu…" ;;
+				eu) echo "Itxaron..." ;;
 				*)  echo "Merci de patienter…" ;;
 			esac ;;
 		"shell.pleaseRelaunch")
@@ -162,6 +178,8 @@ utoutlook_t() {
 				pt) echo "Reinicia o UToutlook Mail" ;;
 				zh) echo "请重新启动 UToutlook Mail" ;;
 				ar) echo "أعد تشغيل UToutlook Mail" ;;
+				ca) echo "Torneu a iniciar UToutlook Mail" ;;
+				eu) echo "Mesedez, abiarazi berriro UToutlook Mail" ;;
 				*)  echo "Merci de relancer UToutlook Mail" ;;
 			esac ;;
 		# v4.0.127: notifié quand le mode logiciel est activé automatiquement.
@@ -174,6 +192,8 @@ utoutlook_t() {
 				pt) echo "Renderização por software ativada após falha gráfica" ;;
 				zh) echo "图形崩溃后已启用软件渲染" ;;
 				ar) echo "تم تفعيل العرض البرمجي بعد خطأ رسومي" ;;
+				ca) echo "S'ha activat el renderitzat de programari després d'un error gràfic" ;;
+				eu) echo "Software bidezko errendatzea gaitu da grafikoen akats baten ondoren" ;;
 				*)  echo "Rendu logiciel activé après un crash graphique" ;;
 			esac ;;
 		# v4.1.0: notifié quand le wrapper bascule de mode après un échec de démarrage.
@@ -186,6 +206,8 @@ utoutlook_t() {
 				pt) echo "Modo de exibição alterado automaticamente após um problema de inicialização" ;;
 				zh) echo "启动出现问题后已自动切换显示模式" ;;
 				ar) echo "تم تغيير وضع العرض تلقائيًا بعد مشكلة في بدء التشغيل" ;;
+				ca) echo "El mode de visualització ha canviat automàticament després d’un problema d’inici" ;;
+				eu) echo "Pantaila-modua automatikoki aldatu da abio-arazo baten ondoren" ;;
 				*)  echo "Mode d'affichage changé automatiquement après un problème de démarrage" ;;
 			esac ;;
 		# v4.0.128: écran de secours affiché sur la splash après un crash GPU.
@@ -198,6 +220,8 @@ utoutlook_t() {
 				pt) echo "O UToutlook teve um problema gráfico" ;;
 				zh) echo "UToutlook 遇到图形问题" ;;
 				ar) echo "واجه UToutlook مشكلة رسومية" ;;
+				ca) echo "UToutlook ha tingut un problema gràfic" ;;
+				eu) echo "UToutlook-ek arazo grafiko bat izan du" ;;
 				*)  echo "UToutlook a rencontré un problème graphique" ;;
 			esac ;;
 		"qml.renderSoftware")
@@ -209,6 +233,8 @@ utoutlook_t() {
 				pt) echo "Usar renderização por software" ;;
 				zh) echo "使用软件渲染" ;;
 				ar) echo "استخدم العرض البرمجي" ;;
+				ca) echo "Fes servir el renderitzat per programari" ;;
+				eu) echo "Erabili software bidezko errendatzea" ;;
 				*)  echo "Utiliser le rendu logiciel" ;;
 			esac ;;
 		"qml.renderOpengl")
@@ -220,6 +246,8 @@ utoutlook_t() {
 				pt) echo "Usar renderização OpenGL" ;;
 				zh) echo "使用 OpenGL 渲染" ;;
 				ar) echo "استخدم عرض OpenGL" ;;
+				ca) echo "Utilitza el renderitzat OpenGL" ;;
+				eu) echo "Erabili OpenGL errendatzea" ;;
 				*)  echo "Utiliser le rendu OpenGL" ;;
 			esac ;;
 		# --- QML screens (v3.3.65: passed to qmlscene via /tmp JS file) ---
@@ -232,6 +260,8 @@ utoutlook_t() {
 				pt) echo "SEM REDE !!" ;;
 				zh) echo "无网络 !!" ;;
 				ar) echo "لا توجد شبكة !!" ;;
+				ca) echo "CAP XARXA !!" ;;
+				eu) echo "SARERIK EZ !!" ;;
 				*)  echo "PAS DE RÉSEAU !!" ;;
 			esac ;;
 		"qml.relaunch")
@@ -243,6 +273,8 @@ utoutlook_t() {
 				pt) echo "A reiniciar (mudança de orientação)…" ;;
 				zh) echo "正在重启（方向改变）…" ;;
 				ar) echo "جارٍ إعادة التشغيل (تغيير الاتجاه)…" ;;
+				ca) echo "S'està reiniciant (canvi d'orientació)…" ;;
+				eu) echo "Berriro abiarazten (orientazio-aldaketa)…" ;;
 				*)  echo "Relance en cours (changement d'orientation)…" ;;
 			esac ;;
 		"qml.exitTimeout")
@@ -254,6 +286,8 @@ utoutlook_t() {
 				pt) echo "Tempo limite ao falar com o servidor do outlook. Não é um problema real — podes iniciar o cliente outra vez ;)" ;;
 				zh) echo "连接 outlook 服务器超时。这其实不是问题 — 你可以再启动一次客户端 ;)" ;;
 				ar) echo "انتهت مهلة الاتصال بخادم outlook. هذه ليست مشكلة حقيقية — يمكنك تشغيل العميل مرة أخرى ;)" ;;
+				ca) echo "S'ha exhaurit el temps d'espera per comunicar-se amb el servidor d'Outlook. En realitat, això no és cap problema: podeu tornar a iniciar el client ;)" ;;
+				eu) echo "Outlook zerbitzariarekin hitz egiteko denbora-muga amaitu da. Hau ez da benetan arazo bat — bezeroa berriro abiarazi dezakezu ;)" ;;
 				*)  echo "Délai dépassé avec le serveur outlook. Ce n'est pas vraiment un problème — vous pouvez relancer le client ;)" ;;
 			esac ;;
 		# v4.0.126: message d'étape affiché par la barre de démarrage QML lancée
@@ -269,6 +303,8 @@ utoutlook_t() {
 				pt) echo "A iniciar — etapa %N de 6" ;;
 				zh) echo "正在启动 — 第 %N 步，共 6 步" ;;
 				ar) echo "جارٍ التشغيل — الخطوة %N من 6" ;;
+				ca) echo "S'està iniciant — pas %N de 6" ;;
+				eu) echo "Abiarazten — %N/6 urratsa" ;;
 				*)  echo "Démarrage — étape %N sur 6" ;;
 			esac ;;
 		*) echo "${key}" ;;

@@ -197,18 +197,13 @@ test('i18n: returns key for missing translation', async () => {
     assert.strictEqual(t('nonexistent.key'), 'nonexistent.key');
 });
 
-test('i18n: supports 8 languages', async () => {
+test('i18n: supports 10 languages', async () => {
     const {getAvailableLanguages} = await import('../src/i18n.mjs');
     const langs = getAvailableLanguages();
-    assert.strictEqual(Object.keys(langs).length, 8);
-    assert.ok(langs.fr);
-    assert.ok(langs.en);
-    assert.ok(langs.es);
-    assert.ok(langs.de);
-    assert.ok(langs.it);
-    assert.ok(langs.pt);
-    assert.ok(langs.zh);
-    assert.ok(langs.ar);
+    assert.strictEqual(Object.keys(langs).length, 10);
+    for (const l of ['fr','en','es','de','it','pt','zh','ar','ca','eu']) {
+        assert.ok(langs[l], `language ${l} must be declared`);
+    }
 });
 
 test('i18n: detectLanguage parses locale strings', async () => {
@@ -1566,7 +1561,7 @@ test('v4.1.3: barre liste — badge UBtouch décoratif + bouton first-install (i
     for (const key of ['action.firstInstall', 'action.firstInstallConfirm', 'action.firstInstallNotify']) {
         assert.ok(i18n.includes(`'${key}':`), `i18n key ${key} (v4.1.3)`);
         const seg = i18n.slice(i18n.indexOf(`'${key}':`), i18n.indexOf(`'${key}':`) + 400);
-        for (const lang of ['fr', 'en', 'es', 'de', 'it', 'pt', 'zh', 'ar']) {
+        for (const lang of ['fr', 'en', 'es', 'de', 'it', 'pt', 'zh', 'ar', 'ca', 'eu']) {
             assert.ok(new RegExp(`\\b${lang}:`).test(seg), `${key} has ${lang} (v4.1.3)`);
         }
     }
@@ -1955,7 +1950,7 @@ test('v3.3.50: badge logo + « Made for Ubtouch » injecté sur la page de login
     const i18n = fs.readFileSync(path.resolve(__dirname, '../src/i18n.mjs'), 'utf-8');
     assert.ok(i18n.includes("'login.madeFor'"),
         'i18n.mjs must define login.madeFor (v3.3.50)');
-    for (const lang of ['fr','en','es','de','it','pt','zh','ar']) {
+    for (const lang of ['fr','en','es','de','it','pt','zh','ar','ca','eu']) {
         const block = i18n.slice(i18n.indexOf("'login.madeFor'"), i18n.indexOf("'login.madeFor'") + 400);
         assert.ok(block.includes(lang + ':'),
             `login.madeFor must exist for ${lang} (v3.3.50)`);
@@ -2119,7 +2114,7 @@ test('v4.0.95: bouton « Recharger les messages » injecté, câblé IPC et i18n
         const start = i18n.indexOf(`'${key}'`);
         assert.ok(start >= 0, `missing i18n key ${key} (v4.0.95)`);
         const block = i18n.slice(start, i18n.indexOf('},', start));
-        for (const lang of ['fr', 'en', 'es', 'de', 'it', 'pt', 'zh', 'ar']) {
+        for (const lang of ['fr', 'en', 'es', 'de', 'it', 'pt', 'zh', 'ar', 'ca', 'eu']) {
             assert.ok(block.includes(`${lang}:`), `i18n ${key} missing ${lang} (v4.0.95)`);
         }
     }
