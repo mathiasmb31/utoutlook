@@ -1,0 +1,40 @@
+Version 4.3.6 — 20 November 2026
+
+A very special thank you to the person who first reported the transparent
+window bug on the OpenStore. Your clear report was the starting point of a
+long and difficult investigation, and this release is the direct result of
+it. Thank you for taking the time to test and to speak up.
+
+Finding the real cause was unusually hard. The app looked frozen, but the
+process was still running - the phone shell had quietly lost track of its
+window. Several fixes were needed, one after the other: the app icon is back
+to normal, the window no longer disappears when you rotate the phone, the
+start-up screen no longer gets stuck, sign-in cookies no longer flood at
+load time, the list buttons are clearer, and closing and relaunching the app
+is reliable again. Unplugging the USB cable no longer makes the app appear
+to crash either.
+
+Tested on Fairphone 5 (FP5) with Ubuntu Touch framework 24.04. This is the
+version I use every day, so it is the one I can confirm works. On other
+phones, and on other Ubuntu Touch releases or framework updates, results
+may differ - please keep that in mind when you try it.
+
+Thanks for your feedback! :)
+
+Changes since 4.0.93:
+
+- Fix: the app icon (a yellow "?" could appear next to the real one).
+- Fix: the app window could become invisible while the app was still
+  running - it now comes back reliably.
+- Fix: rotating the phone no longer freezes the app or its message list.
+- Fix: the start-up screen could stay stuck instead of opening the mailbox.
+- Fix: a flood of sign-in cookies could make the login page invisible.
+- Fix: closing and relaunching the app is now reliable, with a proper
+  "goodbye" message at the right time.
+- Fix: unplugging or reconnecting USB no longer makes the app appear to
+  crash.
+- New: clearer buttons in the message list (Ubuntu Touch badge, two-finger
+  hint, full labels).
+- New: Catalan and Basque added - ten languages in total.
+
+Built and tested by Mathias — code written by Vibe, reviewed and controlled by Mathias.
