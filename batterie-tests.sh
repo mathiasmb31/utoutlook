@@ -56,6 +56,14 @@ echo -n 'ICON unknown.qtmir=' >> \"\$L\"; gdbus introspect --session --dest com.
 echo -n 'HEARTBEAT=' >> \"\$L\"; cat \"\$D/follow\" 2>/dev/null >> \"\$L\"; echo >> \"\$L\"
 echo -n 'GRACE loops=' >> \"\$L\"; tail -60 \"\$D/wrapper.log\" | grep -c 'heartbeat not started yet' >> \"\$L\"
 echo -n 'WRAPPER STARTS=' >> \"\$L\"; grep -c '=== wrapper start' \"\$D/wrapper.log\" >> \"\$L\"
+echo '=== TEST 1bis: session Mir / rotations / rendu ===' >> \"\$L\"
+echo -n 'onSessionStarting=' >> \"\$L\"; journalctl --user --since '-3 min' --no-pager 2>/dev/null | grep -c onSessionStarting >> \"\$L\"
+echo -n 'session relaunch.qml=' >> \"\$L\"; journalctl --user --since '-3 min' --no-pager 2>/dev/null | grep -c 'sessionName=relaunch.qml' >> \"\$L\"
+echo -n 'fausse rotation=' >> \"\$L\"; tail -120 \"\$D/wrapper.log\" | grep -c 'rotation détectée' >> \"\$L\"
+echo -n 'auto render fallback=' >> \"\$L\"; tail -120 \"\$D/wrapper.log\" | grep -c 'auto render fallback' >> \"\$L\"
+echo -n 'already software=' >> \"\$L\"; tail -120 \"\$D/wrapper.log\" | grep -c 'already software' >> \"\$L\"
+echo -n 'render-mode=' >> \"\$L\"; cat \"\$D/render-mode\" 2>/dev/null >> \"\$L\"; echo >> \"\$L\"
+echo 'NOTE: goodbye envoye par Electron au bouton Quitter (verification visuelle).' >> \"\$L\"
 echo '=== TEST 2-4: cycles quit/relance ===' >> \"\$L\"
 for c in 1 2 3; do
   echo \"--- cycle \$c \$(date +%H:%M:%S)\" >> \"\$L\"
@@ -76,7 +84,12 @@ for c in 1 2 3; do
 done
 echo '=== TEST 5: langue ===' >> \"\$L\"
 echo -n 'lang file=' >> \"\$L\"; cat \"\$D/lang\" 2>/dev/null >> \"\$L\"; echo >> \"\$L\"
+echo 'Langues disponibles attendues: fr en es de it pt zh ar ca eu (10)' >> \"\$L\"
+echo '=== TEST 6: etat final apres cycles ===' >> \"\$L\"
 echo -n 'unknown final=' >> \"\$L\"; gdbus introspect --session --dest com.lomiri.Shell --object-path /com/lomiri/Shell/Launcher --xml 2>/dev/null | grep -c unknown_2Eqtmir >> \"\$L\"
+echo -n 'flip fantome total=' >> \"\$L\"; grep -c 'auto render fallback' \"\$D/wrapper.log\" >> \"\$L\"
+echo -n 'clean quit detecte=' >> \"\$L\"; grep -c 'exitclient flag present' \"\$D/wrapper.log\" >> \"\$L\"
+echo -n 'wrapper SIGKILL=' >> \"\$L\"; journalctl --user --since '-5 min' --no-pager 2>/dev/null | grep -c 'Main process exited, code=killed, status=9/KILL' >> \"\$L\"
 echo '=== FIN ===' >> \"\$L\"
 EOS
 chmod +x $DIR/.batterie-run.sh
