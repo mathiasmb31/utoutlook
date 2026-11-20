@@ -681,11 +681,25 @@ class MailWindowController {
      * recharger la page (garde-fou: max 1 reload / 60 s). Un simple querySelector
      * par tick, coût négligeable. Couvre pivot, refresh et chargement incomplet.
      */
+    // v4.3.7: vrai quand la fenetre n'est pas reellement visible pour l'user.
+    // Garde-fou RESERVE aux taches purement visuals : ne JAMAIS l'appliquer au
+    // heartbeat (2 s), au flush de cookies (15 s), aux pulses de surface
+    // (v4.2.7), au socket ni a la detection de quit propre (v4.2.5).
+    isBackgrounded() {
+        try {
+            if (!this.win || this.win.isDestroyed()) return true;
+            return !this.win.isVisible() || this.win.isMinimized();
+        } catch (e) {
+            return false;
+        }
+    }
+
     startListEmptyWatchdog() {
         this.listEmptyCount = 0;
         this.lastListReload = 0;
         this.listWatchdog = setInterval(async () => {
             if (!this.win || this.win.isDestroyed()) return;
+            if (this.isBackgrounded()) return; // v4.3.7: inutile quand masque
             try {
                 const url = this.win.webContents.getURL();
                 if (!/outlook\.(live|office|office365|cloud\.microsoft)\.com\/mail/.test(url)) { this.listEmptyCount = 0; return; }
@@ -3055,6 +3069,10 @@ class MailWindowController {
                 this.connectivityTimer = null;
                 return;
             }
+            // v4.3.7: un vrai HEAD toutes les 3 s meme fenetre masquee coutait
+            // cher en batterie/reseau. Le serverMonitor (5 s / 30 s) continue,
+            // et le prochain tick des que la fenetre redevient visible suffit.
+            if (this.isBackgrounded()) return;
 
             try {
                 // v4.0.3: navigator.onLine is NOT a real network test — in

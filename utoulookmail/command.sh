@@ -204,9 +204,14 @@ function verify_prospect_life() {
 		follow=$("${WD}"/bin/cat "${filelifefollow}" 2>/dev/null | "${WD}"/bin/tr -d '[:space:]')
 	fi
 
-	echo "FOLLOW"
-	echo ${follow}
-	echo ${oldfollow}
+	# v4.3.7: ces 3 echoes tournaient toutes les 3 s (~1,5 ligne/s,
+	# 130 000 lignes/jour) et remplissaient wrapper.log. On ne les garde
+	# qu'en debug — la logique de stagnation ci-dessous est identique.
+	if [ "${UTOUTLOOK_DEBUG:-0}" = "1" ]; then
+		echo "FOLLOW"
+		echo ${follow}
+		echo ${oldfollow}
+	fi
 
 	# Heartbeat absent/vide : Electron n'a pas encore écrit son premier
 	# heartbeat (cold start lent). Fenêtre de grâce de 20 lectures x 3s = 60s
@@ -321,7 +326,8 @@ function verify_prospect_life() {
 	fi
 	oldfollow=${follow}
 	if [ ${clientalive} -eq 1 ]; then
-		echo "client is alive"
+		# v4.3.7: bruit de watchdog conserve uniquement en debug
+		[ "${UTOUTLOOK_DEBUG:-0}" = "1" ] && echo "client is alive"
 	else
 
 		# v4.0.10: freshness guards on both flags — a stale killedmail left by a
@@ -337,7 +343,8 @@ function verify_prospect_life() {
 			exit 0
 		fi
 	fi
-	echo "done"
+	# v4.3.7: idem — plus de "done" a chaque tick en production
+	[ "${UTOUTLOOK_DEBUG:-0}" = "1" ] && echo "done"
 }
 
 function test_net() {
