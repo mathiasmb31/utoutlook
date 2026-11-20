@@ -2911,3 +2911,52 @@ test('v4.3.7: watchdog noise is debug-only and background gating is whitelisted'
     assert.ok(main.includes('capLogIfLarge(file, MAX_CRASH_LOG_BYTES)'),
         'crash.log must be capped from main.mjs (v4.3.7)');
 });
+
+// ============================================================
+// v4.3.7 — supervision inverse wrapper <- Electron
+// ============================================================
+
+test('v4.3.7: wrapper monitor never quits on an unknown or newer wrapper', async () => {
+    const {checkWrapperAlive} = await import('../src/wrapper-monitor.mjs');
+    const base = (pidfile, proc, expected = '4242') => ({
+        pidFilePath: 'wrapper.pid',
+        expectedPid: expected,
+        readFileSync: () => pidfile,
+        readProc: () => proc,
+    });
+    assert.strictEqual(checkWrapperAlive({...base('4242\n', '4242 (bash) S 1 1'), expectedPid: ''}), 'unknown');
+    assert.strictEqual(checkWrapperAlive({pidFilePath: 'wrapper.pid', expectedPid: '', readFileSync: () => '4242'}), 'unknown');
+    assert.strictEqual(checkWrapperAlive(base('9999\n', '9999 (bash) S 1 1')), 'unknown',
+        'a newer wrapper PID must not trigger a quit');
+    assert.strictEqual(checkWrapperAlive(base('garbage', '4242 (bash) S 1 1')), 'unknown');
+    assert.strictEqual(checkWrapperAlive(base('4242\n', '4242 (bash) S 1 1')), true);
+    assert.strictEqual(checkWrapperAlive(base('4242\n', '4242 (bash) Z 1 1')), false,
+        'a zombie wrapper counts as dead');
+    assert.strictEqual(checkWrapperAlive({
+        pidFilePath: 'wrapper.pid', expectedPid: '4242',
+        readFileSync: () => { throw new Error('ENOENT'); },
+        readProc: () => 'unused',
+    }), false);
+});
+
+test('v4.3.7: reverse supervision uses cleanupAndExit with quit/rotation guards', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const main = fs.readFileSync(path.join(here, '../src/main.mjs'), 'utf-8');
+    const block = main.slice(main.indexOf('v4.3.7 — supervision INVERSE'));
+
+    assert.ok(block.includes('appInstance.cleanupAndExit()'),
+        'a dead wrapper must trigger a CLEAN exit, not app.exit (v4.0.116/v4.0.125)');
+    assert.ok(!block.slice(0, 1600).includes('app.exit('),
+        'no direct app.exit in the reverse supervision block');
+    assert.ok(block.includes('!global.utoutlookQuitting') &&
+              block.includes('!global.restartRequested') &&
+              block.includes('!global.skipCleanExitFlag'),
+        'quit, restart and rotation guards must all be present (v4.1.0/v4.3.1)');
+    assert.ok(block.includes('wrapperMisses >= 3') && block.includes('heartbeatTicks % 5 === 0'),
+        'must require 3 consecutive misses spaced by 10 s (anti false positive)');
+    assert.ok(block.includes("state === 'unknown'") || block.includes("// 'unknown'"),
+        'unknown state must be explicitly ignored');
+});
