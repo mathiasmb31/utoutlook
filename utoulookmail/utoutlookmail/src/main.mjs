@@ -5,7 +5,7 @@ import {TrayController} from './controller/tray-controller.mjs';
 import {startSocketServer, stopSocketServer} from './ipc-socket.mjs';
 import {logger} from './logger.mjs';
 import {setLanguage, t} from './i18n.mjs';
-import {execFile, execFileSync} from 'node:child_process';
+import {execFile} from 'node:child_process';
 import {resolveLanguage, writeLangFile, settings} from './settings.mjs';
 import {
     CONFIG_DIR,
@@ -427,10 +427,13 @@ class ProspectMail {
         // encore vivante. Le wrapper ne peut plus le faire : Lomiri le tue par
         // SIGKILL quelques secondes apres la fermeture de la fenetre, donc sa
         // notification partait trop tard (au lancement suivant).
+        // v4.3.4: execFile ASYNCHRONE — execFileSync bloquait le thread
+        // principal jusqu'a 4 s et le bouton Quitter de la liste semblait ne
+        // plus repondre (log "fermeture demandee" absent).
         try {
             if (process.env.WD) {
-                execFileSync(`${process.env.WD}/bin/notify`, [t('shell.goodbye')],
-                    {timeout: 4000, stdio: 'ignore'});
+                execFile(`${process.env.WD}/bin/notify`, [t('shell.goodbye')],
+                    {timeout: 4000}, () => {});
             }
         } catch (e) { /* ignore */ }
         heartbeatExiting = true;
