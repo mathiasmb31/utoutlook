@@ -3021,3 +3021,62 @@ test('v4.3.7: diagnostics IPC is guarded and the button uses i18n labels', async
     assert.ok(i18n.includes("'action.diagnostics':") && i18n.includes("'diagnostics.saved':"),
         'new i18n keys must exist');
 });
+
+// ============================================================
+// v4.3.7 — preparation Content Hub (validation de chemin, sans device)
+// ============================================================
+
+test('v4.3.7: content hub paths are whitelisted before reaching Outlook', async () => {
+    const {normalizeContentUrl, validateTransferPath, TRANSFER_TIMEOUT_MS} =
+        await import('../src/content-hub.mjs');
+    assert.strictEqual(TRANSFER_TIMEOUT_MS, 30000);
+    assert.strictEqual(normalizeContentUrl('file:///home/phablet/Download/a%20b.pdf'),
+        '/home/phablet/Download/a b.pdf');
+    assert.strictEqual(normalizeContentUrl('file:/tmp/x.txt'), '/tmp/x.txt');
+    assert.strictEqual(normalizeContentUrl(null), null);
+
+    const fsApi = {
+        statSync: (p) => {
+            if (p.includes('missing')) throw new Error('ENOENT');
+            return {isFile: () => !p.endsWith('/')};
+        },
+    };
+    const opts = {allowedRoots: ['/home/phablet/Downloads'], fsApi};
+    assert.deepStrictEqual(
+        validateTransferPath('file:///home/phablet/Downloads/plan%20velo.pdf', opts),
+        {ok: true, path: '/home/phablet/Downloads/plan velo.pdf'});
+    assert.deepStrictEqual(
+        validateTransferPath('/home/phablet/Downloads/../../etc/passwd', opts),
+        {ok: false, reason: 'outside-allowed-roots'},
+        'path traversal must be rejected');
+    assert.deepStrictEqual(
+        validateTransferPath('/home/phablet/Documents/secret.pdf', opts),
+        {ok: false, reason: 'outside-allowed-roots'});
+    assert.deepStrictEqual(
+        validateTransferPath('/home/phablet/Downloads/missing.pdf', opts),
+        {ok: false, reason: 'not-readable'});
+    assert.deepStrictEqual(
+        validateTransferPath('relative/file.pdf', opts),
+        {ok: false, reason: 'invalid-path'});
+});
+
+test('v4.3.7: content hub hook is declared but not wired to a visible QML window', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const clickDir = path.resolve(here, '../..');
+    const qmlDir = path.join(clickDir, 'qml');
+    const manifest = fs.readFileSync(path.join(clickDir, 'manifest.json'), 'utf-8');
+    const apparmor = fs.readFileSync(path.join(clickDir, 'utoutlook.apparmor'), 'utf-8');
+    const hook = fs.readFileSync(path.join(clickDir, 'content-hub.json'), 'utf-8');
+
+    assert.ok(manifest.includes('content-hub'), 'content-hub hook must stay declared');
+    assert.ok(apparmor.includes('content_exchange') && apparmor.includes('content_exchange_source'));
+    assert.ok(JSON.parse(hook).source.length > 0, 'source content types must be declared');
+    const qmlFiles = fs.readdirSync(qmlDir).filter(f => f.endsWith('.qml'));
+    const withPicker = qmlFiles.filter(f =>
+        fs.readFileSync(path.join(qmlDir, f), 'utf-8').includes('ContentPeerPicker'));
+    assert.deepStrictEqual(withPicker, [],
+        'no visible QML picker yet — a separate QML window creates unknown.qtmir (§2.14)');
+});
