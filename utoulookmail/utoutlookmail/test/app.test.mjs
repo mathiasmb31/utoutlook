@@ -2168,9 +2168,12 @@ test('v4.0.99: roue de relance réactivée + zombies du wrapper récupérés', a
     // Le flag de rotation doit être réécrit par Electron (plus de quit au pivot).
     assert.ok(ctrl.includes('fs.writeFileSync(ROTATION_RELAUNCH_FILE'),
         'controller must write the rotation flag for the wrapper (v4.0.99)');
-    // Le wrapper doit afficher la roue même quand l'app est vivante.
-    assert.ok(cmd.includes('rotation relaunch screen shown (app still alive'),
-        'wrapper must show the wheel without waiting for a dead heartbeat (v4.0.99)');
+    // v4.3.6: la roue n'est PLUS affichée sur simple rotation (app vivante) —
+    // elle volait la session Mir et cassait l'observer (No inbox element found).
+    assert.ok(!cmd.includes('rotation relaunch screen shown (app still alive'),
+        'wrapper must NOT show the wheel when app is alive on rotation (v4.3.6)');
+    assert.ok(cmd.includes('if [ -f "${rotationflag}" ]; then'),
+        'wrapper must still clear the rotation flag (v4.3.6)');
     // wait après chaque kill de child (CLIENT_PID, QML_PID, RELAUNCH_QML_PID).
     assert.ok((cmd.match(/wait "\$\{CLIENT_PID\}"/g) || []).length >= 1,
         'wrapper must wait() its client child after SIGKILL (v4.0.99)');

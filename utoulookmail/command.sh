@@ -173,19 +173,17 @@ function launch_prospect() {
 
 function verify_prospect_life() {
 
-	# v4.0.99: depuis v4.0.94 la rotation ne fait plus quitter l'app (reload
-	# simple) — le heartbeat ne meurt donc plus et l'ancien affichage de la roue
-	# (uniquement dans la branche « heartbeat dead ») ne se declenchait jamais.
-	# On detecte desormais le flag frais ecrit par Electron des la rotation,
-	# meme si l'app est toujours vivante. La roue est fermee en bas de boucle
-	# des que le socket repond (avec un minimum de 5 s d'affichage).
-	if [ -f "${rotationflag}" ] && utoutlook_flag_fresh "${rotationflag}" \
-	   && [ -z "${RELAUNCH_QML_PID}" ]; then
+	# v4.3.6: PLUS DE ROUE SUR SIMPLE ROTATION — depuis v4.0.94 la rotation ne
+	# fait plus quitter l'app (Electron recharge la page lui-meme) : le heartbeat
+	# ne meurt pas, l'app est vivante. L'ancien code (v4.0.99) affichait quand
+	# meme relaunch.qml des qu'un flag rotation frais apparaissait. Or cette
+	# fenetre QML PLEIN ECRAN recouvre l'app, VOLE la session Mir et declenche
+	# une cascade de repaints + reinit de l'observer ("No inbox element found")
+	# → l'app parait bloquee, l'utilisateur ferme et relance en rafale (vu 20/11
+	# 12h30). On supprime simplement l'affichage : la roue ne reste que pour le
+	# vrai cas "heartbeat mort -> relance" (branche plus bas).
+	if [ -f "${rotationflag}" ]; then
 		"${WD}"/bin/rm -f "${rotationflag}" 2>/dev/null || true
-		qmlscene -I "${UTOUTLOOK_CONFIG_DIR}" "${WD}"/qml/relaunch.qml > "${UTOUTLOOK_CONFIG_DIR}/relaunch-qml.log" 2>&1 &
-		RELAUNCH_QML_PID=$!
-		RELAUNCH_QML_SHOWN_AT=${EPOCHSECONDS:-0} # v4.0.107: builtin bash — /usr/bin/date est interdit par AppArmor
-		echo "rotation relaunch screen shown (app still alive, qml pid ${RELAUNCH_QML_PID})"
 	fi
 
 	# v3.3.10: si un wrapper plus récent a pris la main (pidfile != $$), on sort
