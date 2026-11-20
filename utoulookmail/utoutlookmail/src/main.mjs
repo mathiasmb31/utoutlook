@@ -5,11 +5,13 @@ import {TrayController} from './controller/tray-controller.mjs';
 import {startSocketServer, stopSocketServer} from './ipc-socket.mjs';
 import {logger} from './logger.mjs';
 import {capLogIfLarge, MAX_CRASH_LOG_BYTES} from './log-rotation.mjs';
+import {checkWrapperAlive} from './wrapper-monitor.mjs';
 import {setLanguage, t} from './i18n.mjs';
 import {execFile} from 'node:child_process';
 import {resolveLanguage, writeLangFile, settings} from './settings.mjs';
 import {
     CONFIG_DIR,
+    DATA_DIR,
     HEARTBEAT_FILE,
     EXIT_CLIENT_FILE,
     KILLED_CLIENT_FILE,
@@ -82,6 +84,11 @@ try { fs.unlinkSync(CLOSE_FLAG_FILE); } catch (e) { /* ignore */ }
 // Heartbeat: write a counter to a file so the shell wrapper (command.sh) can
 // detect whether the Electron process is still alive.
 let heartbeatSeconds = 0;
+// v4.3.7: compteur monotone (heartbeatSeconds se remet a 0 apres 60 ticks).
+let heartbeatTicks = 0;
+let wrapperChecks = 0;
+let wrapperMisses = 0;
+const WRAPPER_PID_FILE = path.join(DATA_DIR, 'wrapper.pid');
 let heartbeatExiting = false;
 // hotfix #12: remember whether the window has ever been shown. The heartbeat
 // auto-exit is only a startup-failure safety net (the window never appears).
@@ -176,6 +183,34 @@ const heartbeatInterval = setInterval(() => {
     fs.writeFile(HEARTBEAT_FILE, content, err => {
         if (err) logger.error(err);
     });
+
+    // v4.3.7 — supervision INVERSE : le wrapper peut etre SIGKILL par Lomiri
+    // (swipe-close, crash). Sans ca, Electron restait vivant avec un heartbeat
+    // actif → "app vivante mais invisible" et notifications orphelines.
+    // Toutes les 5 ticks (10 s), apres 15 ticks de grace (30 s) : il faut
+    // 3 echecs consecutifs (30 s) avant de quitter. On ne quitte QUE par
+    // cleanupAndExit() (jamais app.exit direct : zombies + goodbye), et
+    // jamais pendant un quit/une rotation/une relance en cours.
+    heartbeatTicks++;
+    if (process.env.UTOUTLOOK_WRAPPER_PID && heartbeatTicks > 15 && heartbeatTicks % 5 === 0) {
+        wrapperChecks++;
+        const state = checkWrapperAlive({
+            pidFilePath: WRAPPER_PID_FILE,
+            expectedPid: process.env.UTOUTLOOK_WRAPPER_PID,
+        });
+        if (state === true) {
+            wrapperMisses = 0;
+        } else if (state === false) {
+            wrapperMisses++;
+            if (wrapperMisses >= 3 && !global.utoutlookQuitting &&
+                !global.restartRequested && !global.skipCleanExitFlag) {
+                logger.warn(`Wrapper ${process.env.UTOUTLOOK_WRAPPER_PID} disappeared after ${wrapperChecks} checks — clean exit`);
+                appInstance.cleanupAndExit();
+            }
+        }
+        // 'unknown' (pidfile absent au tout debut, PID different = wrapper
+        // plus recent, /proc illisible) : on ne touche a rien deliberement.
+    }
 
     // Check for external close flag from the shell wrapper (fallback for socket).
     // v4.0.22: the close flag file is NO LONGER honored at all — it was the
