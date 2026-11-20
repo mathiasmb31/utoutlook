@@ -2806,6 +2806,7 @@ class MailWindowController {
         // est faite au niveau compositor. On POLL la rotation de l'écran et on
         // force setBounds + invalidate + repaint de la liste quand elle change.
         this.lastDisplayKey = '';
+        this.appStartedAt = Date.now(); // v4.3.1: ignore les fausses rotations au démarrage
         this.lastRotationTime = 0; // v4.0.78: timestamp de la dernière rotation détectée
         this.mailListReady = false; // v4.0.85: true quand la page mail (liste des messages) est atteinte
         // v4.0.89: watchdog clavier — après une relance post-rotation, le focus
@@ -2850,6 +2851,15 @@ class MailWindowController {
                 const first = this.lastDisplayKey === '';
                 this.lastDisplayKey = key;
                 if (first) { this.recentDisplayKeys = [keyOriented]; return; } // ne rien faire au démarrage
+                // v4.3.1: au démarrage, la fenêtre passe brièvement en paysage
+                // avant d'être redimensionnée (device 20/11 : "rotation détectée
+                // (0|612x1350|win 612x1298)" alors que rien n'a bougé). Cette
+                // fausse rotation affiche relaunch.qml qui vole la session Mir.
+                // On ignore toute détection pendant les 15 premières secondes.
+                if (Date.now() - this.appStartedAt < 15000) {
+                    this.recentDisplayKeys = [keyOriented];
+                    return;
+                }
                 // v4.0.77: déclenche si l'état courant n'a pas été vu récemment
                 // (détecte A→B→A rapide) ; intervalle 500 ms pour la réactivité.
                 if (!this.recentDisplayKeys.includes(keyOriented)) {
