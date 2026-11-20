@@ -1633,8 +1633,10 @@ test('v4.3.3: goodbye envoye par Electron au quit, pas par le wrapper', async ()
     const fs = await import('node:fs');
     const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
     const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
-    assert.ok(main.includes("execFileSync(`${process.env.WD}/bin/notify`, [t('shell.goodbye')]"),
+    assert.ok(main.includes("execFile(`${process.env.WD}/bin/notify`, [t('shell.goodbye')]"),
         'Electron must send goodbye immediately on clean quit (v4.3.3)');
+    assert.ok(!main.includes('import {execFile, execFileSync}'),
+        'goodbye notification must NOT block the main thread / freeze the Quit button (v4.3.4)');
     assert.ok(!cmd.includes("utoutlook_notify \"$(utoutlook_t 'shell.goodbye')\""),
         'wrapper must not send goodbye (killed too late by Lomiri) (v4.3.3)');
 });
