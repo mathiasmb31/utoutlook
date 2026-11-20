@@ -2,15 +2,23 @@
 # check-history.sh — contrôle de confidentialité de l'historique git.
 # v4.1.0: check.sh ne vérifie que l'arbre de travail ; un commit/PR publie
 # aussi les auteurs et messages de TOUS les commits poussés.
+# v4.3.7: le 2e argument optionnel est la PLAGE de commits à contrôler
+# (passée par le pre-push). Sans plage, comportement historique --all.
 set -u
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 STRICT=0
 [ "${1:-}" = "--strict" ] && STRICT=1
+RANGE="${2:-}"
 
 # Le motif est construit morceau par morceau pour ne pas l'écrire en dur ici.
 PAT="bre""thou"
-COUNT=$(git log --all --format='%ae %ce %B' 2>/dev/null | grep -ic "$PAT" || true)
+if [ -n "$RANGE" ]; then
+  # RANGE délibérément non cité : peut contenir plusieurs mots (sha --not --remotes)
+  COUNT=$(git log $RANGE --format='%ae %ce %B' 2>/dev/null | grep -ic "$PAT" || true)
+else
+  COUNT=$(git log --all --format='%ae %ce %B' 2>/dev/null | grep -ic "$PAT" || true)
+fi
 if [ "${COUNT:-0}" -gt 0 ]; then
   echo "HISTORIQUE NON CONFORME: ${COUNT} occurrence(s) de l'identité personnelle proscrite"
   echo "  Un revert ne suffit pas — réécriture d'historique + force-push coordonnés."
