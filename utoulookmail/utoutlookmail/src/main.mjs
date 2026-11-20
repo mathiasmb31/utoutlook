@@ -5,7 +5,7 @@ import {TrayController} from './controller/tray-controller.mjs';
 import {startSocketServer, stopSocketServer} from './ipc-socket.mjs';
 import {logger} from './logger.mjs';
 import {setLanguage, t} from './i18n.mjs';
-import {execFile} from 'node:child_process';
+import {execFile, execFileSync} from 'node:child_process';
 import {resolveLanguage, writeLangFile, settings} from './settings.mjs';
 import {
     CONFIG_DIR,
@@ -423,6 +423,16 @@ class ProspectMail {
         // Skipped when the quit is a restart (settings import/reset).
         // v4.0.84: skipCleanExitFlag = relance volontaire après rotation (le wrapper doit relancer l'app)
         if (!global.restartRequested && !global.skipCleanExitFlag) markCleanExit();
+        // v4.3.3: envoyer "goodbye" IMMEDIATEMENT ici, pendant que l'app est
+        // encore vivante. Le wrapper ne peut plus le faire : Lomiri le tue par
+        // SIGKILL quelques secondes apres la fermeture de la fenetre, donc sa
+        // notification partait trop tard (au lancement suivant).
+        try {
+            if (process.env.WD) {
+                execFileSync(`${process.env.WD}/bin/notify`, [t('shell.goodbye')],
+                    {timeout: 4000, stdio: 'ignore'});
+            }
+        } catch (e) { /* ignore */ }
         heartbeatExiting = true;
         clearInterval(heartbeatInterval);
         stopSocketServer();

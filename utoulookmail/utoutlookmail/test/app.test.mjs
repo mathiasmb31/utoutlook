@@ -1629,6 +1629,16 @@ test('v4.2.3: identité fenêtre = état v4.0.98 (aucun --class / StartupWMClass
         'bump-version.sh must not reintroduce StartupWMClass (v4.2.3)');
 });
 
+test('v4.3.3: goodbye envoye par Electron au quit, pas par le wrapper', async () => {
+    const fs = await import('node:fs');
+    const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    assert.ok(main.includes("execFileSync(`${process.env.WD}/bin/notify`, [t('shell.goodbye')]"),
+        'Electron must send goodbye immediately on clean quit (v4.3.3)');
+    assert.ok(!cmd.includes("utoutlook_notify \"$(utoutlook_t 'shell.goodbye')\""),
+        'wrapper must not send goodbye (killed too late by Lomiri) (v4.3.3)');
+});
+
 test('v4.3.2: pas de bascule ni notification si deja software', async () => {
     const fs = await import('node:fs');
     const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');

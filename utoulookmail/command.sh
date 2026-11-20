@@ -387,7 +387,10 @@ function close_command() {
 	# Fallback: write close flag file (picked up by heartbeat)
 	# v4.0.14: embed wrapper PID so the app only honors OUR close flag
 	echo "closed:${UTOUTLOOK_WRAPPER_PID}" >"${UTOUTLOOK_EXITCOMMAND}"
-	utoutlook_notify "$(utoutlook_t 'shell.goodbye')"
+	# v4.3.3: le "goodbye" est envoye par Electron des que le bouton Quitter
+	# est presse (cleanupAndExit) — ici Lomiri tue le wrapper par SIGKILL avant
+	# que la notification parte, ce qui la faisait apparaitre au lancement
+	# suivant. Ne pas le renvoyer ici (doublon + retard).
 	# v4.0.105: tuer la barre de démarrage si l'app ferme avant qu'elle ne se ferme
 	if [ -n "${STARTUP_QML_PID}" ]; then
 		kill "${STARTUP_QML_PID}" 2>/dev/null || true
