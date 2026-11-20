@@ -10,6 +10,9 @@
     const BAR_ID = 'utoutlook-app-actions';
     const RELOAD_ID = 'utoutlook-reload-btn';
     const QUIT_ID = 'utoutlook-quit-btn';
+    // v4.3.7: classe posée sur <html> UNE SEULE FOIS quand la liste passe
+    // de « pas prête » à « prête ». Le CSS (main.css) fait le reste.
+    const READY_CLASS = 'utoutlook-list-ready';
     // v4.1.3: deux boutons supplémentaires dans la barre de la liste :
     //   - UBTOUCH_ID : logo Ubuntu Touch ROND, purement décoratif (aucune action).
     //   - FIRST_ID   : « Première installation » — wipe complet + notif + relance.
@@ -80,6 +83,19 @@
         if (ml.getBoundingClientRect().height < 100) return false;
         const rows = ml.querySelectorAll('[role="option"], [role="listitem"], [class*="listItem"]');
         return Array.from(rows).some((r) => r.getBoundingClientRect().height > 0);
+    };
+
+    // v4.3.7: effet « liste prête » — on ne joue l'animation qu'au passage
+    // false -> true, jamais a chaque re-render du SPA (anti-clignotement).
+    let lastListReady = false;
+    let listReadyFxTimer = null;
+    const signalListReady = () => {
+        const root = document.documentElement;
+        if (!root || !root.classList) return;
+        root.classList.remove(READY_CLASS);
+        root.classList.add(READY_CLASS);
+        clearTimeout(listReadyFxTimer);
+        listReadyFxTimer = setTimeout(() => root.classList.remove(READY_CLASS), 600);
     };
 
     const fire = (kind) => {
@@ -303,7 +319,10 @@
         // quand la liste est cassée (0×0) — c'est le cas à secourir. On ne
         // masque que le bouton Recharger pendant le chargement initial.
         bar.style.display = onMailPage() ? 'flex' : 'none';
-        reload.style.display = listReady() ? '' : 'none';
+        const ready = listReady();
+        if (ready && !lastListReady) signalListReady();
+        lastListReady = ready;
+        reload.style.display = ready ? '' : 'none';
         unhideList(); // v4.0.98: garder la liste visible après les re-render SPA
         syncNavState(); // v4.0.118: mémoriser un masquage automatique (paysage)
     };

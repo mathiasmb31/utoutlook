@@ -817,3 +817,26 @@ body [class*="fui-"]:not([class*="icon" i]):not([class*="FontIcon" i]) {
   overflow: hidden !important;
   pointer-events: none !important;
 }
+
+/* ============================================================
+   v4.3.7: transition « liste prête » — effet glass discret, joué UNE SEULE
+   FOIS quand listReady() passe false -> true (classe posée sur <html> par
+   app-actions.js). Pas de MutationObserver supplementaire, pas de risque
+   de clignotement a chaque re-render du SPA Outlook.
+   ============================================================ */
+@keyframes utoutlook-list-glass-in {
+  0%   { opacity: 0.35; filter: blur(4px); }
+  100% { opacity: 1;    filter: blur(0); }
+}
+html.utoutlook-list-ready [data-app-section="MessageList"] [role="option"],
+html.utoutlook-list-ready [data-app-section="MessageList"] [role="listitem"],
+html.utoutlook-list-ready [data-app-section="MessageList"] [class*="listItem"] {
+  animation: utoutlook-list-glass-in 420ms ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  html.utoutlook-list-ready [data-app-section="MessageList"] [role="option"],
+  html.utoutlook-list-ready [data-app-section="MessageList"] [role="listitem"],
+  html.utoutlook-list-ready [data-app-section="MessageList"] [class*="listItem"] {
+    animation: none !important;
+  }
+}
