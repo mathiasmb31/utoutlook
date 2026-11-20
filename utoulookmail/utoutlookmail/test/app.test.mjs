@@ -2053,7 +2053,7 @@ test('v4.0.3: periodic server monitor shows "server not responding" overlay afte
         'did-fail-load handler must run an immediate server check to pick the right overlay (v4.0.3)');
 });
 
-test('v4.0.3: i18n has server.* and notif.server* keys in all 8 languages', async () => {
+test('v4.0.3: i18n has server.* and notif.server* keys in all 10 languages', async () => {
     const {t, setLanguage, getAvailableLanguages} = await import('../src/i18n.mjs');
     const keys = ['server.title', 'server.message', 'notif.serverUnreachable.title', 'notif.serverReachable.title'];
     for (const lang of Object.keys(getAvailableLanguages())) {
@@ -2063,6 +2063,26 @@ test('v4.0.3: i18n has server.* and notif.server* keys in all 8 languages', asyn
             assert.ok(translated !== key, `Missing ${key} for ${lang} (v4.0.3)`);
             assert.ok(translated.length > 0, `Empty ${key} for ${lang} (v4.0.3)`);
         }
+    }
+});
+
+// v4.3.7: garde-fou i18n — les 10 langues (dont ca/eu) doivent avoir le même
+// nombre de clés traduites. Le vieux test ne parlait que de 8 langues.
+test('v4.3.7: i18n coverage is complete in all 10 languages', async () => {
+    const {getAvailableLanguages, getTranslationCoverage} = await import('../src/i18n.mjs');
+    const langs = Object.keys(getAvailableLanguages());
+    assert.strictEqual(langs.length, 10, 'exactly 10 languages must be registered');
+    assert.deepStrictEqual(
+        langs.slice().sort(),
+        ['ar', 'ca', 'de', 'en', 'es', 'eu', 'fr', 'it', 'pt', 'zh'],
+        'catalan (ca) and basque (eu) must be present (v4.3.0)'
+    );
+    const coverage = getTranslationCoverage();
+    const reference = coverage.fr;
+    assert.ok(reference > 0, 'French catalogue must not be empty');
+    for (const lang of langs) {
+        assert.strictEqual(coverage[lang], reference,
+            `${lang} has ${coverage[lang]}/${reference} translated keys — incomplete catalogue`);
     }
 });
 
@@ -2797,7 +2817,7 @@ test('v4.1.0 (analyse approfondie): correctifs applicatifs et outillage', async 
         'IPC handlers must dispatch to the controller owning the sender (M4)');
 
     // reload button visible when the list is broken
-    assert.ok(reload.includes("reload.style.display = listReady() ? '' : 'none'") &&
+    assert.ok(reload.includes("reload.style.display = ready ? '' : 'none'") &&
               !reload.includes("a.style.setProperty('overflow', 'visible'"),
         'reload button must be available on broken lists without breaking scroll (renderer #4/#5)');
     assert.ok(ctl.includes('render-process-gone') && ctl.includes('this.win.reload()'),
@@ -2816,4 +2836,283 @@ test('v4.1.0 (analyse approfondie): correctifs applicatifs et outillage', async 
               buildFast.includes('"$PROJECT_DIR/CMakeCache.txt"') &&
               !buildFast.includes('rm -f "$PROJECT_DIR/Makefile"'),
         'build-fast must clean in-source cmake artifacts WITHOUT deleting the real Makefile (F4)');
+});
+
+// ============================================================
+// v4.3.7 — transition « liste prête » (glass discret, une seule fois)
+// ============================================================
+
+test('v4.3.7: list-ready glass effect is one-shot and respects reduced motion', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const btn = fs.readFileSync(path.join(here, '../public/reload-button.js'), 'utf-8');
+    const css = fs.readFileSync(path.join(here, '../public/main.css'), 'utf-8');
+
+    assert.ok(btn.includes("const READY_CLASS = 'utoutlook-list-ready'"),
+        'list-ready class name must be defined (v4.3.7)');
+    assert.ok(btn.includes('if (ready && !lastListReady) signalListReady()'),
+        'glass effect must play only on the false -> true transition (v4.3.7)');
+    assert.ok(btn.includes('clearTimeout(listReadyFxTimer)'),
+        'repeated ensure() calls must not restart the animation (v4.3.7)');
+    assert.ok(css.includes('@keyframes utoutlook-list-glass-in'),
+        'glass keyframes must exist in the injected CSS (v4.3.7)');
+    assert.ok(css.includes('prefers-reduced-motion: reduce') &&
+              css.includes('animation: none !important'),
+        'reduced-motion users must get no animation (v4.3.7)');
+});
+
+// ============================================================
+// v4.3.7 — robustesse : logs bornes et polls en arriere-plan
+// ============================================================
+
+test('v4.3.7: crash.log is capped without touching wrapper.log line numbers', async () => {
+    const {capLogIfLarge, MAX_CRASH_LOG_BYTES} = await import('../src/log-rotation.mjs');
+    let size = MAX_CRASH_LOG_BYTES - 1;
+    let truncated = 0;
+    const fakeFs = {
+        statSync: () => ({size}),
+        writeFileSync: (_p, data) => { assert.strictEqual(data, ''); truncated++; },
+    };
+    assert.strictEqual(capLogIfLarge('crash.log', MAX_CRASH_LOG_BYTES, fakeFs), false);
+    assert.strictEqual(truncated, 0, 'a log below the limit must be left alone');
+    size = MAX_CRASH_LOG_BYTES + 1;
+    assert.strictEqual(capLogIfLarge('crash.log', MAX_CRASH_LOG_BYTES, fakeFs), true);
+    assert.strictEqual(truncated, 1, 'an oversized log must be truncated');
+    assert.strictEqual(capLogIfLarge('missing.log', MAX_CRASH_LOG_BYTES, {
+        statSync: () => { throw new Error('ENOENT'); },
+        writeFileSync: () => { throw new Error('should not write'); },
+    }), false);
+});
+
+test('v4.3.7: watchdog noise is debug-only and background gating is whitelisted', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const wrapper = fs.readFileSync(path.resolve(here, '../../command.sh'), 'utf-8');
+    const ctl = fs.readFileSync(path.join(here, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    const main = fs.readFileSync(path.join(here, '../src/main.mjs'), 'utf-8');
+
+    assert.ok(wrapper.includes('[ "${UTOUTLOOK_DEBUG:-0}" = "1" ] && echo "done"'),
+        'watchdog "done" noise must be debug-only (v4.3.7)');
+    assert.ok(wrapper.includes('[ "${UTOUTLOOK_DEBUG:-0}" = "1" ] && echo "client is alive"'),
+        'watchdog "client is alive" noise must be debug-only (v4.3.7)');
+    assert.ok(ctl.includes('isBackgrounded()') &&
+              ctl.includes('if (this.isBackgrounded()) return; // v4.3.7: inutile quand masque') &&
+              ctl.includes('if (this.isBackgrounded() && !this.isOffline) return;'),
+        'only the list watchdog and connectivity poll may be gated (v4.3.7)');
+    const gates = ctl.match(/if \(this\.isBackgrounded\(\)(?: && !this\.isOffline)?\) return;/g) || [];
+    assert.strictEqual(gates.length, 2,
+        'only the list watchdog and the connectivity poll may use the background gate');
+    assert.ok(!main.includes('isBackgrounded'),
+        'heartbeat lives in main.mjs and must never be gated (v4.2.5 clean quit)');
+    assert.ok(main.includes('capLogIfLarge(file, MAX_CRASH_LOG_BYTES)'),
+        'crash.log must be capped from main.mjs (v4.3.7)');
+});
+
+// ============================================================
+// v4.3.7 — supervision inverse wrapper <- Electron
+// ============================================================
+
+test('v4.3.7: wrapper monitor never quits on an unknown or newer wrapper', async () => {
+    const {checkWrapperAlive} = await import('../src/wrapper-monitor.mjs');
+    const base = (pidfile, proc, expected = '4242') => ({
+        pidFilePath: 'wrapper.pid',
+        expectedPid: expected,
+        readFileSync: () => pidfile,
+        readProc: () => proc,
+    });
+    assert.strictEqual(checkWrapperAlive({...base('4242\n', '4242 (bash) S 1 1'), expectedPid: ''}), 'unknown');
+    assert.strictEqual(checkWrapperAlive({pidFilePath: 'wrapper.pid', expectedPid: '', readFileSync: () => '4242'}), 'unknown');
+    assert.strictEqual(checkWrapperAlive(base('9999\n', '9999 (bash) S 1 1')), 'unknown',
+        'a newer wrapper PID must not trigger a quit');
+    assert.strictEqual(checkWrapperAlive(base('garbage', '4242 (bash) S 1 1')), 'unknown');
+    assert.strictEqual(checkWrapperAlive(base('4242\n', '4242 (bash) S 1 1')), true);
+    assert.strictEqual(checkWrapperAlive(base('4242\n', '4242 (bash) Z 1 1')), false,
+        'a zombie wrapper counts as dead');
+    assert.strictEqual(checkWrapperAlive({
+        pidFilePath: 'wrapper.pid', expectedPid: '4242',
+        readFileSync: () => { throw new Error('ENOENT'); },
+        readProc: () => 'unused',
+    }), false);
+});
+
+test('v4.3.7: reverse supervision uses cleanupAndExit with quit/rotation guards', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const main = fs.readFileSync(path.join(here, '../src/main.mjs'), 'utf-8');
+    const block = main.slice(main.indexOf('v4.3.7 — supervision INVERSE'));
+
+    assert.ok(block.includes('appInstance.cleanupAndExit()'),
+        'a dead wrapper must trigger a CLEAN exit, not app.exit (v4.0.116/v4.0.125)');
+    assert.ok(!block.slice(0, 1600).includes('app.exit('),
+        'no direct app.exit in the reverse supervision block');
+    assert.ok(block.includes('!global.utoutlookQuitting') &&
+              block.includes('!global.restartRequested') &&
+              block.includes('!global.skipCleanExitFlag'),
+        'quit, restart and rotation guards must all be present (v4.1.0/v4.3.1)');
+    assert.ok(block.includes('wrapperMisses >= 3') && block.includes('heartbeatTicks % 5 === 0'),
+        'must require 3 consecutive misses spaced by 10 s (anti false positive)');
+    assert.ok(block.includes("state === 'unknown'") || block.includes("// 'unknown'"),
+        'unknown state must be explicitly ignored');
+});
+
+// ============================================================
+// v4.3.7 — bouton diagnostics : rapport whiteliste, jamais de log brut
+// ============================================================
+
+test('v4.3.7: diagnostics report contains only structural, non-private data', async () => {
+    const {buildDiagnostics} = await import('../src/diagnostics.mjs');
+    const fake = {
+        readFileSync: (p) => {
+            if (String(p).endsWith('lang')) return 'fr\n';
+            if (String(p).endsWith('render-mode')) return 'software\n';
+            if (String(p).endsWith('follow')) return '42';
+            throw new Error('ENOENT');
+        },
+        existsSync: (p) => String(p).endsWith('wrapper.pid'),
+        statSync: () => ({size: 1234}),
+    };
+    const report = buildDiagnostics({
+        version: '4.3.7', now: () => 1700000000000,
+        configDir: '/cfg', dataDir: '/data', heartbeatFile: '/cfg/follow',
+        readFileSync: fake.readFileSync, existsSync: fake.existsSync, statSync: fake.statSync,
+    });
+    assert.strictEqual(report.version, '4.3.7');
+    assert.strictEqual(report.language, 'fr');
+    assert.strictEqual(report.renderMode, 'software');
+    assert.strictEqual(report.heartbeat, '42');
+    assert.strictEqual(report.wrapperPidPresent, true);
+    assert.strictEqual(report.socketPresent, false);
+    assert.strictEqual(report.flags.exitclient, false);
+    assert.strictEqual(report.logBytes.wrapper, 1234);
+    const json = JSON.stringify(report);
+    assert.ok(!/[a-z0-9._%+-]+@[a-z0-9.-]+/.test(json), 'no email address in the report');
+    assert.ok(!json.includes('wrapper.log content'), 'no raw log content in the report');
+});
+
+test('v4.3.7: diagnostics IPC is guarded and the button uses i18n labels', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const ctl = fs.readFileSync(path.join(here, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    const preload = fs.readFileSync(path.join(here, '../src/controller/preload.js'), 'utf-8');
+    const btn = fs.readFileSync(path.join(here, '../public/reload-button.js'), 'utf-8');
+    const i18n = fs.readFileSync(path.join(here, '../src/i18n.mjs'), 'utf-8');
+
+    assert.ok(ctl.includes('ipcMain.handle("get-diagnostics"') &&
+              ctl.includes('MailWindowController.byWebContents.has(event.sender)'),
+        'only the trusted mail renderer may request diagnostics');
+    assert.ok(ctl.includes('buildDiagnostics({version: app.getVersion()})'),
+        'diagnostics must use the whitelisted builder');
+    assert.ok(!/get-diagnostics[\s\S]{0,600}wrapper\.log/.test(ctl),
+        'raw wrapper.log must never be exported');
+    assert.ok(preload.includes('getDiagnostics: () => ipcRenderer.invoke("get-diagnostics")'),
+        'preload must expose the diagnostics bridge');
+    assert.ok(btn.includes('utoutlook-diagnostics-btn') &&
+              btn.includes("tr('action.diagnostics'") &&
+              btn.includes("tr('diagnostics.saved'"),
+        'diagnostics button labels must come from i18n (10 languages)');
+    assert.ok(i18n.includes("'action.diagnostics':") && i18n.includes("'diagnostics.saved':"),
+        'new i18n keys must exist');
+});
+
+// ============================================================
+// v4.3.7 — preparation Content Hub (validation de chemin, sans device)
+// ============================================================
+
+test('v4.3.7: content hub paths are whitelisted before reaching Outlook', async () => {
+    const {normalizeContentUrl, validateTransferPath, TRANSFER_TIMEOUT_MS} =
+        await import('../src/content-hub.mjs');
+    assert.strictEqual(TRANSFER_TIMEOUT_MS, 30000);
+    assert.strictEqual(normalizeContentUrl('file:///home/phablet/Download/a%20b.pdf'),
+        '/home/phablet/Download/a b.pdf');
+    assert.strictEqual(normalizeContentUrl('file:/tmp/x.txt'), '/tmp/x.txt');
+    assert.strictEqual(normalizeContentUrl(null), null);
+
+    const fsApi = {
+        statSync: (p) => {
+            if (p.includes('missing')) throw new Error('ENOENT');
+            return {isFile: () => !p.endsWith('/')};
+        },
+    };
+    const opts = {allowedRoots: ['/home/phablet/Downloads'], fsApi};
+    assert.deepStrictEqual(
+        validateTransferPath('file:///home/phablet/Downloads/plan%20velo.pdf', opts),
+        {ok: true, path: '/home/phablet/Downloads/plan velo.pdf'});
+    assert.deepStrictEqual(
+        validateTransferPath('/home/phablet/Downloads/../../etc/passwd', opts),
+        {ok: false, reason: 'outside-allowed-roots'},
+        'path traversal must be rejected');
+    assert.deepStrictEqual(
+        validateTransferPath('/home/phablet/Documents/secret.pdf', opts),
+        {ok: false, reason: 'outside-allowed-roots'});
+    assert.deepStrictEqual(
+        validateTransferPath('/home/phablet/Downloads/missing.pdf', opts),
+        {ok: false, reason: 'not-readable'});
+    assert.deepStrictEqual(
+        validateTransferPath('relative/file.pdf', opts),
+        {ok: false, reason: 'invalid-path'});
+});
+
+test('v4.3.7: content hub hook is declared but not wired to a visible QML window', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const clickDir = path.resolve(here, '../..');
+    const qmlDir = path.join(clickDir, 'qml');
+    const manifest = fs.readFileSync(path.join(clickDir, 'manifest.json'), 'utf-8');
+    const apparmor = fs.readFileSync(path.join(clickDir, 'utoutlook.apparmor'), 'utf-8');
+    const hook = fs.readFileSync(path.join(clickDir, 'content-hub.json'), 'utf-8');
+
+    assert.ok(manifest.includes('content-hub'), 'content-hub hook must stay declared');
+    assert.ok(apparmor.includes('content_exchange') && apparmor.includes('content_exchange_source'));
+    assert.ok(JSON.parse(hook).source.length > 0, 'source content types must be declared');
+    const qmlFiles = fs.readdirSync(qmlDir).filter(f => f.endsWith('.qml'));
+    const withPicker = qmlFiles.filter(f =>
+        fs.readFileSync(path.join(qmlDir, f), 'utf-8').includes('ContentPeerPicker'));
+    assert.deepStrictEqual(withPicker, [],
+        'no visible QML picker yet — a separate QML window creates unknown.qtmir (§2.14)');
+});
+
+// ============================================================
+// v4.3.7 — ecran hors-ligne natif (pas de QML separe)
+// ============================================================
+
+test('v4.3.7: two consecutive failures are required before the offline screen', async () => {
+    const {shouldShowOfflineScreen, STARTUP_NETWORK_CHECKS} =
+        await import('../src/network-check.mjs');
+    assert.strictEqual(STARTUP_NETWORK_CHECKS, 2);
+    assert.strictEqual(shouldShowOfflineScreen(0), false);
+    assert.strictEqual(shouldShowOfflineScreen(1), false, 'one slow network must not block startup');
+    assert.strictEqual(shouldShowOfflineScreen(2), true);
+    assert.strictEqual(shouldShowOfflineScreen(3), true);
+});
+
+test('v4.3.7: offline screen is native Electron and survives a hidden window', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const ctl = fs.readFileSync(path.join(here, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+
+    assert.ok(ctl.includes('this.startStartupNetworkCheck()'),
+        'startup network check must be wired at window setup');
+    const block = ctl.slice(ctl.indexOf('startStartupNetworkCheck()'));
+    assert.ok(block.includes("this.showOfflineOverlay('offline')") &&
+              block.includes('this.startConnectivityMonitor()'),
+        'offline screen must use the native overlay and keep polling for recovery');
+    assert.ok(!block.slice(0, 1800).includes('qmlscene'),
+        'no separate QML window for offline (yellow icon rule §2.14)');
+    assert.ok(ctl.includes('if (document.body) inject();') &&
+              ctl.includes("addEventListener('DOMContentLoaded'"),
+        'overlay injection must wait for the DOM at startup');
+    assert.ok(ctl.includes('if (this.isBackgrounded() && !this.isOffline) return;'),
+        'recovery poll must keep running while the offline screen is displayed');
 });

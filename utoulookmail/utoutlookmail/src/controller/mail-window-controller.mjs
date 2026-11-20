@@ -20,6 +20,8 @@ import {
     SWIPE_HIDDEN_FILE,
 } from '../config.mjs';
 import {logger} from '../logger.mjs';
+import {buildDiagnostics} from '../diagnostics.mjs';
+import {shouldShowOfflineScreen} from '../network-check.mjs';
 
 const __filenameNew = fileURLToPath(import.meta.url);
 const __dirnameNew = path.dirname(__filenameNew);
@@ -681,11 +683,25 @@ class MailWindowController {
      * recharger la page (garde-fou: max 1 reload / 60 s). Un simple querySelector
      * par tick, coût négligeable. Couvre pivot, refresh et chargement incomplet.
      */
+    // v4.3.7: vrai quand la fenetre n'est pas reellement visible pour l'user.
+    // Garde-fou RESERVE aux taches purement visuals : ne JAMAIS l'appliquer au
+    // heartbeat (2 s), au flush de cookies (15 s), aux pulses de surface
+    // (v4.2.7), au socket ni a la detection de quit propre (v4.2.5).
+    isBackgrounded() {
+        try {
+            if (!this.win || this.win.isDestroyed()) return true;
+            return !this.win.isVisible() || this.win.isMinimized();
+        } catch (e) {
+            return false;
+        }
+    }
+
     startListEmptyWatchdog() {
         this.listEmptyCount = 0;
         this.lastListReload = 0;
         this.listWatchdog = setInterval(async () => {
             if (!this.win || this.win.isDestroyed()) return;
+            if (this.isBackgrounded()) return; // v4.3.7: inutile quand masque
             try {
                 const url = this.win.webContents.getURL();
                 if (!/outlook\.(live|office|office365|cloud\.microsoft)\.com\/mail/.test(url)) { this.listEmptyCount = 0; return; }
@@ -1224,7 +1240,8 @@ class MailWindowController {
             try { ipcMain.removeAllListeners(channel); } catch (e) { /* ignore */ }
         }
         for (const timer of ['cookieFlushInterval', 'observerHealthCheck', 'serverMonitor',
-                             'rotationPoll', 'keyboardHealthPoll', 'surfaceHealthPoll', 'listWatchdog']) {
+                             'rotationPoll', 'keyboardHealthPoll', 'surfaceHealthPoll', 'listWatchdog',
+                             'startupNetworkTimer']) {
             if (this[timer]) { try { clearInterval(this[timer]); } catch (e) {} this[timer] = null; }
         }
         if (this.win) MailWindowController.byWebContents.delete(this.win.webContents);
@@ -1262,6 +1279,7 @@ class MailWindowController {
         this.setupScreenEvents();
         this.setupOfflineDetection();
         this.startServerMonitor(); // v4.0.3: real in-app server reachability test
+        this.startStartupNetworkCheck(); // v4.3.7: ecran hors-ligne des le demarrage
         this.startCacheWatcher();
         this.startObserverHealthCheck();
     }
@@ -2005,6 +2023,23 @@ class MailWindowController {
         // fichier au prochain lancement (auto + bascule sur crash GPU).
         // v4.1.0 (revue B9): un handle par compte lève "second handler" dès le
         // 2ᵉ compte → uncaughtException → app.exit(1). On retire avant d'ajouter.
+        // v4.3.7: rapport de diagnostic WHITELISTE — jamais de wrapper.log brut
+        // (titres/sujets de notifications et console du renderer peuvent contenir
+        // du contenu de messages). Seules des donnees structurelles sont ecrites.
+        ipcMain.removeHandler("get-diagnostics");
+        ipcMain.handle("get-diagnostics", async (event) => {
+            if (!MailWindowController.byWebContents.has(event.sender)) return null;
+            const report = buildDiagnostics({version: app.getVersion()});
+            const out = path.join(CONFIG_DIR, 'diagnostics.json');
+            try {
+                fs.mkdirSync(CONFIG_DIR, {recursive: true});
+                fs.writeFileSync(out, JSON.stringify(report, null, 2) + '\n', {mode: 0o600});
+                return out;
+            } catch (e) {
+                logger.warn(`v4.3.7: impossible d'ecrire diagnostics.json: ${e.message}`);
+                return null;
+            }
+        });
         ipcMain.removeHandler("get-render-mode");
         ipcMain.handle("get-render-mode", () => {
             try { return fs.readFileSync(RENDER_MODE_FILE, 'utf-8').trim() || 'auto'; }
@@ -2998,7 +3033,9 @@ class MailWindowController {
         const messageKey = kind === 'server' ? 'server.message' : 'offline.message';
 
         this.win.webContents.executeJavaScript(`
-            (() => {
+            new Promise((resolve) => {
+                // v4.3.7: au demarrage, document.body peut ne pas exister encore.
+                const inject = () => {
                 // Remove existing overlay if any
                 const existing = document.getElementById('utoutlook-offline-overlay');
                 if (existing) existing.remove();
@@ -3026,7 +3063,14 @@ class MailWindowController {
                 style.textContent = '@keyframes utoutlook-spin{to{transform:rotate(360deg)}}';
                 document.head.appendChild(style);
                 document.body.appendChild(overlay);
-            })()
+                resolve(true);
+                };
+                if (document.body) inject();
+                else {
+                    const timer = setTimeout(() => { if (document.body) inject(); else resolve(false); }, 3000);
+                    document.addEventListener('DOMContentLoaded', () => { clearTimeout(timer); inject(); }, {once: true});
+                }
+            })
         `).catch(err => logger.error('Failed to show offline overlay:', err));
 
         // Notify via UBports
@@ -3055,6 +3099,11 @@ class MailWindowController {
                 this.connectivityTimer = null;
                 return;
             }
+            // v4.3.7: un vrai HEAD toutes les 3 s meme fenetre masquee coutait
+            // cher en batterie/reseau. EXCEPTION : des que l'ecran hors-ligne est
+            // affiche, le poll doit continuer MEME si la fenetre est masquee,
+            // sinon l'app resterait bloquee sur l'ecran apres retour du reseau.
+            if (this.isBackgrounded() && !this.isOffline) return;
 
             try {
                 // v4.0.3: navigator.onLine is NOT a real network test — in
@@ -3115,6 +3164,33 @@ class MailWindowController {
      * page mail n'est pas disponible). Dès que le serveur répond à nouveau,
      * masque l'écran et notifie.
      */
+    // v4.3.7 — ecran hors-ligne NATIF (aucun qmlscene separe : un ApplicationWindow
+    // QML recreerait l'item unknown.qtmir / icone jaune, regle §2.14).
+    // En mode avion, did-fail-load peut ne jamais tirer (page Outlook en cache)
+    // et le serverMonitor met 35 s a cumuler 2 echecs. On fait donc 2 vrais
+    // tests serveur espaces de 8 s des le demarrage, puis on affiche l'overlay
+    // HTML deja traduit en 10 langues et on demarre le poll de reconnexion.
+    startStartupNetworkCheck() {
+        this.startupNetworkFailures = 0;
+        const check = async () => {
+            if (!this.win || this.win.isDestroyed()) return;
+            const reachable = await this.checkServerReachable();
+            if (reachable) {
+                this.startupNetworkFailures = 0;
+                return;
+            }
+            this.startupNetworkFailures++;
+            if (!shouldShowOfflineScreen(this.startupNetworkFailures)) {
+                this.startupNetworkTimer = setTimeout(check, 8000);
+                return;
+            }
+            logger.warn('No network at startup — showing native offline screen');
+            this.showOfflineOverlay('offline');
+            this.startConnectivityMonitor();
+        };
+        this.startupNetworkTimer = setTimeout(check, 6000);
+    }
+
     startServerMonitor() {
         if (this.serverMonitor) clearInterval(this.serverMonitor);
         // Premier test rapide après le lancement (le splash couvre les 30s,

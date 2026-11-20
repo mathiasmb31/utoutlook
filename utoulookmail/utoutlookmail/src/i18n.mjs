@@ -132,6 +132,19 @@ const T = {
         it: 'Dati cancellati — riavvio…', pt: 'Dados apagados — reiniciando…', zh: '数据已清除 — 正在重启…', ar: 'تم مسح البيانات — جارٍ إعادة التشغيل…',
         ca: 'S’han esborrat les dades. S’està reiniciant…', eu: 'Datuak ezabatu dira — berrabiaratzen…',
     },
+    // v4.3.7: bouton diagnostics + message apres generation du rapport
+    'action.diagnostics': {
+        fr: 'Diagnostics', en: 'Diagnostics', es: 'Diagnóstico', de: 'Diagnose',
+        it: 'Diagnostica', pt: 'Diagnóstico', zh: 'Diagnostics', ar: 'التشخيص',
+        ca: 'Diagnòstic', eu: 'Diagnostikoa',
+    },
+    'diagnostics.saved': {
+        fr: 'Rapport enregistré : {path}', en: 'Report saved to: {path}',
+        es: 'Informe guardado en: {path}', de: 'Bericht gespeichert unter: {path}',
+        it: 'Report salvato in: {path}', pt: 'Relatório guardado em: {path}',
+        zh: 'Report saved to: {path}', ar: 'تم حفظ التقرير في: {path}',
+        ca: 'Informe desat al directori: {path}', eu: 'Txostena gorde da: {path}',
+    },
     'common.show': {
         fr: 'Afficher', en: 'Show', es: 'Mostrar', de: 'Anzeigen',
         it: 'Mostra', pt: 'Mostrar', zh: '显示', ar: 'إظهار',
@@ -929,6 +942,23 @@ const T = {
     },
 };
 
+/**
+ * v4.3.7: couverture des catalogues — nombre de clés réellement traduites
+ * dans chaque langue. Sert de test de non-régression i18n (10 langues).
+ * @returns {Object} Map lang code → number of translated keys
+ */
+export function getTranslationCoverage() {
+    const result = {};
+    for (const lang of Object.keys(LANGUAGES)) result[lang] = 0;
+    for (const entry of Object.values(T)) {
+        for (const lang of Object.keys(result)) {
+            const value = entry[lang];
+            if (typeof value === 'string' && value.length > 0) result[lang] += 1;
+        }
+    }
+    return result;
+}
+
 // --- Current language ---
 let currentLang = DEFAULT_LANG;
 
@@ -1005,4 +1035,4 @@ export function detectLanguage(locale) {
     return LANGUAGES[code] ? code : DEFAULT_LANG;
 }
 
-export default { t, setLanguage, getLanguage, getAvailableLanguages, getAllTranslations, detectLanguage, LANGUAGES };
+export default { t, setLanguage, getLanguage, getAvailableLanguages, getAllTranslations, getTranslationCoverage, detectLanguage, LANGUAGES };
