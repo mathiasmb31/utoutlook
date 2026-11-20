@@ -2785,6 +2785,21 @@ class MailWindowController {
                 }
             } catch (e) { /* ignore */ }
             if (this.win.isVisible()) this.resurfaceWindow(false);
+
+            // v4.2.7: device 20/11 10:18 — l'app tournait, Electron disait
+            // "Main window became visible" et isVisible()=true, mais Lomiri
+            // n'avait AUCUNE session Mir (journal : aucun onSessionStarting).
+            // Le bounds-nudge/invalidate seul ne suffit pas : c'est le
+            // focus() de show() qui force QtMir à créer la session. Un `show`
+            // via socket a immédiatement fait réapparaître la fenêtre.
+            // On rejoue donc un show() (focus) lors des 8 premiers tours
+            // (~30 s à 4 min) pour couvrir les lancements où la session
+            // n'est jamais créée, sans voler le focus au-delà de 4 min.
+            this._surfaceHealthTicks = (this._surfaceHealthTicks || 0) + 1;
+            if (this._surfaceHealthTicks <= 8 && this.win.isVisible()) {
+                logger.info('v4.2.7: startup focus pulse (force Mir session)');
+                try { this.show(); } catch (e) { /* ignore */ }
+            }
         }, 30000);
         // v4.0.66: sur UT, un pivot ne déclenche PAS display-metrics-changed ni
         // webContents resize (vérifié dans les logs : 0 événement) — la rotation

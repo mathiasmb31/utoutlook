@@ -361,17 +361,16 @@ test('command.sh: uses utoutlook_notify instead of direct notify calls', async (
         'command.sh should not call notify binary directly');
 });
 
-test('command.sh: waits for notifications before welcome', async () => {
+test('command.sh: waits for notifications service (welcome now sent by Electron)', async () => {
     const fs = await import('node:fs');
     const cmdPath = path.resolve(__dirname, '../../command.sh');
     const content = fs.readFileSync(cmdPath, 'utf-8');
     assert.ok(content.includes('utoutlook_wait_notifications'),
-        'command.sh should wait for notification service before welcome');
-    // wait should come before the welcome notification
-    const waitPos = content.indexOf('utoutlook_wait_notifications');
-    const welcomePos = content.indexOf("shell.welcome");
-    assert.ok(waitPos !== -1 && welcomePos !== -1, 'Both wait and welcome should exist');
-    assert.ok(waitPos < welcomePos, 'Wait should come before welcome notification');
+        'command.sh should wait for notification service before launching Electron');
+    // v4.2.8: le message "welcome" n'est plus envoyé par le wrapper (c'est
+    // Electron qui le fait après 10 s si la fenêtre n'est pas visible).
+    assert.ok(!content.includes('shell.welcome'),
+        'wrapper must not send the welcome notification directly (v4.2.8)');
 });
 
 test('common.sh: utoutlook_wait_notifications uses silent badge probe (no visible test notification)', async () => {
@@ -1633,6 +1632,26 @@ test('v4.2.3: identité fenêtre = état v4.0.98 (aucun --class / StartupWMClass
         'desktop must have NO StartupWMClass (v4.2.3)');
     assert.ok(!/^[^#]*sed -i[^\n]*StartupWMClass=/m.test(bump),
         'bump-version.sh must not reintroduce StartupWMClass (v4.2.3)');
+});
+
+test('v4.2.8: notification de démarrage après 10 s si fenêtre pas visible', async () => {
+    const fs = await import('node:fs');
+    const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
+    const i18n = fs.readFileSync(path.resolve(__dirname, '../src/i18n.mjs'), 'utf-8');
+    assert.ok(main.includes('mainWindowEverVisible || !process.env.WD') &&
+              main.includes('}, 10000)'),
+        'startup notification must fire after 10s only when main window not visible (v4.2.8)');
+    assert.ok(i18n.includes("UToutlook Mail démarre, veuillez patienter…"),
+        'welcome message must tell the user the app is starting (v4.2.8)');
+});
+
+test('v4.2.7: pulses de focus au démarrage pour forcer la session Mir', async () => {
+    const fs = await import('node:fs');
+    const ctl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    assert.ok(ctl.includes('_surfaceHealthTicks'),
+        'startup focus pulse counter must exist (v4.2.7)');
+    assert.ok(ctl.includes('this.show()') && ctl.includes('startup focus pulse (force Mir session)'),
+        'surface health poll must call show() to create the Mir session (v4.2.7)');
 });
 
 test('v4.2.5: quit propre détecté dès la 1re stagnation (avant SIGKILL Lomiri)', async () => {

@@ -65,15 +65,16 @@ utoutlook_t() {
 	case "${key}" in
 		# --- Shell notifications ---
 		"shell.welcome")
+			# v4.2.8: message de démarrage (fenêtre parfois lente sur device)
 			case "${lang}" in
-				en) echo "Welcome to UToutlook Mail" ;;
-				es) echo "Bienvenido a UToutlook Mail" ;;
-				de) echo "Willkommen bei UToutlook Mail" ;;
-				it) echo "Benvenuto in UToutlook Mail" ;;
-				pt) echo "Bem-vindo ao UToutlook Mail" ;;
-				zh) echo "欢迎使用 UToutlook Mail" ;;
-				ar) echo "مرحباً بك في UToutlook Mail" ;;
-				*)  echo "Bienvenue dans UToutlook Mail" ;;
+				en) echo "UToutlook Mail is starting, please wait…" ;;
+				es) echo "UToutlook Mail se está iniciando, espere…" ;;
+				de) echo "UToutlook Mail wird gestartet, bitte warten…" ;;
+				it) echo "UToutlook Mail si sta avviando, attendere…" ;;
+				pt) echo "UToutlook Mail está a iniciar, aguarde…" ;;
+				zh) echo "UToutlook Mail 正在启动，请稍候…" ;;
+				ar) echo "جارٍ بدء UToutlook Mail، يرجى الانتظار…" ;;
+				*)  echo "UToutlook Mail démarre, veuillez patienter…" ;;
 			esac ;;
 		"shell.waitClose")
 			case "${lang}" in

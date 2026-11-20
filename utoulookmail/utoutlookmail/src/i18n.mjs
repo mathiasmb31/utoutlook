@@ -734,10 +734,12 @@ const T = {
 
     // ===== Shell notifications =====
     'shell.welcome': {
-        fr: 'Bienvenue dans UToutlook Mail', en: 'Welcome to UToutlook Mail',
-        es: 'Bienvenido a UToutlook Mail', de: 'Willkommen bei UToutlook Mail',
-        it: 'Benvenuto in UToutlook Mail', pt: 'Bem-vindo ao UToutlook Mail',
-        zh: '欢迎使用 UToutlook Mail', ar: 'مرحباً بك في UToutlook Mail',
+        // v4.2.8: message de démarrage — l'utilisateur doit savoir que l'app
+        // démarre (fenêtre parfois lente à apparaître sur device).
+        fr: 'UToutlook Mail démarre, veuillez patienter…', en: 'UToutlook Mail is starting, please wait…',
+        es: 'UToutlook Mail se está iniciando, espere…', de: 'UToutlook Mail wird gestartet, bitte warten…',
+        it: 'UToutlook Mail si sta avviando, attendere…', pt: 'UToutlook Mail está a iniciar, aguarde…',
+        zh: 'UToutlook Mail 正在启动，请稍候…', ar: 'جارٍ بدء UToutlook Mail، يرجى الانتظار…',
     },
     'shell.waitClose': {
         fr: 'Veuillez attendre la fermeture d\'UToutlook', en: 'Please wait for UToutlook to close',

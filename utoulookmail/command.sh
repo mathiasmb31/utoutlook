@@ -139,7 +139,8 @@ function launch_prospect() {
 	# v4.1.0: 6 s suffisent — utoutlook_notify() réessaie déjà 3×2 s si le
 	# bus n'est pas prêt ; 15 s ajoutaient ~10 s à chaque démarrage.
 	utoutlook_wait_notifications 6
-	utoutlook_notify "$(utoutlook_t 'shell.welcome')"
+	# v4.2.8: notification de démarrage déplacée côté Electron (10 s max,
+	# seulement si la fenêtre n'est pas visible) — voir main.mjs.
 
 	# v3.3.45: native Wayland client (Lomiri session) — Maliit OSK goes through
 	# the Wayland text-input protocol, password fields included (as in 3.2.x).
@@ -478,6 +479,10 @@ export UTOUTLOOK_SWIPE_HIDDEN="${UTOUTLOOK_CONFIG_DIR}/swipe-hidden"
 # immédiatement : l'ancien se voit périmé dans utoutlook_kill_stale_wrappers.
 mkdir -p "${UTOUTLOOK_DATA_DIR}" 2>/dev/null || true
 echo $$ > "${UTOUTLOOK_DATA_DIR}/wrapper.pid" 2>/dev/null || true
+
+# v4.2.8: le message "démarrage" n'est plus envoyé ici — c'est Electron qui
+# l'envoie après 10 s SEULEMENT si la fenêtre principale n'est toujours pas
+# visible (voir main.mjs). Évite de notifier sur les démarrages rapides.
 
 # v4.0.126: afficher la barre de démarrage LE PLUS TÔT POSSIBLE — ici, avant
 # test_net (jusqu'à 6 s de sondes), avant les 3 cleanup() et avant l'attente
