@@ -21,6 +21,7 @@ import {
 } from '../config.mjs';
 import {logger} from '../logger.mjs';
 import {buildDiagnostics} from '../diagnostics.mjs';
+import {shouldShowOfflineScreen} from '../network-check.mjs';
 
 const __filenameNew = fileURLToPath(import.meta.url);
 const __dirnameNew = path.dirname(__filenameNew);
@@ -1239,7 +1240,8 @@ class MailWindowController {
             try { ipcMain.removeAllListeners(channel); } catch (e) { /* ignore */ }
         }
         for (const timer of ['cookieFlushInterval', 'observerHealthCheck', 'serverMonitor',
-                             'rotationPoll', 'keyboardHealthPoll', 'surfaceHealthPoll', 'listWatchdog']) {
+                             'rotationPoll', 'keyboardHealthPoll', 'surfaceHealthPoll', 'listWatchdog',
+                             'startupNetworkTimer']) {
             if (this[timer]) { try { clearInterval(this[timer]); } catch (e) {} this[timer] = null; }
         }
         if (this.win) MailWindowController.byWebContents.delete(this.win.webContents);
@@ -1277,6 +1279,7 @@ class MailWindowController {
         this.setupScreenEvents();
         this.setupOfflineDetection();
         this.startServerMonitor(); // v4.0.3: real in-app server reachability test
+        this.startStartupNetworkCheck(); // v4.3.7: ecran hors-ligne des le demarrage
         this.startCacheWatcher();
         this.startObserverHealthCheck();
     }
@@ -3030,7 +3033,9 @@ class MailWindowController {
         const messageKey = kind === 'server' ? 'server.message' : 'offline.message';
 
         this.win.webContents.executeJavaScript(`
-            (() => {
+            new Promise((resolve) => {
+                // v4.3.7: au demarrage, document.body peut ne pas exister encore.
+                const inject = () => {
                 // Remove existing overlay if any
                 const existing = document.getElementById('utoutlook-offline-overlay');
                 if (existing) existing.remove();
@@ -3058,7 +3063,14 @@ class MailWindowController {
                 style.textContent = '@keyframes utoutlook-spin{to{transform:rotate(360deg)}}';
                 document.head.appendChild(style);
                 document.body.appendChild(overlay);
-            })()
+                resolve(true);
+                };
+                if (document.body) inject();
+                else {
+                    const timer = setTimeout(() => { if (document.body) inject(); else resolve(false); }, 3000);
+                    document.addEventListener('DOMContentLoaded', () => { clearTimeout(timer); inject(); }, {once: true});
+                }
+            })
         `).catch(err => logger.error('Failed to show offline overlay:', err));
 
         // Notify via UBports
@@ -3088,9 +3100,10 @@ class MailWindowController {
                 return;
             }
             // v4.3.7: un vrai HEAD toutes les 3 s meme fenetre masquee coutait
-            // cher en batterie/reseau. Le serverMonitor (5 s / 30 s) continue,
-            // et le prochain tick des que la fenetre redevient visible suffit.
-            if (this.isBackgrounded()) return;
+            // cher en batterie/reseau. EXCEPTION : des que l'ecran hors-ligne est
+            // affiche, le poll doit continuer MEME si la fenetre est masquee,
+            // sinon l'app resterait bloquee sur l'ecran apres retour du reseau.
+            if (this.isBackgrounded() && !this.isOffline) return;
 
             try {
                 // v4.0.3: navigator.onLine is NOT a real network test — in
@@ -3151,6 +3164,33 @@ class MailWindowController {
      * page mail n'est pas disponible). Dès que le serveur répond à nouveau,
      * masque l'écran et notifie.
      */
+    // v4.3.7 — ecran hors-ligne NATIF (aucun qmlscene separe : un ApplicationWindow
+    // QML recreerait l'item unknown.qtmir / icone jaune, regle §2.14).
+    // En mode avion, did-fail-load peut ne jamais tirer (page Outlook en cache)
+    // et le serverMonitor met 35 s a cumuler 2 echecs. On fait donc 2 vrais
+    // tests serveur espaces de 8 s des le demarrage, puis on affiche l'overlay
+    // HTML deja traduit en 10 langues et on demarre le poll de reconnexion.
+    startStartupNetworkCheck() {
+        this.startupNetworkFailures = 0;
+        const check = async () => {
+            if (!this.win || this.win.isDestroyed()) return;
+            const reachable = await this.checkServerReachable();
+            if (reachable) {
+                this.startupNetworkFailures = 0;
+                return;
+            }
+            this.startupNetworkFailures++;
+            if (!shouldShowOfflineScreen(this.startupNetworkFailures)) {
+                this.startupNetworkTimer = setTimeout(check, 8000);
+                return;
+            }
+            logger.warn('No network at startup — showing native offline screen');
+            this.showOfflineOverlay('offline');
+            this.startConnectivityMonitor();
+        };
+        this.startupNetworkTimer = setTimeout(check, 6000);
+    }
+
     startServerMonitor() {
         if (this.serverMonitor) clearInterval(this.serverMonitor);
         // Premier test rapide après le lancement (le splash couvre les 30s,
