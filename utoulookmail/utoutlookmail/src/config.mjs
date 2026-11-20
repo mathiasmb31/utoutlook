@@ -28,9 +28,19 @@ export const EXIT_CLIENT_FILE = path.join(CONFIG_DIR, 'exitclient');
 export const ROTATION_RELAUNCH_FILE = path.join(CONFIG_DIR, 'rotation-relaunch');
 export const KILLED_CLIENT_FILE = path.join(CONFIG_DIR, 'killedmail');
 export const CLOSE_FLAG_FILE = path.join(CONFIG_DIR, 'close');
+// v4.1.0: flag écrit par le wrapper AVANT son SIGTERM. Le distinguer du
+// SIGTERM d'un swipe-close (Lomiri) permet de quitter proprement dans le
+// premier cas et de seulement masquer la fenêtre dans le second.
+export const FORCE_QUIT_FILE = path.join(CONFIG_DIR, 'wrapper-quit');
 export const INIT_FLAG_FILE = path.join(CONFIG_DIR, 'init');
 export const LOGIN_FLAG_FILE = path.join(CONFIG_DIR, 'login');
 export const NOTIF_FLAG_FILE = path.join(CONFIG_DIR, 'notif');
+// v4.0.127: override manuel du mode de rendu (auto|software|hardware), lu par
+// le wrapper command.sh et modifiable depuis le bouton de la page de login.
+export const RENDER_MODE_FILE = path.join(CONFIG_DIR, 'render-mode');
+// v4.1.0: marqueur « swipe-close » — l'app reste vivante en arrière-plan,
+// mais sa fenêtre ne doit pas être ré-affichée par le watchdog de surface.
+export const SWIPE_HIDDEN_FILE = path.join(CONFIG_DIR, 'swipe-hidden');
 
 // --- Language file (read by shell scripts for i18n) ---
 export const LANG_FILE = path.join(CONFIG_DIR, 'lang');

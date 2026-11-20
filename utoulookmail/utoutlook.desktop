@@ -7,3 +7,6 @@ Type=Application
 X-Lomiri-Touch=true
 X-Ubuntu-Touch=true
 X-Ubuntu-XMir-Enable=true
+# v4.2.3: AUCUN StartupWMClass — retour à l'état v4.0.98 (avant le commit
+# 8a40c2e qui l'avait introduit avec --class et l'icône jaune unknown.qtmir).
+# whatslectron, l'autre app Electron du device, n'en a pas et va bien.

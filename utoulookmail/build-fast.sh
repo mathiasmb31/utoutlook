@@ -21,6 +21,9 @@ mkdir -p "$ELECTRON_CACHE"
 # Nettoyer un ancien cache in-source qui bloque le out-of-source
 rm -rf "$PROJECT_DIR/CMakeCache.txt" "$PROJECT_DIR/CMakeFiles" \
        "$PROJECT_DIR/cmake_install.cmake" "$PROJECT_DIR/notify_autogen" 2>/dev/null
+# v4.1.0 (revue F4): le Makefile artisanal est préservé — ne PAS le supprimer
+# ici (un `rm -f Makefile` le détruisait au lieu de le protéger). Le true fix
+# est le build out-of-source : voir cmake -G Ninja ci-dessous et compiledeps.sh.
 
 build_cpp() {
     if [ ! -f "$BUILD_DIR/build.ninja" ]; then

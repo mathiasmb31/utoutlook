@@ -1,5 +1,7 @@
 #!/bin/bash
 # Prepare + (optionally) publish utoutlook to OpenStore
+# COPIE SYNCHRONISEE dans 4 depots : utoutlook-fix-storm, utoutlook,
+# utoutlook-release-4.1.0, vibeworkspace. Toute modif doit y etre reportee.
 set -e
 
 # Traduction automatique FR -> EN (API publiques sans clé, fallback MyMemory).
@@ -40,30 +42,70 @@ PYEOF
 }
 
 if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
-  echo "Usage: ./openstore-prepare.sh <version> [--upload "OK"]"
+  echo "Usage: ./openstore-prepare.sh [version] [--upload OK]"
   echo ""
-  echo "  ./openstore-prepare.sh 4.0.51"
-  echo "    → prépare livraison/ + publishstore/ kit, affiche le récap à montrer à Mathias"
+  echo "  ./openstore-prepare.sh"
+  echo "    → version PAR DÉFAUT = dernier click buildé localement, prépare le kit et affiche le récap"
   echo ""
-  echo "  OPENSTORE_APIKEY=... ./openstore-prepare.sh 4.0.51 --upload "OK""
-  echo "    → upload UNIQUEMENT si Mathias a dit OK explicitement (3e arg obligatoire)"
+  echo "  ./openstore-prepare.sh 4.3.6"
+  echo "    → idem avec une version explicite"
+  echo ""
+  echo "  OPENSTORE_APIKEY=... ./openstore-prepare.sh --upload OK"
+  echo "    → upload: confirmation interactive OBLIGATOIRE + OK explicite + apikey en env var"
   echo ""
   echo "Garde-fous (règles Mathias) :"
+  echo "  - Aucun upload sans confirmation interactive tapée à la main"
   echo "  - Aucun upload sans OK explicite de Mathias sur le contenu complet"
   echo "  - Test device obligatoire avant upload (adb, 0 crash)"
   echo "  - L'apikey OpenStore n'est JAMAIS écrite dans un fichier : env var uniquement"
   exit 0
 fi
 
-VERSION="${1:?Usage: $0 <version> [--upload \"OK\"]}"
-UPLOAD_OK="${3:-}"
-ROOT="$(cd "$(dirname "$0")" && pwd)"
+# v4.3.6: résoudre le VRAI chemin du script — le script peut être lancé via
+# un lien symbolique depuis un autre worktree (utoutlook/, vibeworkspace/, ...).
+# $0 pointe alors vers le lien, et ROOT serait mauvais (click introuvable).
+# On résout avec `readlink -f` (script HÔTE, pas dans le click : AppArmor ne
+# s'applique pas ici) avec repli builtin sur $0.
+_SELF="${BASH_SOURCE[0]}"
+case "$_SELF" in
+  /*) ;;
+  *) _SELF="$PWD/$_SELF" ;;
+esac
+_REAL="$(readlink -f "$_SELF" 2>/dev/null || echo "$_SELF")"
+ROOT="$(cd "$(dirname "$_REAL")" && pwd)"
 APP="utoutlook.mathias"
 cd "$ROOT"
 
+# --- Parsing des arguments (version optionnelle) ---
+VERSION=""
+UPLOAD_REQUESTED=0
+UPLOAD_OK=""
+for arg in "$@"; do
+  case "$arg" in
+    --upload) UPLOAD_REQUESTED=1 ;;
+    OK) UPLOAD_OK="OK" ;;
+    -*) echo "ERREUR: option inconnue '$arg' (voir --help)"; exit 1 ;;
+    *) [ -z "$VERSION" ] && VERSION="$arg" ;;
+  esac
+done
+
+# Version par défaut : dernier click arm64 buildé localement, repli package.json
+if [ -z "$VERSION" ]; then
+  VERSION=$(ls -1 utoulookmail/build/*/app/"${APP}"_*_arm64.click 2>/dev/null \
+    | sed -E "s|.*/${APP}_([0-9]+\.[0-9]+\.[0-9]+)_arm64\.click|\1|" \
+    | sort -V | tail -1)
+  if [ -z "$VERSION" ]; then
+    VERSION=$(grep -m1 '"version"' utoulookmail/utoutlookmail/package.json 2>/dev/null \
+      | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')
+  fi
+  [ -n "$VERSION" ] || { echo "ERREUR: impossible de déterminer la version (voir --help)"; exit 1; }
+  echo "Version par défaut détectée: $VERSION (dernier click buildé / package.json)"
+fi
+
 LIVRAISON="livraison/utoutlook-$VERSION"
 KIT="publishstore/utoutlook-$VERSION"
-CLICK="utoulookmail/build/aarch64-linux-gnu/app/${APP}_${VERSION}_arm64.click"
+# v4.1.0: glob sur les architectures (revue F24)
+CLICK=$(ls -1 utoulookmail/build/*/app/"${APP}_${VERSION}_arm64.click" 2>/dev/null | head -1)
 
 echo "=== Préparation livraison $VERSION ==="
 mkdir -p "$LIVRAISON" "$KIT/screenshots"
@@ -95,11 +137,17 @@ EOF
 fi
 
 # Kit publishstore
-cp -f "$CLICK" "$KIT/" 2>/dev/null || true
+# v4.1.0 (revue F15): échouer si le click est absent — le kit ne doit pas paraître prêt.
+[ -n "$CLICK" ] && [ -f "$CLICK" ] || { echo "ERREUR: click ${APP}_${VERSION}_arm64.click introuvable — build d'abord"; exit 1; }
+cp -f "$CLICK" "$KIT/"
 
 # whatsnew.txt : généré automatiquement depuis les commits git depuis la dernière version publiée sur OpenStore
 LAST_PUBLISHED=$(curl -sS --max-time 10 "https://open-store.io/api/v4/apps/${APP}" 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['data'].get('version',''))" 2>/dev/null || echo "")
-if [ -z "$LAST_PUBLISHED" ]; then LAST_PUBLISHED="4.0.40"; echo "(API injoignable, fallback sur $LAST_PUBLISHED)"; fi
+if [ -z "$LAST_PUBLISHED" ]; then
+  LAST_PUBLISHED=$(ls -1d livraison/utoutlook-* 2>/dev/null | sed 's|.*utoutlook-||' | sort -V | tail -1)
+  [ -z "$LAST_PUBLISHED" ] && LAST_PUBLISHED="4.0.93"
+  echo "(API injoignable, fallback sur $LAST_PUBLISHED)"
+fi
 echo "Dernière version publiée sur OpenStore: $LAST_PUBLISHED"
 
 # Commits depuis le commit de la dernière version publiée (cherché dans les messages de commit)
@@ -112,7 +160,9 @@ else
 fi
 
 # Ligne one-shot (session de débogage) — à VIDER pour les versions suivantes :
-DEBUG_SESSION_NOTE="Sign-in and 2FA work reliably again on the phone: no more login loop after quitting/relaunching, no more \"header too long\" error after the Authenticator approval, no more empty message list after rotating the screen, and closing the app no longer leaves hidden processes running. A very difficult debugging session went into fixing these — thanks for testing each build on the phone."
+# v4.1.0: version COURTE et simplifiée demandée par Mathias. ASCII uniquement
+# (garde-fou store : aucun caractère accenté dans whatsnew.txt).
+DEBUG_SESSION_NOTE="HARD DEBUG SESSION :) - A long debugging session on the phone went into this release: more reliable startup, a visible progress screen, the right app icon, and cleaner quitting and relaunching. Thanks for testing every build!"
 
 # Commits (français) -> traduction auto en anglais : le whatsnew du store DOIT être en anglais
 RAW_COMMITS=$(git log "$RANGE" --format="- %s" 2>/dev/null | sed 's/ — Tests [0-9/]*\. Version [0-9.]*\.//; s/Tests [0-9/]*\. Version [0-9.]*\.//' | head -60)
@@ -122,6 +172,11 @@ else
   TRANSLATED=""
 fi
 
+# v4.3.6: ne PAS écraser un whatsnew.txt rédigé à la main (le script l'écrasait
+# systématiquement, rendant impossible un texte soigné validé par Mathias).
+if [ -f "$KIT/whatsnew.txt" ]; then
+  echo "whatsnew.txt existant conservé (rédigé manuellement) — non écrasé."
+else
 {
   echo "Version $VERSION — $(LC_ALL=C date +"%d %B %Y")"
   echo ""
@@ -139,6 +194,7 @@ fi
   echo "Built and tested by Mathias — code written by Vibe, reviewed and controlled by Mathias."
 } > "$KIT/whatsnew.txt"
 echo "whatsnew.txt généré (traduit en anglais) depuis $LAST_PUBLISHED ($RANGE)"
+fi
 
 [ -f "$KIT/metadata.json" ] || echo '{"name":"UToutlook Mail","description":"Outlook mail client for Ubuntu Touch"}' > "$KIT/metadata.json"
 
@@ -162,26 +218,40 @@ echo ""
 echo "SHA512 du click :"
 sha512sum "$CLICK"
 
-# --- UPLOAD (uniquement si OK explicite passé en arg) ---
-if [ "$2" = "--upload" ]; then
+# --- UPLOAD (confirmation interactive + OK explicite + apikey) ---
+if [ "$UPLOAD_REQUESTED" = 1 ]; then
   if [ "$UPLOAD_OK" != "OK" ]; then
-    echo "ERREUR: upload refusé — il faut passer \"OK\" comme 3e argument (OK explicite de Mathias sur le contenu montré ci-dessus)"
+    echo "ERREUR: upload refusé — il faut passer \"OK\" en argument (OK explicite de Mathias sur le contenu montré ci-dessus)"
     exit 1
   fi
+  echo ""
+  echo "=== CONFIRMATION FINALE ==="
+  echo "Vous êtes sur le point d'envoyer $VERSION sur l'OpenStore."
+  echo "Récap affiché ci-dessus (whatsnew + SHA512) — relisez-le avant de continuer."
+  CONFIRM=""
+  read -r -p "Tapez OK en majuscules pour confirmer l'upload (autre chose = annulation) : " CONFIRM || true
+  if [ "$CONFIRM" != "OK" ]; then
+    echo "Upload ANNULÉ (confirmation non donnée). Rien n'a été envoyé."
+    exit 1
+  fi
+  echo "Confirmation reçue. Vérification de l'apikey..."
   if [ -z "$OPENSTORE_APIKEY" ]; then
     echo "ERREUR: OPENSTORE_APIKEY non défini (env var, jamais écrite dans un fichier)"
     exit 1
   fi
   echo "=== Upload OpenStore $VERSION ==="
-  curl -sS -X POST "https://open-store.io/api/v3/manage/${APP}/revision?apikey=$OPENSTORE_APIKEY" \
+  # v4.1.0: clé API jamais dans la ligne de commande (ps/logs) — curl --config sur stdin
+  printf 'url = "https://open-store.io/api/v3/manage/%s/revision?apikey=%s"\n' "$APP" "$OPENSTORE_APIKEY" | \
+  curl -sS -X POST --config - \
     -H "Expect:" \
     -F "file=@${LIVRAISON}/${APP}_${VERSION}_arm64.click" \
     -F "changelog=<${KIT}/whatsnew.txt"
   echo ""
   echo "=== Vérification store ==="
-  curl -sS "https://open-store.io/api/v4/apps/${APP}" | python3 -c "import json,sys; d=json.load(sys.stdin); print('version:', d.get('version'))"
+  curl -sS "https://open-store.io/api/v4/apps/${APP}" | python3 -c "import json,sys; d=json.load(sys.stdin); print('version:', d['data'].get('version'))"
 else
   echo ""
-  echo "Pour uploader après OK de Mathias :"
-  echo "  OPENSTORE_APIKEY=... ./openstore-prepare.sh $VERSION --upload \"OK\""
+  echo "Pour uploader après relecture du récap :"
+  echo "  OPENSTORE_APIKEY=... ./openstore-prepare.sh --upload OK"
+  echo "  (version $VERSION par défaut — ou précisez-la avant --upload)"
 fi

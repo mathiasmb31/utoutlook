@@ -5,6 +5,8 @@
 # Activer dans chaque dépôt : git config core.hooksPath githooks
 # Les .click restent en local (git add -f, gitignorés) ; procédure de push
 # filtré : base-de-connaissances/restauration-workspace-vibe-2026-11-06.md
+# v4.1.0: blocage si l'historique contient l'identité personnelle proscrite.
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ZERO=0000000000000000000000000000000000000000
 MAX_MB="${MAX_PUSH_FILE_MB:-100}"
 MAX_BYTES=$((MAX_MB * 1024 * 1024))
@@ -12,9 +14,20 @@ rc=0
 while read -r local_ref local_sha remote_ref remote_sha; do
     [ "$local_sha" = "$ZERO" ] && continue   # suppression de ref : rien à pousser
     if [ "$remote_sha" = "$ZERO" ]; then
-        range="$local_sha --not --all"        # nouvelle branche : objets inédits
+        # v4.1.0: exclure les refs distantes (et non --all qui incluait
+        # la branche locale elle-même → hook inopérant au 1er push).
+        range="$local_sha --not --remotes"
     else
         range="$remote_sha..$local_sha"
+    fi
+    # confidentialite : UNIQUEMENT les commits de CE push. --all incluait
+    # les vieux messages deja publies et les branches locales non poussees,
+    # ce qui refusait tout push meme avec un contenu propre (faux positif).
+    if [ -x "$ROOT/check-history.sh" ]; then
+      "$ROOT/check-history.sh" --strict "$range" || {
+        echo "push refusé: historique non conforme dans les commits poussés" >&2
+        rc=1
+      }
     fi
     # chemins des nouveaux objets : .click interdits
     bad=$(git rev-list --objects $range | awk '{print $2}' | grep '\.click$' | head -5)

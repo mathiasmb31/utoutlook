@@ -21,7 +21,7 @@ export function openAboutWindow() {
 
     const version = app.getVersion();
     const githubUrl = "https://github.com/mathiasmb31/utoutlookmail";
-    const donateUrl = "https://github.com/mathiasmb31/utoutlookmail";
+    const donateUrl = "https://github.com/mathiasmb31/utoutlook"; // v4.1.0: pas de page de don dédiée — lien vers le projet
 
     aboutWindow = new BrowserWindow({
         width: 450,
@@ -53,6 +53,9 @@ export function openAboutWindow() {
         tagline: t('about.tagline'),
         basedOn: t('about.basedOn'),
         reportIssue: t('about.reportIssue'),
+        githubLabel: t('about.github'),
+        donateLabel: t('about.donate'),
+        versionLabel: t('about.version'),
     });
 
     aboutWindow.loadFile(htmlPath, {
@@ -60,11 +63,16 @@ export function openAboutWindow() {
     });
 
     // Handle IPC messages for opening external links
-    ipcMain.on("open-external-url", (_event, url) => {
+    ipcMain.removeAllListeners("open-external-url");
+    ipcMain.on("open-external-url", (event, url) => {
+        if (event.sender !== aboutWindow.webContents) return;
+        if (!/^https?:\/\//i.test(url)) return; // v4.1.0: refuser file:/custom
         shell.openExternal(url);
     });
 
-    ipcMain.on("close-about-window", () => {
+    ipcMain.removeAllListeners("close-about-window");
+    ipcMain.on("close-about-window", (event) => {
+        if (event.sender !== aboutWindow.webContents) return;
         if (aboutWindow && !aboutWindow.isDestroyed()) {
             aboutWindow.close();
         }

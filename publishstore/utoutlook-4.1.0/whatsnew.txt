@@ -1,0 +1,17 @@
+Version 4.1.0 — 19 November 2026
+
+HARD DEBUG SESSION :) - A long debugging session on the phone went into this release: more reliable startup, a visible progress screen, the right app icon, and cleaner quitting and relaunching. Thanks for testing every build!
+
+Tested on Fairphone 5 (FP5) with Ubuntu Touch framework 24.04 — no guarantee on other models.
+Thanks for your feedback! :)
+
+Changes since 4.0.93:
+
+- The Quit button now really closes the app and its background wrapper. Opening the app again works as expected.
+- Startup no longer gets stuck: a progress bar shows which of the six steps is running.
+- The correct app icon is shown again in the launcher and the app switcher after a restart.
+- Starting the app no longer waits about a minute on leftover processes from a previous session.
+- If a graphics crash happens on some phones, the app can now start in software rendering, with a simple on-screen choice.
+- The login buttons stay above the on-screen keyboard, and the credits and links point to the current project.
+
+Built and tested by Mathias — code written by Vibe, reviewed and controlled by Mathias.

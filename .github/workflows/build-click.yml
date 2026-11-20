@@ -24,6 +24,9 @@ on:
 
 jobs:
   build-click:
+    # v4.1.0: respecter la règle — push main uniquement si [click] dans le
+    # message (tags v* et workflow_dispatch restent toujours actifs).
+    if: github.event_name != 'push' || github.ref_type == 'tag' || contains(github.event.head_commit.message, '[click]')
     name: Build Click (arm64)
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -71,13 +74,8 @@ jobs:
       # --------------------------------------------------------
       # 4. Upload artifacts
       # --------------------------------------------------------
-      - name: Upload click package
-        uses: actions/upload-artifact@v4
-        with:
-          name: utoutlook-click
-          path: utoulookmail/build/**/*.click
-          retention-days: 30
-          if-no-files-found: error
+      # v4.1.0: AUCUN .click ne doit être publié sur GitHub (règle Mathias).
+      # L'artifact Electron tar.gz ci-dessous suffit pour diagnostiquer la CI.
 
       - name: Upload Electron tar.gz
         uses: actions/upload-artifact@v4
@@ -114,6 +112,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ./release/*.click
             ./release/*.tar.gz
           generate_release_notes: true

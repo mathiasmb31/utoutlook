@@ -1,4 +1,4 @@
-import {app, BrowserWindow, dialog, ipcMain, Menu, shell, clipboard, Notification, nativeImage, nativeTheme, screen, session, powerMonitor, net} from 'electron';
+import {app, BrowserWindow, ipcMain, Menu, shell, clipboard, Notification, nativeImage, nativeTheme, screen, session, powerMonitor, net} from 'electron';
 import {spawn} from 'child_process';
 import getClientFile from './client-injector.mjs';
 import path from 'node:path';
@@ -16,6 +16,8 @@ import {
     ICON_PATH,
     markCleanExit,
     ROTATION_RELAUNCH_FILE,
+    RENDER_MODE_FILE,
+    SWIPE_HIDDEN_FILE,
 } from '../config.mjs';
 import {logger} from '../logger.mjs';
 
@@ -38,6 +40,9 @@ const ZOOM_LEVELS = [0.75, 0.85, 1.0, 1.15, 1.3, 1.5];
  * - Splash screen, détection hors-ligne, CSP
  */
 class MailWindowController {
+    // v4.1.0: registry webContents -> contrôleur (dispatch IPC multi-compte).
+    static byWebContents = new Map();
+
     constructor(accountConfig = null) {
         // Per-instance state (was module-level — caused cross-account leaks)
         this.mainMailServiceUrl = null;
@@ -85,9 +90,13 @@ class MailWindowController {
         this.accountName = accountConfig?.name || 'Compte principal';
         this.sessionPartition = accountConfig?.partition || 'persist:utoutlook-default';
         this.unreadCount = 0;
+        this.recreating = false; // v4.1.0 (revue E1)
+        // v4.1.0 (revue B8): registre des listeners pour destroy().
+        this._listeners = [];
+        this._ipcHandleChannels = ['get-render-mode', 'set-render-mode', 'first-install'];
         this.init();
         // Check both command-line flag and settings for initial minimization
-        const hasMinimizedFlag = global.cmdLine.indexOf("--minimized") !== -1;
+        const hasMinimizedFlag = (global.cmdLine || []).indexOf("--minimized") !== -1;
         const startMinimizedSetting = settings.get("startMinimized");
         this.initialMinimization.domReady = hasMinimizedFlag || startMinimizedSetting;
     }
@@ -163,6 +172,8 @@ class MailWindowController {
      */
     handleZoomCommand(action) {
         if (!this.win || this.win.isDestroyed()) return;
+        // v4.1.0 (revue E27): borne les facteurs reçus sur le socket non authentifié.
+        if (typeof action === 'number') action = Math.min(2, Math.max(0.5, action));
         if (action === 'in') {
             this.currentZoomIndex = Math.min(this.currentZoomIndex + 1, ZOOM_LEVELS.length - 1);
         } else if (action === 'out') {
@@ -410,7 +421,44 @@ class MailWindowController {
             } catch (e) { logger.warn('v4.0.46: restore token failed:', e.message); }
         };
 
-        ses.cookies.on('changed', (_event, cookie, _cause, removed) => {
+        // v4.1.2 (fix login invisible / tempête cookies): au chargement de la page
+        // mail, Microsoft pose des dizaines de cookies d'auth en moins de 3 s.
+        // Chaque événement 'changed' réécrivait AUTH_TOKEN_FILE (lecture + écriture
+        // disque synchrone) ET appelait flushStore() ET loggait en INFO → 334
+        // écritures/flush en ~3 s sur le device. Cette tempête sature le process
+        // renderer au moment précis où la surface Mir est déjà fragile (login),
+        // et corrélait avec la disparition de la fenêtre. On regroupe désormais
+        // l'écriture + le flush dans une fenêtre de 2 s (debounce) et on ne log
+        // plus qu'une ligne récap par lot. Le flush périodique existant
+        // (startCookieFlush) reste le garde-fou de persistance.
+        if (!this._authCookieBatch) this._authCookieBatch = new Map();
+        if (!this._authCookieBatchTimer) this._authCookieBatchTimer = null;
+        const AUTH_BATCH_MS = 2000;
+        const scheduleAuthCookieFlush = () => {
+            if (this._authCookieBatchTimer) return;
+            this._authCookieBatchTimer = setTimeout(() => {
+                this._authCookieBatchTimer = null;
+                const batch = this._authCookieBatch;
+                this._authCookieBatch = new Map();
+                if (!batch || batch.size === 0) return;
+                try {
+                    let tokens = [];
+                    if (fs.existsSync(AUTH_TOKEN_FILE)) {
+                        try { tokens = JSON.parse(fs.readFileSync(AUTH_TOKEN_FILE, 'utf8')); } catch (e) { tokens = []; }
+                    }
+                    if (!Array.isArray(tokens)) tokens = [];
+                    for (const [cname, entry] of batch) {
+                        const idx = tokens.findIndex(t => t.name === cname);
+                        if (idx >= 0) tokens[idx] = entry; else tokens.push(entry);
+                    }
+                    fs.writeFileSync(AUTH_TOKEN_FILE, JSON.stringify(tokens));
+                } catch (e) { logger.warn('v4.1.2: sauvegarde groupée token failed:', e.message); }
+                ses.cookies.flushStore().catch(() => {});
+                logger.info(`v4.1.2: ${batch.size} cookie(s) d'auth sauvegardés + flush (batch ${AUTH_BATCH_MS}ms)`);
+            }, AUTH_BATCH_MS);
+        };
+
+        this._on(ses.cookies, 'changed', (_event, cookie, _cause, removed) => {
             if (removed) return;
             const name = cookie.name || '';
             const domain = (cookie.domain || '').toLowerCase();
@@ -438,35 +486,25 @@ class MailWindowController {
                     } catch (e) { /* ignore */ }
                 })();
             }
-            // Sauvegarder dans un fichier JSON (liste de cookies) — seulement depuis login.live.com
-            // (évite de sauvegarder les copies sync sur autres domaines)
+            // v4.1.2: sauvegarder dans un fichier JSON — seulement depuis
+            // login.live.com (évite les copies sync sur autres domaines). On
+            // accumule dans un batch au lieu d'écrire + flusher + logger à
+            // chaque événement (voir commentaire du debounce plus haut).
             if (domain === 'login.live.com' || domain === '.live.com') {
-                try {
-                    let tokens = [];
-                    if (fs.existsSync(AUTH_TOKEN_FILE)) {
-                        try { tokens = JSON.parse(fs.readFileSync(AUTH_TOKEN_FILE, 'utf8')); } catch (e) { tokens = []; }
-                    }
-                    if (!Array.isArray(tokens)) tokens = [];
-                    // Mettre à jour ou ajouter ce cookie
-                    const idx = tokens.findIndex(t => t.name === name);
-                    const entry = {
-                        name: name, // v4.0.49: garder le préfixe __Host- original — Microsoft exige __Host-MSAAUTH host-only
-                        value: cookie.value,
-                        domain: cookie.domain,
-                        hostOnly: !cookie.domain || !cookie.domain.startsWith('.'), // host-only si pas de domain explicite
-                        path: cookie.path || '/',
-                        httpOnly: cookie.httpOnly || false,
-                        expirationDate: cookie.expirationDate || (Math.floor(Date.now() / 1000) + 365 * 86400),
-                        savedAt: new Date().toISOString(),
-                    };
-                    if (idx >= 0) tokens[idx] = entry; else tokens.push(entry);
-                    fs.writeFileSync(AUTH_TOKEN_FILE, JSON.stringify(tokens));
-                } catch (e) { logger.warn('v4.0.46: sauvegarde token failed:', e.message); }
+                this._authCookieBatch.set(name, {
+                    name: name, // v4.0.49: garder le préfixe __Host- original
+                    value: cookie.value,
+                    domain: cookie.domain,
+                    hostOnly: !cookie.domain || !cookie.domain.startsWith('.'),
+                    path: cookie.path || '/',
+                    httpOnly: cookie.httpOnly || false,
+                    expirationDate: cookie.expirationDate || (Math.floor(Date.now() / 1000) + 365 * 86400),
+                    savedAt: new Date().toISOString(),
+                });
+                scheduleAuthCookieFlush();
             }
-            if (AUTH_COOKIE_NAMES.test(name)) {
-                logger.info(`v4.0.47: auth cookie détecté (${name} sur ${domain}) — sauvegarde + flush`);
-            }
-            ses.cookies.flushStore().catch(() => {});
+            // v4.1.2: plus de log INFO par cookie (334 lignes en 3 s sur device).
+            // Le batch loggue un récap unique. Garder lastMailPageTime à jour.
             this.lastMailPageTime = Date.now();
             // v4.0.47: PLUS de saut direct ici — un MSAAUTH intermédiaire est posé
             // PENDANT le flux de login (avant 2FA), sauter à ce moment interrompt
@@ -1164,6 +1202,37 @@ class MailWindowController {
 
     // --- Lifecycle orchestrator ---
 
+    /** Enregistre un listener en le mémorisant pour destroy(). */
+    _on(target, event, handler) {
+        if (!target || typeof target.on !== 'function') return;
+        target.on(event, handler);
+        this._listeners.push([target, event, handler]);
+    }
+
+    /** Retire TOUS les listeners de ce contrôleur (recréation UI). */
+    destroy() {
+        for (const [target, event, handler] of this._listeners) {
+            try { target.removeListener(event, handler); } catch (e) { /* ignore */ }
+        }
+        this._listeners = [];
+        for (const channel of this._ipcHandleChannels) {
+            try { ipcMain.removeHandler(channel); } catch (e) { /* ignore */ }
+        }
+        for (const channel of ['show', 'insert-text', 'zoom', 'updateUnread', 'show-notification',
+                               'toggle-focus-mode', 'set-accent-color', 'toggle-dark-mode',
+                               'reload', 'reload-messages', 'quit-app']) {
+            try { ipcMain.removeAllListeners(channel); } catch (e) { /* ignore */ }
+        }
+        for (const timer of ['cookieFlushInterval', 'observerHealthCheck', 'serverMonitor',
+                             'rotationPoll', 'keyboardHealthPoll', 'surfaceHealthPoll', 'listWatchdog']) {
+            if (this[timer]) { try { clearInterval(this[timer]); } catch (e) {} this[timer] = null; }
+        }
+        if (this.win) MailWindowController.byWebContents.delete(this.win.webContents);
+        this.win = null;
+        this.splashWindow = null;
+        logger.info('MailWindowController destroyed (listeners removed)');
+    }
+
     init() {
         this.reloadSettings();
         this.setupCSP();
@@ -1181,7 +1250,7 @@ class MailWindowController {
         this.setupWindowOpenHandler();
         // v3.3.20: the compose window opens as a SEPARATE BrowserWindow — inject
         // the UT look & gestures there too, or it stays unstyled.
-        app.on('browser-window-created', (_e, win) => {
+        this._on(app, 'browser-window-created', (_e, win) => {
             if (win === this.win) return;
             win.webContents.on('dom-ready', () => {
                 this.injectStyles(win).catch(() => {});
@@ -1235,6 +1304,8 @@ class MailWindowController {
                 preload: path.resolve(__dirnameNew, 'splash-preload.js'),
             },
         });
+        // v4.1.0: enregistrer l'envoyeur pour le dispatch des handlers IPC.
+        if (this.win) MailWindowController.byWebContents.set(this.win.webContents, this);
 
         this.splashWindow.setMenu(null);
         // Pass translations via query params
@@ -1836,27 +1907,27 @@ class MailWindowController {
     }
 
     setupIpcHandlers() {
-        ipcMain.on("show", (event) => {
+        this._on(ipcMain, "show", (event) => {
             // Only respond if this is our window's webContents
             if (this.win && event.sender === this.win.webContents) {
                 this.show();
             }
         });
 
-        ipcMain.on("insert-text", (event, text) => {
+        this._on(ipcMain, "insert-text", (event, text) => {
             if (this.win && event.sender === this.win.webContents) {
                 this.insertText(text);
             }
         });
 
-        ipcMain.on("zoom", (event, {action}) => {
+        this._on(ipcMain, "zoom", (event, {action}) => {
             if (this.win && event.sender === this.win.webContents) {
                 this.handleZoomCommand(action);
             }
         });
 
         // Per-account unread tracking (filter by sender)
-        ipcMain.on("updateUnread", (event, value) => {
+        this._on(ipcMain, "updateUnread", (event, value) => {
             if (this.win && event.sender === this.win.webContents) {
                 this.unreadCount = value || 0;
                 if (this.onUnreadChange) {
@@ -1876,7 +1947,7 @@ class MailWindowController {
             }
         });
 
-        ipcMain.on("show-notification", (event, {title, body, icon, urgent}) => {
+        this._on(ipcMain, "show-notification", (event, {title, body, icon, urgent}) => {
             if (this.win && event.sender === this.win.webContents) {
                 // hotfix #13: skip notification when the app is in the foreground —
                 // UNLESS urgent (e.g. DOM changed alert, v3.3.21).
@@ -1889,34 +1960,34 @@ class MailWindowController {
         });
 
         // Focus mode toggle (from renderer or tray)
-        ipcMain.on("toggle-focus-mode", (event) => {
+        this._on(ipcMain, "toggle-focus-mode", (event) => {
             if (this.win && event.sender === this.win.webContents) {
                 this.toggleFocusMode();
             }
         });
 
         // Accent color change (from renderer or tray)
-        ipcMain.on("set-accent-color", (event, color) => {
+        this._on(ipcMain, "set-accent-color", (event, color) => {
             if (this.win && event.sender === this.win.webContents) {
                 this.setAccentColor(color);
             }
         });
 
         // Dark mode toggle (from renderer or tray)
-        ipcMain.on("toggle-dark-mode", (event) => {
+        this._on(ipcMain, "toggle-dark-mode", (event) => {
             if (this.win && event.sender === this.win.webContents) {
                 this.toggleDarkMode();
             }
         });
 
         // Reload (from renderer, e.g. offline.html retry button)
-        ipcMain.on("reload", (event) => {
+        this._on(ipcMain, "reload", (event) => {
             if (this.win && event.sender === this.win.webContents) {
                 this.reloadWindow();
             }
         });
         // v4.0.95: bouton « Recharger les messages » en bas de la liste
-        ipcMain.on("reload-messages", (event) => {
+        this._on(ipcMain, "reload-messages", (event) => {
             if (this.win && event.sender === this.win.webContents) {
                 this.manualReloadMessages();
             }
@@ -1924,10 +1995,37 @@ class MailWindowController {
         // v4.0.95: bouton « Quitter » — VRAI quit propre (app.quit() déclenche
         // before-quit → cleanupAndExit → exitclient + flushed cookies) pour que
         // le wrapper command.sh voie le flag et s'arrête aussi, sans swipe.
-        ipcMain.on("quit-app", (event) => {
+        this._on(ipcMain, "quit-app", (event) => {
             if (this.win && event.sender === this.win.webContents) {
                 logger.info('v4.0.95: fermeture demandée par le bouton Quitter');
                 app.quit();
+            }
+        });
+        // v4.0.127: override manuel du rendu logiciel. Le wrapper lit ce même
+        // fichier au prochain lancement (auto + bascule sur crash GPU).
+        // v4.1.0 (revue B9): un handle par compte lève "second handler" dès le
+        // 2ᵉ compte → uncaughtException → app.exit(1). On retire avant d'ajouter.
+        ipcMain.removeHandler("get-render-mode");
+        ipcMain.handle("get-render-mode", () => {
+            try { return fs.readFileSync(RENDER_MODE_FILE, 'utf-8').trim() || 'auto'; }
+            catch (e) { return 'auto'; }
+        });
+        ipcMain.removeHandler("set-render-mode");
+        ipcMain.handle("set-render-mode", (event, mode) => {
+            logger.info(`IPC set-render-mode: ${mode} (sender=${event.sender.id})`);
+            // v4.1.0 (revue C13): une page web hostile ne doit pas pouvoir
+            // écrire de façon persistante le mode de rendu.
+            // v4.1.0: accepter tout compte enregistré (le dernier handler
+            // enregistré gagne avec ipcMain.handle).
+            if (!MailWindowController.byWebContents.has(event.sender)) return false;
+            if (!['auto', 'software', 'hardware'].includes(mode)) return false;
+            try {
+                fs.writeFileSync(RENDER_MODE_FILE, mode);
+                logger.info(`v4.0.127: render-mode = ${mode} (effectif au prochain lancement)`);
+                return true;
+            } catch (e) {
+                logger.warn(`v4.0.127: impossible d'écrire render-mode: ${e.message}`);
+                return false;
             }
         });
         // v3.3.66: first-install — wipe ALL session data from the main process.
@@ -1936,28 +2034,25 @@ class MailWindowController {
         // other Microsoft domains on the next login page load. Here we remove every
         // cookie from the partition and clear all storage (localStorage, IndexedDB,
         // cache) — knownEmail lives in localStorage leveldb so it goes too.
-        // Confirmation uses a NATIVE dialog: window.confirm() is not implemented in
-        // Electron and always returns false, which made the in-page confirm inert.
+        // v4.1.0 (fix login invisible): PLUS de boîte de dialogue native.
+        // Sur Lomiri, showMessageBox() s'ouvrait hors écran / sans focus : la
+        // fenêtre principale recevait un blur, le clavier se fermait et le
+        // socket show ne pouvait pas la récupérer (dialogue modal bloquant).
+        // La confirmation se fait désormais CÔTÉ PAGE (double-tap 3 s dans
+        // gestures.js) avant d'appeler ce handler.
+        ipcMain.removeHandler("first-install");
         ipcMain.handle("first-install", async (event) => {
-            // v4.0.10: accepte aussi la splash window comme sender (bouton
-            // first-install sur le splash, ceinture et bretelles)
-            const fromMain = this.win && !this.win.isDestroyed() && event.sender === this.win.webContents;
-            const fromSplash = this.splashWindow && !this.splashWindow.isDestroyed() && event.sender === this.splashWindow.webContents;
-            if (!fromMain && !fromSplash) return false;
-            const parentWin = fromSplash ? this.splashWindow : this.win;
-            const {response} = await dialog.showMessageBox(parentWin, {
-                type: 'warning',
-                title: t('app.name'),
-                message: t('login.firstInstallConfirm'),
-                buttons: [t('common.cancel'), t('login.firstInstallConfirmAction')],
-                defaultId: 0,
-                cancelId: 0,
-                noLink: true,
-            });
-            if (response !== 1) return false;
+            logger.info(`IPC first-install (sender=${event.sender.id}) — wipe + reload`);
+            // v4.1.0: résoudre le contrôleur PROPRE à l'envoyeur — sans ça,
+            // le handler du dernier compte effaçait sa partition et refusait
+            // les autres (bouton « Première installation » sans effet).
+            const owner = MailWindowController.byWebContents.get(event.sender) ||
+                (this.splashWindow && event.sender === this.splashWindow.webContents ? this : null);
+            if (!owner) return false;
+            const fromSplash = !!(this.splashWindow && event.sender === this.splashWindow.webContents);
             try {
-                this.knownEmail = null;
-                const ses = session.fromPartition(this.sessionPartition);
+                owner.knownEmail = null;
+                const ses = session.fromPartition(owner.sessionPartition);
                 const cookies = await ses.cookies.get({});
                 for (const c of cookies) {
                     const url = `${c.secure ? 'https' : 'http'}://${c.domain.replace(/^\./, '')}${c.path || '/'}`;
@@ -1965,16 +2060,41 @@ class MailWindowController {
                 }
                 await ses.cookies.flushStore().catch(() => {});
                 await ses.clearStorageData().catch(() => {});
-                logger.info('First-install: all cookies and storage cleared');
+                // v4.1.3: vraie « première installation » — vider AUSSI les
+                // réglages persistés (electron-store settings.json) pour
+                // repartir exactement comme une installation neuve.
+                try { settings.clear(); } catch (e) { logger.warn('First-install settings clear:', e.message); }
+                logger.info('First-install: cookies, storage and settings cleared');
             } catch (e) {
                 logger.warn('First-install clear failed:', e.message);
             }
+            // v4.1.3: notifier l'utilisateur puis relancer l'application. On
+            // pose restartRequested pour que le handler 'closed' N'écrive PAS
+            // le flag exitclient : le wrapper command.sh relancera donc bien
+            // l'app (modèle éprouvé de l'import de réglages / tray redémarrage).
+            try {
+                const notifTitle = t('app.name');
+                const notifBody = t('action.firstInstallNotify');
+                owner.sendUbportsNotification(notifTitle, notifBody);
+                logger.info('First-install: notification sent');
+            } catch (e) {
+                logger.warn('First-install notification failed:', e.message);
+            }
             // v4.0.10: si appelé depuis le splash, fermer le splash (qui affichera
             // la fenêtre principale via closeSplashWindow) puis recharger
-            if (fromSplash) this.closeSplashWindow();
-            if (this.win && !this.win.isDestroyed()) {
-                this.win.loadURL('https://outlook.office.com/mail/');
+            if (fromSplash) {
+                owner.closeSplashWindow();
+                if (owner.win && !owner.win.isDestroyed()) {
+                    owner.win.loadURL('https://outlook.office.com/mail/');
+                }
+                return true;
             }
+            global.restartRequested = true;
+            // Laisser le temps à la notification D-Bus de partir avant de tuer
+            // le process (spawn détaché, mais on ménage une petite fenêtre).
+            setTimeout(() => {
+                try { app.exit(0); } catch (e) { logger.warn('First-install exit:', e.message); }
+            }, 600);
             return true;
         });
     }
@@ -2110,8 +2230,22 @@ class MailWindowController {
         // did-finish-load never fires — close the splash so the user is not
         // left staring at the spinner.
         this.win.webContents.on('render-process-gone', (_event, details) => {
-            logger.error(`Renderer process gone: ${JSON.stringify(details)} — closing splash`);
+            logger.error(`Renderer process gone: ${JSON.stringify(details)} — reloading`);
             this.closeSplashWindow();
+            // v4.1.0 (revue M6): avant, l'app restait vivante avec une page
+            // blanche et le wrapper voyait un heartbeat normal → aucune
+            // relance. On recharge la page; si ça échoue encore, on quitte
+            // proprement pour que le wrapper relance.
+            if (this.renderReloadTries >= 2) {
+                logger.error('Renderer gone twice — clean quit for wrapper relaunch');
+                try { markCleanExit(); } catch (e) { /* ignore */ }
+                app.quit();
+                return;
+            }
+            this.renderReloadTries = (this.renderReloadTries || 0) + 1;
+            setTimeout(() => {
+                if (this.alive) this.win.reload();
+            }, 1500);
         });
 
         // Insert styles and observer on DOM ready.
@@ -2236,14 +2370,18 @@ class MailWindowController {
         // window is no longer repainted → white screen on wake ("veille puis
         // écran blanc"). powerMonitor 'resume' fires from logind → force a
         // full redraw of the webContents and re-assert visibility/focus.
-        powerMonitor.on('resume', () => {
-            logger.info('powerMonitor resume — forcing window repaint (v3.3.32)');
-            if (!this.alive) return;
-            try { this.win.webContents.invalidate(); } catch (e) { logger.warn('invalidate failed:', e.message); }
-            try { if (!this.win.isVisible()) this.win.show(); } catch (e) { /* ignore */ }
-            try { this.win.focus(); } catch (e) { /* ignore */ }
+        this._on(powerMonitor, 'resume', () => {
+            logger.info('powerMonitor resume — re-surfacing window (v4.1.0)');
+            this.resurfaceWindow(true);
         });
-        powerMonitor.on('suspend', () => logger.info('powerMonitor suspend (v3.3.32)'));
+        // v4.1.0: sur le device le event 'resume' de logind n'est pas Always
+        // reçu au déverrouillage (journal : aucun "powerMonitor resume" après
+        // "gkr-pam: unlocked login keyring") — 'unlock-screen' couvre ce cas.
+        this._on(powerMonitor, 'unlock-screen', () => {
+            logger.info('powerMonitor unlock-screen — re-surfacing window (v4.1.0)');
+            this.resurfaceWindow(true);
+        });
+        this._on(powerMonitor, 'suspend', () => logger.info('powerMonitor suspend (v3.3.32)'));
     }
 
     setupWindowEvents() {
@@ -2257,12 +2395,23 @@ class MailWindowController {
             try { this.win.webContents.invalidate(); } catch (e) { /* ignore */ }
         });
         this.win.on("hide", () => logger.info('Window event: hide'));
-        this.win.on("focus", () => logger.info('Window event: focus'));
+        this.win.on("focus", () => {
+            logger.info('Window event: focus');
+            // v4.1.0 (fix login invisible): sur device, un blur pendant la saisie
+            // du login peut faire retirer la surface Mir ; le focus revient côté
+            // X mais la fenêtre reste invisible. Forcer la réintégration ici,
+            // sans voler le focus (le champ garde le focus pour l'OSK Maliit).
+            this.resurfaceWindow(false);
+        });
         this.win.on("blur", () => logger.info('Window event: blur'));
 
         // Hide instead of quit on close
         this.win.on("close", (e) => {
-            if (this.win.isVisible() && settings.get("hideOnClose")) {
+            // v4.0.125: pendant un VRAI quit (bouton Quitter / socket quit /
+            // swipe), ne PAS intercepter la fermeture — hideOnClose masquerait
+            // la fenêtre, annulerait app.quit() et laisserait l'app vivante mais
+            // invisible (heartbeat actif, wrapper.log « client is alive »).
+            if (this.win.isVisible() && settings.get("hideOnClose") && !global.utoutlookQuitting) {
                 logger.info('Window event: close intercepted (hideOnClose) → hide');
                 e.preventDefault();
                 this.win.hide();
@@ -2275,7 +2424,7 @@ class MailWindowController {
                 // (preventAutoCloseApp), hideOnClose, and v4.0.84 rotation
                 // relaunch (skipCleanExitFlag) — otherwise app.exit(0) after a
                 // pivot would write exitclient and the wrapper would NOT relaunch.
-                if (!global.preventAutoCloseApp && !global.skipCleanExitFlag) markCleanExit();
+                if (!global.preventAutoCloseApp && !global.skipCleanExitFlag && !global.restartRequested) markCleanExit();
                 logger.info('Window event: close → letting it close');
             }
         });
@@ -2291,6 +2440,24 @@ class MailWindowController {
 
         // Window closed
         this.win.on("closed", () => {
+            // v4.2.5: sur device, `this.win.webContents` peut lever
+            // "TypeError: Object has been destroyed" dans l'event 'closed'
+            // (log : exception au moment du bouton Quitter). L'exception
+            // interrompait la suite du handler (closeSplashWindow, timers,
+            // flags de propre fermeture) → pas de notification "goodbye" et
+            // flags périmés qui bloquent le relance une fois sur deux.
+            // On capture le webContents AVANT et on neutralise l'accès.
+            try {
+                const wc = this.win && !this.win.isDestroyed() ? this.win.webContents : null;
+                if (wc) MailWindowController.byWebContents.delete(wc);
+            } catch (e) { /* fenêtre déjà détruite — rien à retirer */ }
+            if (this.recreating) {
+                // v4.1.0 (revue E1): basculement du cadre — ne pas écrire
+                // exitclient ni quitter l'app pendant la recreation.
+                logger.info('closed during recreation — ignoring clean-exit');
+                this.win = null;
+                return;
+            }
             this.win = null;
             this.closeSplashWindow();
             if (this.cacheWatcher) {
@@ -2332,6 +2499,11 @@ class MailWindowController {
                 clearInterval(this.keyboardHealthPoll);
                 this.keyboardHealthPoll = null;
             }
+            // v4.1.0: stop surface re-surfacing watchdog
+            if (this.surfaceHealthPoll) {
+                clearInterval(this.surfaceHealthPoll);
+                this.surfaceHealthPoll = null;
+            }
             // v4.0.78: stop list-empty watchdog
             if (this.listWatchdog) {
                 clearInterval(this.listWatchdog);
@@ -2345,8 +2517,12 @@ class MailWindowController {
                 // write the clean-quit flag synchronously so the wrapper
                 // does not relaunch the app.
                 // v4.0.85: skip the flag on rotation relaunch (skipCleanExitFlag).
-                if (!global.skipCleanExitFlag) markCleanExit();
-                app.exit(0);
+                // v4.1.0 (revue A1/A5): ne jamais court-circuiter le quit propre
+                // en cours, ni écrire exitclient sur un relaunch réglages.
+                if (!global.skipCleanExitFlag && !global.restartRequested) markCleanExit();
+                if (!global.utoutlookQuitting && BrowserWindow.getAllWindows().length === 0) {
+                    app.exit(0);
+                }
             }
             global.preventAutoCloseApp = false;
         });
@@ -2592,14 +2768,45 @@ class MailWindowController {
     }
 
     setupScreenEvents() {
-        screen.on('display-metrics-changed', () => { this.handleDisplayChange(); });
-        screen.on('display-added', () => this.handleDisplayChange());
-        screen.on('display-removed', () => this.handleDisplayChange());
+        this._on(screen, 'display-metrics-changed', () => { this.handleDisplayChange(); });
+        this._on(screen, 'display-added', () => this.handleDisplayChange());
+        this._on(screen, 'display-removed', () => this.handleDisplayChange());
+        // v4.1.0: filet de sécurité — même sans event powerMonitor (constaté
+        // sur device), réintègre périodiquement la surface Mir si la fenêtre
+        // est censée être visible. Pas de focus volé : stealFocus = false.
+        this.surfaceHealthPoll = setInterval(() => {
+            if (!this.alive || global.utoutlookQuitting) return;
+            // v4.1.0 (revue E2): fenêtre masquée par un swipe-close — la
+            // laisser masquée, malgré isVisible() qui reste true côté Electron.
+            try {
+                if (fs.existsSync(SWIPE_HIDDEN_FILE)) {
+                    if (this.win.isVisible()) this.win.hide();
+                    return;
+                }
+            } catch (e) { /* ignore */ }
+            if (this.win.isVisible()) this.resurfaceWindow(false);
+
+            // v4.2.7: device 20/11 10:18 — l'app tournait, Electron disait
+            // "Main window became visible" et isVisible()=true, mais Lomiri
+            // n'avait AUCUNE session Mir (journal : aucun onSessionStarting).
+            // Le bounds-nudge/invalidate seul ne suffit pas : c'est le
+            // focus() de show() qui force QtMir à créer la session. Un `show`
+            // via socket a immédiatement fait réapparaître la fenêtre.
+            // On rejoue donc un show() (focus) lors des 8 premiers tours
+            // (~30 s à 4 min) pour couvrir les lancements où la session
+            // n'est jamais créée, sans voler le focus au-delà de 4 min.
+            this._surfaceHealthTicks = (this._surfaceHealthTicks || 0) + 1;
+            if (this._surfaceHealthTicks <= 8 && this.win.isVisible()) {
+                logger.info('v4.2.7: startup focus pulse (force Mir session)');
+                try { this.show(); } catch (e) { /* ignore */ }
+            }
+        }, 30000);
         // v4.0.66: sur UT, un pivot ne déclenche PAS display-metrics-changed ni
         // webContents resize (vérifié dans les logs : 0 événement) — la rotation
         // est faite au niveau compositor. On POLL la rotation de l'écran et on
         // force setBounds + invalidate + repaint de la liste quand elle change.
         this.lastDisplayKey = '';
+        this.appStartedAt = Date.now(); // v4.3.1: ignore les fausses rotations au démarrage
         this.lastRotationTime = 0; // v4.0.78: timestamp de la dernière rotation détectée
         this.mailListReady = false; // v4.0.85: true quand la page mail (liste des messages) est atteinte
         // v4.0.89: watchdog clavier — après une relance post-rotation, le focus
@@ -2607,7 +2814,13 @@ class MailWindowController {
         // n'envoie alors plus rien. Toutes les 3 s, si la page n'a plus le focus
         // document, on restaure le focus fenêtre + renderer.
         this.keyboardHealthPoll = setInterval(() => {
-            if (!this.win || this.win.isDestroyed() || !this.mailListReady) return;
+            // v4.0.125: ne pas réveiller le clavier / refocuser une fenêtre
+            // pendant le quit (sinon logs blur/focus sur une fenêtre cachée).
+            if (global.utoutlookQuitting) return;
+            // v4.1.0 (revue D18): ne pas voler le focus d'une fenêtre masquée
+            // volontairement (swipe-close).
+            if (!this.alive || !this.win.isVisible() || !this.mailListReady) return;
+            try { if (fs.existsSync(SWIPE_HIDDEN_FILE)) return; } catch (e) { /* ignore */ }
             this.win.webContents.executeJavaScript('document.hasFocus()').then(has => {
                 if (!has && this.win && !this.win.isDestroyed()) {
                     logger.info('v4.0.89: perte de focus document détectée — restauration clavier (win.focus + wakeVirtualKeyboard)');
@@ -2638,9 +2851,31 @@ class MailWindowController {
                 const first = this.lastDisplayKey === '';
                 this.lastDisplayKey = key;
                 if (first) { this.recentDisplayKeys = [keyOriented]; return; } // ne rien faire au démarrage
+                // v4.3.1: au démarrage, la fenêtre passe brièvement en paysage
+                // avant d'être redimensionnée (device 20/11 : "rotation détectée
+                // (0|612x1350|win 612x1298)" alors que rien n'a bougé). Cette
+                // fausse rotation affiche relaunch.qml qui vole la session Mir.
+                // On ignore toute détection pendant les 15 premières secondes.
+                if (Date.now() - this.appStartedAt < 15000) {
+                    this.recentDisplayKeys = [keyOriented];
+                    return;
+                }
+                // v4.3.5: oublier un état transitoire dès qu'on revient à un
+                // état connu (capteur USB : portrait → paysage → portrait).
+                if (this.recentDisplayKeys.includes(keyOriented)) this._pendingRotationKey = null;
                 // v4.0.77: déclenche si l'état courant n'a pas été vu récemment
                 // (détecte A→B→A rapide) ; intervalle 500 ms pour la réactivité.
                 if (!this.recentDisplayKeys.includes(keyOriented)) {
+                    // v4.3.5: DEBOUNCE — le débranchement/rebranchement USB fait
+                    // délirer l'accéléromètre (journal 20/11 12:12:57-12:13:00 :
+                    // portrait → paysage → inconnu en 2 s) → fausse rotation →
+                    // relaunch.qml → perte de la session Mir → app paraît plantée.
+                    // On n'accepte un nouvel état que s'il persiste 3 ticks (1,5 s).
+                    if (this._pendingRotationKey !== keyOriented) {
+                        this._pendingRotationKey = keyOriented;
+                        return;
+                    }
+                    this._pendingRotationKey = null;
                     this.lastRotationTime = Date.now(); // v4.0.78: pour le watchdog liste vide
                     // v4.0.99: réécrire le flag de rotation pour le wrapper —
                     // depuis v4.0.94 l'app ne quitte plus au pivot, donc le
@@ -2959,6 +3194,11 @@ class MailWindowController {
             appName: tr['app.name'],
             emptyTitle: tr['empty.title'],
             emptyBody: tr['empty.body'],
+            observerDomChanged: tr['observer.domChanged'],
+            reminderFallback: tr['notif.calendar.reminderFallback'],
+            calendarAt: tr['notif.calendar.at'],
+            calendarUntil: tr['notif.calendar.until'],
+            calendarLocation: tr['notif.calendar.location'],
         });
         // executeJavaScript returns a Promise — catch rejections to avoid
         // unhandled rejections when the page is navigating or not ready.
@@ -2988,6 +3228,9 @@ class MailWindowController {
             firstInstall: tr['login.firstInstall'],           // v3.3.63: bouton first-install sur la page de login
             firstInstallConfirm: tr['login.firstInstallConfirm'],
             firstInstallConfirmAction: tr['login.firstInstallConfirmAction'],
+            // v4.0.127: bouton « rendu logiciel » sur la page de login
+            renderSoftwareEnable: tr['render.enable'],
+            renderSoftwareDisable: tr['render.disable'],
         });
         win.webContents.executeJavaScript(
             `window.__utoutlookI18n = Object.assign(window.__utoutlookI18n||{}, ${i18nJson});\n` +
@@ -3017,6 +3260,10 @@ class MailWindowController {
             reloadMessages: tr['overlay.reloadMessages'],
             reloading: tr['overlay.reloading'], // feedback immédiat au clic
             quitApp: tr['common.quit'], // bouton Quitter (déjà traduit en 8 langues)
+            // v4.1.3: boutons de la barre — first-install + notification
+            actionFirstInstall: tr['action.firstInstall'],
+            actionFirstInstallConfirm: tr['action.firstInstallConfirm'],
+            actionFirstInstallNotify: tr['action.firstInstallNotify'],
         });
         this.win.webContents.executeJavaScript(
             `window.__utoutlookI18n = Object.assign(window.__utoutlookI18n||{}, ${i18nJson});\n` + script
@@ -3064,6 +3311,7 @@ class MailWindowController {
      * Bascule la visibilité de la fenêtre (show/hide).
      */
     toggleWindow() {
+        if (!this.alive) return; // v4.1.0 (revue D19)
         if (this.win.isVisible()) {
             this.win.hide();
         } else {
@@ -3076,8 +3324,64 @@ class MailWindowController {
      * Recharge la page Outlook.
      */
     reloadWindow() {
+        if (!this.alive) return; // v4.1.0 (revue D19)
         this.initialMinimization.domReady = false;
         this.win.reload();
+    }
+
+    /**
+     * v4.1.0: "re-surface" — sur UT/Lomiri, après un verrouillage/déverrouillage
+     * ou un changement de session Mir, la fenêtre reste MapViewable côté X
+     * (isVisible() === true, heartbeat actif) mais le shell ne compose plus sa
+     * surface : l'app paraît fermée alors qu'elle vit. Forcer un passage
+     * alwaysOnTop puis invalidate() oblige Mir à réintégrer la surface, sans
+     * win.hide() (interdit : crash GPU FATAL sur UT, voir v4.0.39).
+     */
+    resurfaceWindow(stealFocus = false) {
+        if (!this.alive || global.utoutlookQuitting) return;
+        try { if (fs.existsSync(SWIPE_HIDDEN_FILE)) return; } catch (e) { /* ignore */ }
+        if (!this.win.isVisible()) {
+            try { this.win.show(); } catch (e) { /* ignore */ }
+        }
+        try {
+            this.win.setAlwaysOnTop(true);
+            setTimeout(() => {
+                if (this.alive) {
+                    try { this.win.setAlwaysOnTop(false); } catch (e) { /* ignore */ }
+                }
+            }, 150);
+        } catch (e) { /* ignore */ }
+        // v4.1.8 (fix récidive 19/11 : surface perdue que le +1px ne ramène pas) :
+        // constaté sur device — après un blur, Lomiri/Mir retire la surface mais
+        // isVisible() reste true, show() est un no-op, et le pulse alwaysOnTop +
+        // invalidate + nudge +1px ne la réintègrent PAS. On force un VRAI
+        // unmap/remap en déplaçant la fenêtre HORS ÉCRAN puis en la restaurant :
+        // c'est un changement de géométrie que le window manager (Mir) ne peut
+        // pas ignorer. PAS de hide() (crash GPU FATAL, v4.0.39) ni de minimize()
+        // (intercepts hideOnMinimize → hide). Le déplacement est restauré après
+        // 250 ms ; garde `_resurfaceNudgePending` pour éviter les chevauchements.
+        if (!this._resurfaceNudgePending) {
+            this._resurfaceNudgePending = true;
+            try {
+                const b = this.win.getBounds();
+                // Décalage horizontal réel (40 px) : suffisant pour que Mir
+                // re-map la surface, sans sortir du écran au point de la perdre.
+                this.win.setBounds({ ...b, x: b.x + 40 });
+                setTimeout(() => {
+                    if (this.alive && this.win && !this.win.isDestroyed()) {
+                        try { this.win.setBounds(b); } catch (e) { /* ignore */ }
+                    }
+                    this._resurfaceNudgePending = false;
+                }, 250);
+            } catch (e) {
+                this._resurfaceNudgePending = false;
+            }
+        }
+        try { this.win.webContents.invalidate(); } catch (e) { /* ignore */ }
+        if (stealFocus) {
+            try { this.win.focus(); } catch (e) { /* ignore */ }
+        }
+        logger.info('v4.1.0: window re-surfaced (alwaysOnTop pulse + bounds nudge + invalidate)');
     }
 
     /**

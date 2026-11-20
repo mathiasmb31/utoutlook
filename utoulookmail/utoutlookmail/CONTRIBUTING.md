@@ -15,8 +15,8 @@ Before you begin:
 
 - Install [git](https://git-scm.com/) and [Node.js](https://nodejs.org/) v22.x LTS
 - Read the [README.md](README.md)
-- Check existing [issues](https://github.com/julian-alarcon/prospect-mail/issues)
-  and [pull requests](https://github.com/julian-alarcon/prospect-mail/pulls) to
+- Check existing [issues](https://github.com/mathiasmb31/utoutlook/issues)
+  and [pull requests](https://github.com/mathiasmb31/utoutlook/pulls) to
   avoid duplicate work
 
 ## Development Setup
@@ -27,7 +27,7 @@ git clone https://github.com/YOUR-USERNAME/prospect-mail.git
 cd prospect-mail
 
 # Add upstream remote
-git remote add upstream https://github.com/julian-alarcon/prospect-mail.git
+git remote add upstream https://github.com/mathiasmb31/utoutlook.git
 
 # Install and run
 npm install
@@ -342,7 +342,7 @@ and include:
 If you need help or have questions:
 
 - Check the [README.md](README.md) for general documentation
-- Look through existing [issues](https://github.com/julian-alarcon/prospect-mail/issues)
+- Look through existing [issues](https://github.com/mathiasmb31/utoutlook/issues)
 - Create a new issue with your question
 - Be specific and provide context
 
