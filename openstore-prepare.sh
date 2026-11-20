@@ -1,5 +1,7 @@
 #!/bin/bash
 # Prepare + (optionally) publish utoutlook to OpenStore
+# COPIE SYNCHRONISEE dans 4 depots : utoutlook-fix-storm, utoutlook,
+# utoutlook-release-4.1.0, vibeworkspace. Toute modif doit y etre reportee.
 set -e
 
 # Traduction automatique FR -> EN (API publiques sans clé, fallback MyMemory).
