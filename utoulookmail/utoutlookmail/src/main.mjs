@@ -4,7 +4,8 @@ import AccountManager from './account-manager.mjs';
 import {TrayController} from './controller/tray-controller.mjs';
 import {startSocketServer, stopSocketServer} from './ipc-socket.mjs';
 import {logger} from './logger.mjs';
-import {setLanguage} from './i18n.mjs';
+import {setLanguage, t} from './i18n.mjs';
+import {execFile} from 'node:child_process';
 import {resolveLanguage, writeLangFile, settings} from './settings.mjs';
 import {
     CONFIG_DIR,
@@ -94,6 +95,24 @@ let windowEverVisible = false;
 // looks like it "does not start" while the process and heartbeat are alive.
 let mainWindowEverVisible = false;
 let appInstance = null;
+
+// v4.2.8: message utilisateur APRÈS 10 s seulement si la fenêtre principale
+// n'est toujours pas visible — sur device, l'app peut mettre du temps à
+// apparaître et l'utilisateur se demande ce qui se passe. Pas de notification
+// sur les démarrages rapides. Notification shell via le binaire embarqué
+// (jamais de fenêtre QML : elle recréerait l'item unknown.qtmir / icône jaune).
+setTimeout(() => {
+    if (!process.env.WD) return;
+    // v4.2.9: NE PAS se fier à mainWindowEverVisible — sur device il peut
+    // passer à true alors que Lomiri n'a aucune session Mir (journal 20/11
+    // 10:18). On vérifie la fenêtre RÉELLE : visible ET focalisée. Si elle
+    // n'est pas focalisée, la surface n'est pas réellement affichée.
+    const win = appInstance?.mailController?.win;
+    if (win && !win.isDestroyed() && win.isVisible() && win.isFocused()) return;
+    try {
+        execFile(`${process.env.WD}/bin/notify`, [t('shell.welcome')], () => {});
+    } catch (e) { /* ignore */ }
+}, 10000).unref();
 
 // v4.2.6: écrire un heartbeat SYNCHRONE dès le chargement du module. Sur device,
 // l'intervalle de 2 s mettait parfois 30 s à produire son 1er tick (event loop
