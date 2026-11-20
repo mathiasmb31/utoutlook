@@ -2053,7 +2053,7 @@ test('v4.0.3: periodic server monitor shows "server not responding" overlay afte
         'did-fail-load handler must run an immediate server check to pick the right overlay (v4.0.3)');
 });
 
-test('v4.0.3: i18n has server.* and notif.server* keys in all 8 languages', async () => {
+test('v4.0.3: i18n has server.* and notif.server* keys in all 10 languages', async () => {
     const {t, setLanguage, getAvailableLanguages} = await import('../src/i18n.mjs');
     const keys = ['server.title', 'server.message', 'notif.serverUnreachable.title', 'notif.serverReachable.title'];
     for (const lang of Object.keys(getAvailableLanguages())) {
@@ -2063,6 +2063,26 @@ test('v4.0.3: i18n has server.* and notif.server* keys in all 8 languages', asyn
             assert.ok(translated !== key, `Missing ${key} for ${lang} (v4.0.3)`);
             assert.ok(translated.length > 0, `Empty ${key} for ${lang} (v4.0.3)`);
         }
+    }
+});
+
+// v4.3.7: garde-fou i18n — les 10 langues (dont ca/eu) doivent avoir le même
+// nombre de clés traduites. Le vieux test ne parlait que de 8 langues.
+test('v4.3.7: i18n coverage is complete in all 10 languages', async () => {
+    const {getAvailableLanguages, getTranslationCoverage} = await import('../src/i18n.mjs');
+    const langs = Object.keys(getAvailableLanguages());
+    assert.strictEqual(langs.length, 10, 'exactly 10 languages must be registered');
+    assert.deepStrictEqual(
+        langs.slice().sort(),
+        ['ar', 'ca', 'de', 'en', 'es', 'eu', 'fr', 'it', 'pt', 'zh'],
+        'catalan (ca) and basque (eu) must be present (v4.3.0)'
+    );
+    const coverage = getTranslationCoverage();
+    const reference = coverage.fr;
+    assert.ok(reference > 0, 'French catalogue must not be empty');
+    for (const lang of langs) {
+        assert.strictEqual(coverage[lang], reference,
+            `${lang} has ${coverage[lang]}/${reference} translated keys — incomplete catalogue`);
     }
 });
 
@@ -2797,7 +2817,7 @@ test('v4.1.0 (analyse approfondie): correctifs applicatifs et outillage', async 
         'IPC handlers must dispatch to the controller owning the sender (M4)');
 
     // reload button visible when the list is broken
-    assert.ok(reload.includes("reload.style.display = listReady() ? '' : 'none'") &&
+    assert.ok(reload.includes("reload.style.display = ready ? '' : 'none'") &&
               !reload.includes("a.style.setProperty('overflow', 'visible'"),
         'reload button must be available on broken lists without breaking scroll (renderer #4/#5)');
     assert.ok(ctl.includes('render-process-gone') && ctl.includes('this.win.reload()'),
@@ -2816,4 +2836,29 @@ test('v4.1.0 (analyse approfondie): correctifs applicatifs et outillage', async 
               buildFast.includes('"$PROJECT_DIR/CMakeCache.txt"') &&
               !buildFast.includes('rm -f "$PROJECT_DIR/Makefile"'),
         'build-fast must clean in-source cmake artifacts WITHOUT deleting the real Makefile (F4)');
+});
+
+// ============================================================
+// v4.3.7 — transition « liste prête » (glass discret, une seule fois)
+// ============================================================
+
+test('v4.3.7: list-ready glass effect is one-shot and respects reduced motion', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const btn = fs.readFileSync(path.join(here, '../public/reload-button.js'), 'utf-8');
+    const css = fs.readFileSync(path.join(here, '../public/main.css'), 'utf-8');
+
+    assert.ok(btn.includes("const READY_CLASS = 'utoutlook-list-ready'"),
+        'list-ready class name must be defined (v4.3.7)');
+    assert.ok(btn.includes('if (ready && !lastListReady) signalListReady()'),
+        'glass effect must play only on the false -> true transition (v4.3.7)');
+    assert.ok(btn.includes('clearTimeout(listReadyFxTimer)'),
+        'repeated ensure() calls must not restart the animation (v4.3.7)');
+    assert.ok(css.includes('@keyframes utoutlook-list-glass-in'),
+        'glass keyframes must exist in the injected CSS (v4.3.7)');
+    assert.ok(css.includes('prefers-reduced-motion: reduce') &&
+              css.includes('animation: none !important'),
+        'reduced-motion users must get no animation (v4.3.7)');
 });

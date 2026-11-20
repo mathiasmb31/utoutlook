@@ -929,6 +929,23 @@ const T = {
     },
 };
 
+/**
+ * v4.3.7: couverture des catalogues — nombre de clés réellement traduites
+ * dans chaque langue. Sert de test de non-régression i18n (10 langues).
+ * @returns {Object} Map lang code → number of translated keys
+ */
+export function getTranslationCoverage() {
+    const result = {};
+    for (const lang of Object.keys(LANGUAGES)) result[lang] = 0;
+    for (const entry of Object.values(T)) {
+        for (const lang of Object.keys(result)) {
+            const value = entry[lang];
+            if (typeof value === 'string' && value.length > 0) result[lang] += 1;
+        }
+    }
+    return result;
+}
+
 // --- Current language ---
 let currentLang = DEFAULT_LANG;
 
@@ -1005,4 +1022,4 @@ export function detectLanguage(locale) {
     return LANGUAGES[code] ? code : DEFAULT_LANG;
 }
 
-export default { t, setLanguage, getLanguage, getAvailableLanguages, getAllTranslations, detectLanguage, LANGUAGES };
+export default { t, setLanguage, getLanguage, getAvailableLanguages, getAllTranslations, getTranslationCoverage, detectLanguage, LANGUAGES };
