@@ -1634,13 +1634,15 @@ test('v4.2.3: identité fenêtre = état v4.0.98 (aucun --class / StartupWMClass
         'bump-version.sh must not reintroduce StartupWMClass (v4.2.3)');
 });
 
-test('v4.2.8: notification de démarrage après 10 s si fenêtre pas visible', async () => {
+test('v4.2.9: notification de demarrage apres 10 s si fenetre pas reellement affichee', async () => {
     const fs = await import('node:fs');
     const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
     const i18n = fs.readFileSync(path.resolve(__dirname, '../src/i18n.mjs'), 'utf-8');
-    assert.ok(main.includes('mainWindowEverVisible || !process.env.WD') &&
+    assert.ok(main.includes('win.isVisible() && win.isFocused()') &&
               main.includes('}, 10000)'),
-        'startup notification must fire after 10s only when main window not visible (v4.2.8)');
+        'startup notification must check the real window (visible AND focused) after 10s (v4.2.9)');
+    assert.ok(!main.includes('mainWindowEverVisible || !process.env.WD'),
+        'must NOT rely on mainWindowEverVisible which can lie when no Mir session (v4.2.9)');
     assert.ok(i18n.includes("UToutlook Mail démarre, veuillez patienter…"),
         'welcome message must tell the user the app is starting (v4.2.8)');
 });
