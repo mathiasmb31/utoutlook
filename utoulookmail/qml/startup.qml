@@ -8,6 +8,12 @@ import QtQuick.Window 2.2
 // v4.0.108: Window (QtQuick.Window) et NON ApplicationWindow (QtQuick.Controls)
 // — ApplicationWindow n'existe pas sous qmlscene sur Ubuntu Touch
 // ("ApplicationWindow is not a type" dans startup-qml.log).
+// v4.1.0: PAS DE FICHIER EXTERNE. Une tentative v4.0.126 chargeait le texte
+// d'étape depuis /tmp/utoutlook-start-step.qml via un Loader — AppArmor refuse
+// la lecture de ce fichier sur le click installé (startup-qml.log :
+// "file:///tmp/utoutlook-start-step.qml: Permission denied"), ce qui faisait
+// échouer l'écran et laissait l'utilisateur bloqué sur la splash Lomiri.
+// Le numéro d'étape reste disponible via les notifications shell i18n.
 Window {
     visible: true
     flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint

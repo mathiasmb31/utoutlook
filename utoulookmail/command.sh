@@ -6,8 +6,18 @@
 # fermeture). SIGKILL ne peut pas être trappé, d'où le kill actif du fils dans
 # close_command. Un flag évite la double exécution (signal → exit → EXIT trap).
 CLOSE_DONE=0
+# v4.2.4: BARRE QML DE DÉMARRAGE DÉSACTIVÉE — cause confirmée de l'icône jaune.
+# Device 23:05 : avec la barre (v4.2.3) l'item `unknown.qtmir` apparaît dès
+# l'affichage des écrans QML ; sans elle (v4.2.4), 0 item, 0 message AppMan
+# « app that's not in the Launcher model », plus de double icône ni de splash
+# bloqué. La barre avait été ajoutée en v4.0.105, juste après la v4.0.98
+# saine signalée par Mathias. Le watchdog du wrapper est inchangé.
+export UTOUTLOOK_DISABLE_STARTUP_QML=1
 trap 'if [ "${CLOSE_DONE}" -eq 0 ]; then CLOSE_DONE=1; close_command; fi' EXIT
-trap 'exit 0' TERM INT HUP
+# v4.1.0 (revue A3): mémoriser que la sortie vient de Lomiri (swipe-close)
+# pour ne pas transformer ce signal en quit propre côté Electron.
+LOMIRI_TERM=0
+trap 'LOMIRI_TERM=1; exit 0' TERM INT HUP
 
 function sleep_int() {
 	# Fallback si le binaire embarqué est absent (ex: pendant une mise à jour,
@@ -26,8 +36,16 @@ function cleanup() {
 	# pidfile != $$ and exits SILENTLY. Otherwise it writes the close flag /
 	# sends the socket quit, which can kill the NEW instance right after its
 	# first launch ("app exits immediately on first start, then relaunches").
+	# v4.1.0: ne jamais écraser le pidfile d'un wrapper PLUS RÉCENT encore
+	# vivant — sinon les deux s'entretuent (revue pré-release, F3).
+	local _pf="${UTOUTLOOK_DATA_DIR}/wrapper.pid" _owner=""
+	[ -f "${_pf}" ] && _owner=$("${WD}"/bin/cat "${_pf}" 2>/dev/null | "${WD}"/bin/tr -d '[:space:]')
+	if [ -n "${_owner}" ] && [ "${_owner}" != "$$" ] && kill -0 "${_owner}" 2>/dev/null; then
+		echo "wrapper $$ périmé (owner=${_owner}) — sortie"
+		exit 0
+	fi
 	mkdir -p "${UTOUTLOOK_DATA_DIR}" 2>/dev/null || true
-	echo $$ > "${UTOUTLOOK_DATA_DIR}/wrapper.pid" 2>/dev/null || true
+	echo $$ > "${_pf}" 2>/dev/null || true
 	# v4.0.11: our client is being killed — reset PID so the exitclient guard
 	# does not mistake a flag written by the dying process for a clean quit.
 	CLIENT_PID=0
@@ -50,7 +68,62 @@ function cleanup() {
 	fi
 }
 
+# v4.1.0: flags GPU recalculés à chaque lancement — le mode peut basculer
+# automatiquement entre deux tentatives (voir flip_render_mode).
+# Electron 44 ne fournit plus libEGL.so/libGLESv2.so : les anciens flags ANGLE
+# font échouer le GPU process (error_code=1002) puis FATAL. Le mode logiciel
+# utilise donc --in-process-gpu + compositing CPU.
+function compute_gpu_options() {
+	local mode="$1"
+	if [ "${mode}" = "software" ]; then
+		gpuoptions="--in-process-gpu --disable-gpu --disable-gpu-compositing --enable-unsafe-swiftshader --disable-features=VaapiVideoDecoder,AcceleratedVideoDecoder"
+	else
+		gpuoptions="--in-process-gpu --disable-features=VaapiVideoDecoder,AcceleratedVideoDecoder"
+	fi
+}
+
+# v4.1.0: après un échec de démarrage (heartbeat jamais écrit ou mort), tenter
+# l'AUTRE mode d'affichage avant d'abandonner, avec un message i18n.
+# Max 2 bascules par session pour éviter la boucle hardware <-> software.
+function flip_render_mode() {
+	if [ "${RENDER_FLIPS:-0}" -ge 2 ]; then
+		echo "auto render fallback skipped (${RENDER_FLIPS} flips this session)"
+		return 1
+	fi
+	# v4.3.2: ne JAMAIS rebasculer quand on est DEJA en software — le message
+	# "passage en software" s'affichait alors que le mode etait deja software.
+	# RENDER_MODE est deja resolu au demarrage (utoutlook_resolve_render_mode) :
+	# s'il vaut software, on ne touche a rien et on ne notifie pas.
+	if [ "${RENDER_MODE:-}" = "software" ]; then
+		echo "already software — no flip, no notification"
+		return 0
+	fi
+	local cur new
+	# Lecture avec le BUILTIN read (les binaires cat/tr externes renvoyaient
+	# vide au moment du flip : log "auto render fallback:  -> software").
+	cur=""
+	[ -f "${UTOUTLOOK_RENDER_MODE_FILE}" ] && read -r cur < "${UTOUTLOOK_RENDER_MODE_FILE}" 2>/dev/null || true
+	cur="${cur//[[:space:]]/}"
+	case "${cur}" in
+		software|on|1)
+			echo "already software (file) — no flip, no notification"
+			return 0
+			;;
+		*) new="software" ;;
+	esac
+	printf '%s' "${new}" > "${UTOUTLOOK_RENDER_MODE_FILE}" 2>/dev/null || true
+	RENDER_MODE="${new}"
+	RENDER_FLIPS=$(( ${RENDER_FLIPS:-0} + 1 ))
+	compute_gpu_options "${RENDER_MODE}"
+	echo "auto render fallback: ${cur} -> ${new} (launchtry=${launchtry}, flip ${RENDER_FLIPS}/2)"
+	utoutlook_notify "$(utoutlook_t 'shell.autoFallback')"
+}
+
 function launch_prospect() {
+	# v4.1.0 (revue M2): heartbeat propre après un relaunch.
+	"${WD}"/bin/rm -f "${filelifefollow}" 2>/dev/null || true
+	oldfollow=""
+	stagnantCount=0
 	cleanup
 	if [[ -f ${lock} ]]; then
 		utoutlook_notify "$(utoutlook_t 'shell.waitClose')"
@@ -60,32 +133,29 @@ function launch_prospect() {
 		cleanup
 		echo "tried too more " >${exitcommand}
 		utoutlook_write_qml_i18n
-		qmlscene "${WD}"/qml/nonetwork.qml &
+		qmlscene "${UTOUTLOOK_CONFIG_DIR}"/nonetwork.qml &
 		QML_PID=$!  # v4.0.58: pour que close_command puisse le tuer (pas d'orphelin)
 		wait ${QML_PID} 2>/dev/null || true  # le wrapper reste vivant tant que la page nonetwork est affichée
 		exit 0
 	fi
 	export APPDIR=${WD}/bin/App/
 
-	# v4.0.106: afficher la barre de progression MAINTENANT — juste après le
-	# cleanup ci-dessus (qui tue les vieux qmlscene) et AVANT l'attente du
-	# service de notifications (jusqu'à 15 s) et le démarrage d'Electron.
-	# L'ancien emplacement (après launch_prospect) était trop tard : la splash
-	# Lomiri était déjà passée. On ferme d'abord une barre précédente éventuelle
-	# (relaunch) pour ne pas en empiler plusieurs.
-	if [ -n "${STARTUP_QML_PID}" ]; then
-		kill "${STARTUP_QML_PID}" 2>/dev/null || true
-		wait "${STARTUP_QML_PID}" 2>/dev/null || true
-		STARTUP_QML_PID=""
+	# v4.0.126: la barre est désormais lancée au tout début du wrapper (avant
+	# test_net et les cleanup). Ici on met seulement à jour l'étape affichée,
+	# et on la relance si elle a disparu entre-temps.
+	utoutlook_set_start_step 5
+	if ! utoutlook_startup_qml_alive; then
+		start_startup_qml
+		utoutlook_set_start_step 5
 	fi
-	qmlscene "${WD}"/qml/startup.qml > "${UTOUTLOOK_CONFIG_DIR}/startup-qml.log" 2>&1 &
-	STARTUP_QML_PID=$!
-	echo "startup progress screen shown (qml pid ${STARTUP_QML_PID})"
 
 	# Wait for notification service to be ready before sending welcome
 	# (D-Bus Postal may not be up yet on first launch / boot)
-	utoutlook_wait_notifications 15
-	utoutlook_notify "$(utoutlook_t 'shell.welcome')"
+	# v4.1.0: 6 s suffisent — utoutlook_notify() réessaie déjà 3×2 s si le
+	# bus n'est pas prêt ; 15 s ajoutaient ~10 s à chaque démarrage.
+	utoutlook_wait_notifications 6
+	# v4.2.8: notification de démarrage déplacée côté Electron (10 s max,
+	# seulement si la fenêtre n'est pas visible) — voir main.mjs.
 
 	# v3.3.45: native Wayland client (Lomiri session) — Maliit OSK goes through
 	# the Wayland text-input protocol, password fields included (as in 3.2.x).
@@ -94,6 +164,7 @@ function launch_prospect() {
 	# whether OUR client is alive; used to ignore exitclient flags written by
 	# a dying older process during upgrade.
 	CLIENT_PID=$!
+	utoutlook_set_start_step 6 # v4.1.0: Electron lancé, page en chargement
 	# v4.0.65: enregistrer le VRAI pid du fils (kill_prospect_pids/prospect_alive
 	# l'utilisent — le pidfile ne contenait que des pids de wrapper avant)
 	echo "${CLIENT_PID}" >> "${UTOUTLOOK_PID_FILE}" 2>/dev/null || true
@@ -102,19 +173,17 @@ function launch_prospect() {
 
 function verify_prospect_life() {
 
-	# v4.0.99: depuis v4.0.94 la rotation ne fait plus quitter l'app (reload
-	# simple) — le heartbeat ne meurt donc plus et l'ancien affichage de la roue
-	# (uniquement dans la branche « heartbeat dead ») ne se declenchait jamais.
-	# On detecte desormais le flag frais ecrit par Electron des la rotation,
-	# meme si l'app est toujours vivante. La roue est fermee en bas de boucle
-	# des que le socket repond (avec un minimum de 5 s d'affichage).
-	if [ -f "${rotationflag}" ] && utoutlook_flag_fresh "${rotationflag}" \
-	   && [ -z "${RELAUNCH_QML_PID}" ]; then
+	# v4.3.6: PLUS DE ROUE SUR SIMPLE ROTATION — depuis v4.0.94 la rotation ne
+	# fait plus quitter l'app (Electron recharge la page lui-meme) : le heartbeat
+	# ne meurt pas, l'app est vivante. L'ancien code (v4.0.99) affichait quand
+	# meme relaunch.qml des qu'un flag rotation frais apparaissait. Or cette
+	# fenetre QML PLEIN ECRAN recouvre l'app, VOLE la session Mir et declenche
+	# une cascade de repaints + reinit de l'observer ("No inbox element found")
+	# → l'app parait bloquee, l'utilisateur ferme et relance en rafale (vu 20/11
+	# 12h30). On supprime simplement l'affichage : la roue ne reste que pour le
+	# vrai cas "heartbeat mort -> relance" (branche plus bas).
+	if [ -f "${rotationflag}" ]; then
 		"${WD}"/bin/rm -f "${rotationflag}" 2>/dev/null || true
-		qmlscene "${WD}"/qml/relaunch.qml > "${UTOUTLOOK_CONFIG_DIR}/relaunch-qml.log" 2>&1 &
-		RELAUNCH_QML_PID=$!
-		RELAUNCH_QML_SHOWN_AT=${EPOCHSECONDS:-0} # v4.0.107: builtin bash — /usr/bin/date est interdit par AppArmor
-		echo "rotation relaunch screen shown (app still alive, qml pid ${RELAUNCH_QML_PID})"
 	fi
 
 	# v3.3.10: si un wrapper plus récent a pris la main (pidfile != $$), on sort
@@ -156,10 +225,10 @@ function verify_prospect_life() {
 		# mtime guard le protège, autant ne pas le poser).
 		echo "heartbeat never started — cleaning and relaunching (try ${launchtry})"
 		echo "******" && utoutlook_notify "$(utoutlook_t 'shell.cleaning')"
-		# v4.0.36: watchdog — on retry (launchtry>1) with no heartbeat, the splash
-		# is likely stuck: tell the user to relaunch manually.
+		# v4.1.0: au 2e échec, basculer automatiquement de mode d'affichage
+		# (message i18n) au lieu de demander à l'utilisateur de relancer.
 		if [ "${launchtry}" -gt 1 ]; then
-			utoutlook_notify "$(utoutlook_t 'shell.pleaseRelaunch')"
+			flip_render_mode || utoutlook_notify "$(utoutlook_t 'shell.pleaseRelaunch')"
 		fi
 		stagnantCount=0
 		startupGrace=0
@@ -175,6 +244,17 @@ function verify_prospect_life() {
 		# l'écriture du heartbeat, wrapper orphelin, etc.).
 		stagnantCount=$((stagnantCount + 1))
 		echo "heartbeat stagnant (${stagnantCount}/2)"
+		# v4.2.5: SUR DEVICE, Lomiri SIGKILL le wrapper (~3-5 s) dès que la
+		# fenêtre se ferme — avant la 2e stagnation (≈6 s). Résultat : le flag
+		# exitclient n'était jamais lu, le wrapper mourait sans trap EXIT
+		# (pas de notification "goodbye"), et les flags périmés bloquaient le
+		# relance une fois sur deux. Dès la 1re stagnation, si l'app a écrit
+		# un exitclient FRAIS et NOUS APPARTENANT, c'est un vrai quit : sortir
+		# immédiatement (le trap EXIT enverra "goodbye" et nettoiera).
+		if utoutlook_flag_fresh "${exitclient}" && utoutlook_exitclient_ours "${exitclient}"; then
+			echo "exitclient flag present (ours, fresh) at ${stagnantCount}/2 — clean quit, wrapper exits now"
+			exit 0
+		fi
 		if [ ${stagnantCount} -ge 2 ]; then
 			# v3.3.28: heartbeat stopped — but if the app wrote its clean-quit
 			# flag (window closed by swipe / SIGTERM; written synchronously
@@ -196,12 +276,16 @@ function verify_prospect_life() {
 			echo ${oldfollow}
 			# v3.3.9: nettoyer puis RELANCER au lieu de quitter (limite launchtry>3).
 			echo "heartbeat dead — cleaning and relaunching (try ${launchtry})"
+			# v4.1.0: même bascule automatique sur heartbeat mort (hors quit propre).
+			if [ "${launchtry}" -gt 1 ]; then
+				flip_render_mode || true
+			fi
 			# v4.0.91: si l'app a quitté pour un changement d'orientation (flag
 			# frais), afficher une roue plein écran pendant la relance — elle est
 			# tuée dès que le nouvel app répond sur le socket (voir boucle while).
 			if [ -f "${rotationflag}" ] && utoutlook_flag_fresh "${rotationflag}"; then
 				"${WD}"/bin/rm -f "${rotationflag}" 2>/dev/null || true
-				qmlscene "${WD}"/qml/relaunch.qml > "${UTOUTLOOK_CONFIG_DIR}/relaunch-qml.log" 2>&1 &
+				qmlscene -I "${UTOUTLOOK_CONFIG_DIR}" "${WD}"/qml/relaunch.qml > "${UTOUTLOOK_CONFIG_DIR}/relaunch-qml.log" 2>&1 &
 				RELAUNCH_QML_PID=$!
 				RELAUNCH_QML_SHOWN_AT=${EPOCHSECONDS:-0} # v4.0.107: builtin bash — /usr/bin/date est interdit par AppArmor
 				echo "rotation relaunch screen shown (qml pid ${RELAUNCH_QML_PID})"
@@ -288,12 +372,23 @@ function close_command() {
 	# down is refused with a "please wait" message (the bug happened when the
 	# user tapped the icon before the goodbye notification was sent).
 	echo "closing" > "${UTOUTLOOK_CLOSING}" 2>/dev/null || true
-	# Send quit command via Unix socket (primary method)
-	utoutlook_send_socket_cmd '{"cmd":"quit"}'
+	# v4.1.0 (revue A3): sur swipe-close Lomiri, NE PAS envoyer le quit —
+	# l'app doit seulement masquer sa fenêtre et garder les notifications.
+	if [ "${LOMIRI_TERM:-0}" = "1" ]; then
+		# v4.1.0 (revue E2): signaler à l'app orpheline que sa fenêtre doit
+		# rester masquée (le watchdog surface ne doit pas la ré-afficher).
+		printf 'swipe' > "${UTOUTLOOK_SWIPE_HIDDEN}" 2>/dev/null || true
+	else
+		utoutlook_send_socket_cmd '{"cmd":"quit"}'
+		"${WD}"/bin/rm -f "${UTOUTLOOK_SWIPE_HIDDEN}" 2>/dev/null || true
+	fi
 	# Fallback: write close flag file (picked up by heartbeat)
 	# v4.0.14: embed wrapper PID so the app only honors OUR close flag
 	echo "closed:${UTOUTLOOK_WRAPPER_PID}" >"${UTOUTLOOK_EXITCOMMAND}"
-	utoutlook_notify "$(utoutlook_t 'shell.goodbye')"
+	# v4.3.3: le "goodbye" est envoye par Electron des que le bouton Quitter
+	# est presse (cleanupAndExit) — ici Lomiri tue le wrapper par SIGKILL avant
+	# que la notification parte, ce qui la faisait apparaitre au lancement
+	# suivant. Ne pas le renvoyer ici (doublon + retard).
 	# v4.0.105: tuer la barre de démarrage si l'app ferme avant qu'elle ne se ferme
 	if [ -n "${STARTUP_QML_PID}" ]; then
 		kill "${STARTUP_QML_PID}" 2>/dev/null || true
@@ -310,7 +405,10 @@ function close_command() {
 	# socket/flag seuls : si l'app est pendue ou si le wrapper a reçu SIGKILL,
 	# personne ne le tue et il reste orphelin indéfiniment. kill sur notre propre
 	# fils = même label AppArmor, autorisé.
-	if [ -n "${CLIENT_PID}" ] && [ "${CLIENT_PID}" != "0" ] && kill -0 "${CLIENT_PID}" 2>/dev/null; then
+	if [ "${LOMIRI_TERM:-0}" != "1" ] && [ -n "${CLIENT_PID}" ] && [ "${CLIENT_PID}" != "0" ] && kill -0 "${CLIENT_PID}" 2>/dev/null; then
+		# v4.1.0: flag wrapper-quit → vrai quit propre (l'app reapera ses
+		# sous-process Chromium) au lieu d'un hide puis SIGKILL.
+		printf 'quit:%s' "$$" > "${UTOUTLOOK_FORCE_QUIT}" 2>/dev/null || true
 		kill -TERM "${CLIENT_PID}" 2>/dev/null || true
 		_w=0
 		while [ ${_w} -lt 5 ] && kill -0 "${CLIENT_PID}" 2>/dev/null; do
@@ -318,6 +416,7 @@ function close_command() {
 			_w=$((_w + 1))
 		done
 		kill -9 "${CLIENT_PID}" 2>/dev/null || true
+		"${WD}"/bin/rm -f "${UTOUTLOOK_FORCE_QUIT}" 2>/dev/null || true
 		wait "${CLIENT_PID}" 2>/dev/null || true # v4.0.99: récupérer le zombie
 	fi
 	# v4.0.58: idem pour un éventuel qmlscene nonetwork.qml lancé par ce wrapper
@@ -331,7 +430,21 @@ function close_command() {
 	exit 0
 }
 
-export WD=$(pwd)
+# v4.1.11: `pwd` (builtin) lit le VRAI cwd (/proc/<pid>/cwd), qui est le dossier
+# du click même quand la variable d'env PWD est périmée (/home/phablet) — cas
+# vécu avec les relances setsid. `pwd -P` résout les liens symboliques (ex:
+# /.click/users/@all -> /opt/click.../<version>). On garde un garde-fou : si
+# le cwd ne contient pas 'utoutlook.mathias', on tente de le déduire de $0.
+export WD="$(pwd -P 2>/dev/null || pwd)"
+case "$WD" in
+  *utoutlook.mathias*) ;;
+  *)
+    _SRC="${BASH_SOURCE[0]}"
+    case "$_SRC" in
+      *utoutlook.mathias*) WD="${_SRC%/bin/command.sh}" ;;
+    esac
+    ;;
+esac
 echo "$WD"
 
 # Source shared functions and path constants
@@ -370,11 +483,93 @@ export socketpath="${UTOUTLOOK_SOCKET}"
 # tell a close flag written by ITS wrapper apart from one written by a dying
 # older wrapper (race: old wrapper writes "closed" after the new one cleaned up).
 export UTOUTLOOK_WRAPPER_PID=$$
+export UTOUTLOOK_SWIPE_HIDDEN="${UTOUTLOOK_CONFIG_DIR}/swipe-hidden"
+"${WD}"/bin/rm -f "${UTOUTLOOK_SWIPE_HIDDEN}" 2>/dev/null || true
+# v4.1.0: repartir d'un pidfile vide (revue M1).
+: > "${UTOUTLOOK_DATA_DIR}/__prospect.pid" 2>/dev/null || true
+
+# v4.1.0: prendre la propriété du wrapper AVANT toute attente. Sans ça, deux
+# wrappers lancés à ~20 s d'intervalle (Lomiri relance pendant que le 1er
+# attend encore) s'entretuent via le scan pgrep, et le plus ancien reprend
+# tout son démarrage → étape 3 bloquée ~45 s. Le plus récent gagne désormais
+# immédiatement : l'ancien se voit périmé dans utoutlook_kill_stale_wrappers.
+mkdir -p "${UTOUTLOOK_DATA_DIR}" 2>/dev/null || true
+echo $$ > "${UTOUTLOOK_DATA_DIR}/wrapper.pid" 2>/dev/null || true
+
+# v4.2.8: le message "démarrage" n'est plus envoyé ici — c'est Electron qui
+# l'envoie après 10 s SEULEMENT si la fenêtre principale n'est toujours pas
+# visible (voir main.mjs). Évite de notifier sur les démarrages rapides.
+
+# v4.0.126: afficher la barre de démarrage LE PLUS TÔT POSSIBLE — ici, avant
+# test_net (jusqu'à 6 s de sondes), avant les 3 cleanup() et avant l'attente
+# du service de notifications (15 s). Les nettoyages ne la tuent plus :
+# utoutlook_kill_qmlscene() préserve notre STARTUP_QML_PID.
+function start_startup_qml() {
+	if utoutlook_startup_qml_alive; then
+		return 0
+	fi
+	utoutlook_write_qml_i18n
+	UTOUTLOOK_STARTUP_LAUNCHING=1
+	utoutlook_set_start_step "${1:-1}"
+	UTOUTLOOK_STARTUP_LAUNCHING=0
+	utoutlook_kill_qmlscene # v4.1.0: préserve STARTUP_QML_PID et RELAUNCH_QML_PID
+	# v4.2.4: ne pas créer la fenêtre QML de démarrage (voir note en tête de
+	# fichier — c'était elle qui créait l'item inconnu `unknown.qtmir`).
+	if [ "${UTOUTLOOK_DISABLE_STARTUP_QML:-0}" = "1" ]; then
+		echo "startup QML bar disabled (experiment v4.2.4)"
+		return 0
+	fi
+	qmlscene "${UTOUTLOOK_STARTUP_QML}" > "${UTOUTLOOK_CONFIG_DIR}/startup-qml.log" 2>&1 &
+	STARTUP_QML_PID=$!
+	echo "startup progress screen shown early (qml pid ${STARTUP_QML_PID})"
+}
+
+# v4.0.128: écran de secours rendu logiciel / OpenGL. Affiché uniquement
+# après un crash GPU FRAIS et sans override manuel. Le QML ne peut pas écrire
+# de fichier : il loggue UT_RENDER_CHOICE=... sur stdout puis sort avec un
+# code distinct (10=software, 11=opengl) — le code de sortie sert de secours
+# si le buffer stdout n'est pas vidé. v4.1.0: fenêtre activée (focus Mir) et
+# délai porté à 30 s (retour utilisateur : clic pas capté / trop rapide).
+function show_render_rescue() {
+	local log="${UTOUTLOOK_CONFIG_DIR}/render-rescue-qml.log"
+	local qpid i=0 rc=0
+	utoutlook_write_rescue_qml # v4.1.0: généré dans le dossier de l'app (AppArmor)
+	: > "${log}" 2>/dev/null || true
+	qmlscene "${UTOUTLOOK_CONFIG_DIR}"/render-rescue.qml > "${log}" 2>&1 &
+	qpid=$!
+	while [ ${i} -lt 30 ] && kill -0 "${qpid}" 2>/dev/null; do
+		sleep_int 1
+		i=$((i + 1))
+	done
+	if kill -0 "${qpid}" 2>/dev/null; then
+		kill "${qpid}" 2>/dev/null || true
+		wait "${qpid}" 2>/dev/null || true
+		echo "render rescue timeout (30s) — keeping automatic software mode"
+		return
+	fi
+	wait "${qpid}" 2>/dev/null || rc=$?
+	echo "render rescue: qmlscene exit=$rc"
+	if [ "${rc}" -eq 11 ] || "${UTOUTLOOK_BIN}/grep" -qa 'UT_RENDER_CHOICE=opengl' "${log}" 2>/dev/null; then
+		printf 'hardware' > "${UTOUTLOOK_RENDER_MODE_FILE}" 2>/dev/null || true
+		RENDER_MODE="hardware"
+		echo "render rescue: OpenGL chosen"
+	elif [ "${rc}" -eq 10 ] || "${UTOUTLOOK_BIN}/grep" -qa 'UT_RENDER_CHOICE=software' "${log}" 2>/dev/null; then
+		printf 'software' > "${UTOUTLOOK_RENDER_MODE_FILE}" 2>/dev/null || true
+		RENDER_MODE="software"
+		echo "render rescue: software chosen"
+	else
+		echo "render rescue: no choice marker — keeping automatic software mode"
+	fi
+}
 
 ###init
 declare -i i=0
+start_startup_qml # v4.0.126: écran visible dès la 1re ligne active
+utoutlook_set_start_step 2
 test_net
+utoutlook_set_start_step 3
 export launchtry=1
+RENDER_FLIPS=0  # v4.1.0: max 2 bascules auto par session
 
 oldfollow="0"
 startupGrace=0
@@ -401,25 +596,29 @@ export UTOUTLOOK_WRAPPER_MARKER="${UTOUTLOOK_CONFIG_DIR}/.wrapper-start"
 # while dying, which made the NEXT launch slow-then-exit. Kill everything that
 # looks like a previous utoutlook instance, wait for them to die, then clear
 # every lifecycle flag so this launch starts from a clean slate.
-"${WD}"/bin/pkill -9 -f "bin/App/prospect-mail" 2>/dev/null || true
+# v4.1.0: SIGTERM (avec flag wrapper-quit) plutôt que SIGKILL — un SIGKILL
+# du process principal orphelinait ses sous-processus Chromium → zombies.
+printf 'quit:%s' "$$" > "${UTOUTLOOK_FORCE_QUIT}" 2>/dev/null || true
+"${WD}"/bin/pkill -TERM -f "bin/App/prospect-mail" 2>/dev/null || true
 # v4.0.62: pkill/pgrep -f sont aveugles sous AppArmor (ne voient pas les autres
 # process) — tuer AUSSI via les pidfiles enregistrés et le scan /proc/*/exe.
 prospect_alive() {
-	if "${UTOUTLOOK_BIN}/pgrep" -f "bin/App/prospect-mail" >/dev/null 2>&1; then return 0; fi
-	local _pid
-	[ -f "${UTOUTLOOK_PID_FILE}" ] || return 1
-	while IFS= read -r _pid; do
-		_pid=$("${WD}"/bin/tr -d '[:space:]' <<<"${_pid}")
-		[ -n "${_pid}" ] && kill -0 "${_pid}" 2>/dev/null && return 0
-	done < "${UTOUTLOOK_PID_FILE}"
-	return 1
+	# v4.1.0: délègue à utoutlook_prospect_running() qui IGNORE les zombies —
+	# sinon pgrep -f/kill -0 voient les <defunct> (parent 1) comme vivants et
+	# la boucle d'attente tourne 10 s pour rien (~50 s au total sur l'étape 3).
+	utoutlook_prospect_running
 }
 kill_prospect_pids() {
 	local _pid
 	[ -f "${UTOUTLOOK_PID_FILE}" ] || return 0
 	while IFS= read -r _pid; do
 		_pid=$("${WD}"/bin/tr -d '[:space:]' <<<"${_pid}")
-		[ -n "${_pid}" ] && kill -9 "${_pid}" 2>/dev/null || true
+		# v4.1.0: TERM d'abord (wrapper-quit est posé) — SIGKILL en dernier
+		# recours seulement dans utoutlook_kill_app() après 5 s d'attente.
+		# v4.1.0: ne jamais envoyer TERM à un PID périmé/recyclé (revue M1).
+		if [ -n "${_pid}" ] && utoutlook_pid_is_prospect "${_pid}" && ! utoutlook_pid_is_zombie "${_pid}"; then
+			kill -TERM "${_pid}" 2>/dev/null || true
+		fi
 	done < "${UTOUTLOOK_PID_FILE}"
 	utoutlook_kill_by_proc 2>/dev/null || true
 }
@@ -428,16 +627,9 @@ kill_prospect_pids
 # AppArmor) to quit cleanly via the shared Unix socket — same socket path for
 # all versions, so the quit command reaches even an old-version process.
 utoutlook_send_socket_cmd '{"cmd":"quit"}'
-# v4.0.30: kill stale wrappers too (except ourselves) so they release the flock
-# v4.0.65: pgrep -f est aveugle sous AppArmor → scan /proc/*/cmdline (lecture
-# des process même label autorisée ; les autres labels échouent silencieusement)
-for _d in /proc/[0-9]*; do
-	_p=${_d#/proc/}
-	[ "${_p}" = "$$" ] && continue
-	if "${WD}"/bin/grep -qa 'bin/command\.sh' "${_d}/cmdline" 2>/dev/null; then
-		kill -9 "${_p}" 2>/dev/null || true
-	fi
-done
+# v4.1.0: suppression du scan /proc inconditionnel (revue M3) — il pouvait
+# faire s'entretuer deux wrappers. utoutlook_kill_stale_wrappers() gère
+# l'arbitrage via pidfile + vérification /proc/cmdline.
 # v4.0.25: wait actively (max ~10s) for ALL old prospect-mail processes to die
 # before launching — Lomiri SIGTERMs the process on swipe-close and a dying old
 # process can rewrite lifecycle flags while the new one starts (race → "slow
@@ -461,7 +653,12 @@ done
 # process isn't usable") si on relance trop vite après un kill. 2 s laissent
 # au compositor le temps de libérer les ressources.
 sleep_int 2
-"${WD}"/bin/rm -f ${exitclient} ${killedclient} "${UTOUTLOOK_EXITCOMMAND}" "${UTOUTLOOK_CLOSING}" 2>/dev/null || true
+# v4.1.0: l'étape 3 (extinction des anciens process) peut durer ~50 s —
+# on passe à l'étape 4 dès qu'ils sont morts, avant les nettoyages suivants.
+utoutlook_set_start_step 4
+# v4.1.0: NE PAS supprimer UTOUTLOOK_CLOSING ici — le bloc ci-dessous doit
+# pouvoir le voir (revue pré-release, F4 : code mort).
+"${WD}"/bin/rm -f ${exitclient} ${killedclient} "${UTOUTLOOK_EXITCOMMAND}" 2>/dev/null || true
 cleanup
 "${WD}"/utils/mkdir
 "${WD}"/bin/rm -f "${HOME}/.cache/utoutlook.mathias/quit"
@@ -482,25 +679,24 @@ if utoutlook_socket_ping; then
 fi
 # v4.0.37: refuse to launch while a previous instance is still closing (flag
 # set between SIGTERM and the goodbye notification, removed after). Wait up to
-# 15s for the flag to disappear; if it never does (ghost), remove it and launch.
+# 8s for the flag to disappear; if it never does (ghost), remove it and launch.
 # v4.0.61: a closing flag OLDER than this wrapper's start marker is a ghost
 # (previous wrapper was SIGKILLed before finishing the goodbye) — do NOT wait
-# 15s on it, remove it and launch immediately. Only a FRESH flag (previous
+# 8s on it, remove it and launch immediately. Only a FRESH flag (previous
 # instance still closing right now) triggers the short wait.
 if [ -f "${UTOUTLOOK_CLOSING}" ]; then
 	if utoutlook_flag_fresh "${UTOUTLOOK_CLOSING}"; then
 		echo "app is closing — waiting for goodbye before launching (pid $$)"
 		_i=0
-		while [ ${_i} -lt 5 ] && [ -f "${UTOUTLOOK_CLOSING}" ]; do
-			# v4.0.69: renotifier à chaque itération — une notif D-Bus ne dure que
-			# quelques secondes, le message d'attente doit rester visible pendant
-			# toute la fermeture (jusqu'à 15 s)
+		# v4.1.0: 4×2 s = 8 s au lieu de 5×3 s = 15 s — la notification est
+		# rejouée à chaque tour, inutile d'attendre plus pour un flag frais.
+		while [ ${_i} -lt 4 ] && [ -f "${UTOUTLOOK_CLOSING}" ]; do
 			utoutlook_notify "$(utoutlook_t 'shell.pleaseWait')"
-			sleep_int 3
+			sleep_int 2
 			_i=$((_i + 1))
 		done
 		if [ -f "${UTOUTLOOK_CLOSING}" ]; then
-			echo "closing flag stuck >15s (ghost) — removing and launching (pid $$)"
+			echo "closing flag stuck >8s (ghost) — removing and launching (pid $$)"
 		else
 			echo "closing finished — launching (pid $$)"
 		fi
@@ -588,15 +784,57 @@ scaling="$((appScaling / 115)).$(printf '%02d' "$((appScaling % 115))")"
 
 dpioptions="--high-dpi-support=1 --force-device-scale-factor=$scaling  --text-font-size=$textFontSize --span-font-size=$spanFontSize"
 sandboxoptions="--no-sandbox"
+# v4.2.3: RETOUR À L'ÉTAT v4.0.98 — plus AUCUN --class, plus aucun
+# APP_CLASS_ID. C'est le commit 8a40c2e (v4.1.0) qui a INTRODUIT
+# `--class=utoutlook.mathias_utoutlook` + StartupWMClass + setDesktopName
+# et, dans la foulée, l'icône jaune `unknown.qtmir` (le user confirme :
+# aucun problème en v4.0.98). whatslectron, l'autre app Electron du device,
+# ne passe aucun --class et n'a pas d'icône jaune. On restaure donc
+# exactement le comportement v4.0.98 : Electron garde son identité par
+# défaut, le wrapper reste process principal (watchdog préservé).
 # v3.3.8: --in-process-gpu instead of --disable-gpu --disable-software-rasterizer.
-# On the phone there is no reliable hardware GPU and libvk_swiftshader.so was
-# removed from the package: with --disable-software-rasterizer there was NO
-# fallback, and when Chromium still tried to spawn its separate GPU process and
-# failed 3x (error_code=1002, intermittent — memory/timing), it hit
-# FATAL "GPU process isn't usable. Goodbye." and killed the whole app
-# (the intermittent startup crash). In-process GPU never spawns a separate
-# process, so that FATAL can no longer happen; software raster stays enabled.
+# With --disable-software-rasterizer there was NO fallback, and when Chromium
+# tried to spawn a separate GPU process and failed 3x (error_code=1002),
+# it hit FATAL "GPU process isn't usable. Goodbye." and killed the app.
+# In-process GPU avoids that FATAL; software raster stays enabled.
 gpuoptions="--in-process-gpu --disable-features=VaapiVideoDecoder,AcceleratedVideoDecoder"
+
+# v4.0.127: rendu logiciel automatique après un crash GPU (OnePlus N10 et
+# modèles similaires — avis OpenStore du 13/11), avec override fichier.
+# SwiftShader est conservé dans le click depuis cette version (afterPack.mjs).
+# v4.0.128: si le passage en logiciel vient d'un crash GPU FRAIS (et que
+# l'utilisateur n'a pas déjà forcé un mode), laisser un choix visible 8 s
+# avant de lancer Electron. Sinon, appliquer directement (mode auto silencieux).
+GPU_CRASH_NEW=0
+CUR_RENDER_MODE=""
+if [ -f "${UTOUTLOOK_RENDER_MODE_FILE}" ]; then
+	CUR_RENDER_MODE=$("${UTOUTLOOK_BIN}/cat" "${UTOUTLOOK_RENDER_MODE_FILE}" 2>/dev/null | "${UTOUTLOOK_BIN}/tr" -d '[:space:]')
+fi
+if [ -z "${CUR_RENDER_MODE}" ] || [ "${CUR_RENDER_MODE}" = "auto" ]; then
+	if utoutlook_gpu_crash_is_new; then GPU_CRASH_NEW=1; fi
+fi
+
+RENDER_MODE=$(utoutlook_resolve_render_mode)
+
+if [ ${GPU_CRASH_NEW} -eq 1 ]; then
+	# fermer la barre de progression pour que l'écran de secours soit seul
+	if [ -n "${STARTUP_QML_PID}" ]; then
+		kill "${STARTUP_QML_PID}" 2>/dev/null || true
+		wait "${STARTUP_QML_PID}" 2>/dev/null || true
+		STARTUP_QML_PID=""
+	fi
+	show_render_rescue
+	start_startup_qml # réafficher la barre après le choix
+	utoutlook_set_start_step 5
+fi
+
+compute_gpu_options "${RENDER_MODE}"
+if [ "${RENDER_MODE}" = "software" ]; then
+	echo "software rendering enabled (render-mode=${RENDER_MODE})"
+	utoutlook_notify "$(utoutlook_t 'shell.softwareMode')"
+else
+	echo "hardware rendering (render-mode=${RENDER_MODE})"
+fi
 
 echo "launch utoutlookmail"
 
@@ -604,8 +842,8 @@ echo "----------------------------------------------------------------------"
 
 echo "----------------------------------------------------------------------"
 launch_prospect
-# v4.0.106: la barre est maintenant lancée DANS launch_prospect, avant
-# l'attente notifications — ici on ne fait rien de plus.
+# v4.0.126: la barre est lancée au début du wrapper (voir start_startup_qml),
+# bien avant test_net / cleanup / attente notifications — ici rien de plus.
 
 sleep_int 15
 while true; do
@@ -619,6 +857,11 @@ while true; do
 		kill "${RELAUNCH_QML_PID}" 2>/dev/null || true
 		wait "${RELAUNCH_QML_PID}" 2>/dev/null || true # v4.0.99: récupérer le zombie
 		RELAUNCH_QML_PID=""
+		# v4.3.1: la fenêtre QML de relance prend la session Mir ; quand on
+		# la tue, Electron ne récupère PAS la sienne (device 20/11 11:15 :
+		# faux rotation -> relaunch.qml -> app vivante mais invisible, un
+		# `show` socket recréait la session). On renvoie `show` après fermeture.
+		utoutlook_send_socket_cmd '{"cmd":"show"}'
 		echo "relaunch screen closed — client is back"
 	fi
 
@@ -631,6 +874,7 @@ while true; do
 		kill "${RELAUNCH_QML_PID}" 2>/dev/null || true
 		wait "${RELAUNCH_QML_PID}" 2>/dev/null || true
 		RELAUNCH_QML_PID=""
+		utoutlook_send_socket_cmd '{"cmd":"show"}' # v4.3.1: récupérer la session Mir
 		echo "relaunch screen closed — watchdog timeout (20s) — client is back"
 	fi
 

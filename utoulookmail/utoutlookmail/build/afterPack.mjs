@@ -7,9 +7,6 @@ import { join } from 'node:path';
 
 export default async function afterPack(context) {
   const appOutDir = context.appOutDir;
-  const isArm64 = context.arch === 'arm64';
-
-  let saved = 0;
   const log = (msg) => console.log(`[afterPack] ${msg}`);
 
   const tryRemove = (relPath) => {
@@ -24,15 +21,17 @@ export default async function afterPack(context) {
     }
   };
 
-  // --- Fichiers inutiles sur UT (GPU désactivé, --no-sandbox) ---
-  tryRemove('LICENSES.chromium.html');       // 20 Mo — licences, inutile en prod
-  tryRemove('LICENSE.electron.txt');          // licence Electron, inutile
-  tryRemove('libvk_swiftshader.so');          // 17 Mo — rendu Vulkan software
-  tryRemove('libvulkan.so.1');                // 2.5 Mo — Vulkan loader
-  tryRemove('vk_swiftshader_icd.json');       // config Vulkan
+  // v4.1.0 (revue F22): CONSERVER les textes de licence — obligations de
+  // redistribution BSD/Chromium et MIT/Electron, y compris pour OpenStore.
+  // v4.0.127: CONSERVER SwiftShader + Vulkan (~20 Mo). Le wrapper peut
+  // basculer automatiquement en rendu logiciel après un crash GPU
+  // (utoutlook_resolve_render_mode) — sans ces libs, --use-angle=swiftshader
+  // n'a aucun backend et l'écran reste transparent sur les modèles affectés.
   tryRemove('chrome_crashpad_handler');       // 1.8 Mo — crash reporter
   tryRemove('chrome-sandbox');                // sandbox Chromium (--no-sandbox)
 
+  // v4.1.0 (revue F23): seules les chaînes applicatives sont i18n (src/i18n.mjs,
+  // 8 langues) ; les chaînes natives Electron/Chromium restent en anglais.
   // --- Locales : ne garder que FR et EN ---
   const localesDir = join(appOutDir, 'locales');
   if (existsSync(localesDir)) {

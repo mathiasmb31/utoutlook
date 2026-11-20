@@ -56,12 +56,32 @@ let unreadCheckTimer = null;
 let unreadObserver = null;
 let notificationObserver = null;
 let retryTimer = null;
-let retryDelay = CONFIG.initialRetryDelayMs;
-// v3.3.22: un handler qui échoue 5× de suite est déclaré mort (ex: interface
-// interne outlookWebAppUnread supprimée par Microsoft) — sinon retry infini
-// qui spam les logs et bouffe du CPU (vu: "Failed to connect" toutes les 3s).
-const handlerFailCount = {};
-const deadHandlers = {};
+// v4.1.1: compteurs de retry persistés dans `window`. Le script est réinjecté à
+// chaque dom-ready/did-stop-loading ET par le health check toutes les 10 s :
+// avec des compteurs locaux, la limite de 5 échecs ne s'accumulait jamais et
+// chaque injection relogguait « Failed to connect ... (1/5) » dans wrapper.log.
+const RETRY_COOLDOWN_MS = 5 * 60 * 1000;
+if (!window.__utoutlookRetryState) {
+  window.__utoutlookRetryState = {
+    failCount: {},
+    dead: {},
+    deadSince: {},
+    delay: CONFIG.initialRetryDelayMs,
+  };
+}
+const retryState = window.__utoutlookRetryState;
+
+// Un handler déclaré mort peut redevenir valide (connexion Outlook après la
+// page de login) : on le réveille après un délai de grâce plutôt que de le
+// condamner définitivement pour la session.
+for (const type of Object.keys(retryState.dead)) {
+  if (Date.now() - (retryState.deadSince[type] || 0) > RETRY_COOLDOWN_MS) {
+    delete retryState.dead[type];
+    delete retryState.deadSince[type];
+    retryState.failCount[type] = 0;
+    debug(`Reviving ${type} after cooldown`);
+  }
+}
 
 // Persistent state across re-injections.
 // The observer script is re-injected on dom-ready, did-navigate-in-page,
@@ -170,7 +190,7 @@ const observeUnreadHandlers = {
         try {
           window.electronAPI.showNotification(
             I18N.appName || 'UToutlook Mail',
-            'DOM Outlook modifié — les sélecteurs de l\'observer ne correspondent plus (non lus indisponibles)',
+            tr('observerDomChanged'),
             null,
             true // urgent
           );
@@ -257,7 +277,7 @@ const observeUnreadHandlers = {
       }
     };
 
-    const checkUnread = (checkOnlyZeroUnread) => {
+    const checkUnread = (checkOnlyZeroUnread, silentNotifications = false) => { // v4.1.0
       // Re-query on every check: Outlook SPA recreates DOM nodes during navigation.
       // A stale (disconnected) element keeps its old title attribute, causing
       // false reads (e.g. old unread=5 when real count is now 4 → false notification).
@@ -286,7 +306,7 @@ const observeUnreadHandlers = {
             state.zeroUnreadConfirmCount = 0;
           }
           state.lastUnreadCount = docUnread;
-          if (!checkOnlyZeroUnread) updateUnreadDebounced(docUnread);
+          updateUnreadDebounced(docUnread); // v4.1.0: badge toujours à jour
           if (docUnread > prev && !checkOnlyZeroUnread) {
             const now = new Date();
             const since = state.lastUnreadNotificationTime ? now - state.lastUnreadNotificationTime : Infinity;
@@ -379,16 +399,18 @@ const observeUnreadHandlers = {
       // is a temporary "(0 unread)" from a re-render, the badge would
       // flicker to 0 and back, which the user perceives as an envelope
       // notification appearing/disappearing.
-      if (unread > 0 || !checkOnlyZeroUnread) {
-        if (!(unread === 0 && zeroPendingConfirmation)) {
-          updateUnreadDebounced(unread);
-        }
+      // v4.1.0: mettre à jour le badge dès que la valeur est confirmée,
+      // même en mode "zero only" — sinon le badge reste bloqué sur l'ancien
+      // compte (revue renderer #2).
+      if (!(unread === 0 && zeroPendingConfirmation)) {
+        updateUnreadDebounced(unread);
+      }
 
         // Only show notification if unread count increased.
         // Compare against previousUnreadCount (captured above, before the
         // update) — NOT state.lastUnreadCount, which now equals unread and
         // would make this comparison always false (hotfix #11).
-        if (unread > previousUnreadCount && !checkOnlyZeroUnread) {
+        if (unread > previousUnreadCount && !silentNotifications) {
           // Anti-spam: only show notification if enough time has passed
           const now = new Date();
           const timeSinceLastNotification = state.lastUnreadNotificationTime
@@ -416,25 +438,24 @@ const observeUnreadHandlers = {
             debug(`Unread notification suppressed by anti-spam (need to wait ${CONFIG.unreadEmailThrottleMs}ms)`);
           }
         }
-      }
     };
 
     // Find the navigation pane using semantic attribute (more stable than CSS classes)
     const navigationPane = document.querySelector('[data-app-section="NavigationPane"]');
     const leftPanel = navigationPane?.querySelector('#folderPaneDroppableContainer');
 
-    if (!leftPanel) {
-      debug('Navigation panel not found for mutation observer');
-      return false;
-    }
+    // v4.1.0 (revue renderer #1): ne pas abandonner la détection quand le
+    // panneau est absent — le treeitem peut être rendu ailleurs. On observe
+    // alors le document entier et le timer continue de notifier.
+    const observeTarget = leftPanel || document.body;
+    debug(leftPanel ? 'Successfully found inbox element and navigation panel'
+                    : 'Navigation panel absent — observing document instead');
 
-    debug('Successfully found inbox element and navigation panel');
-
-    // Observe for DOM changes
+    if (unreadObserver) { unreadObserver.disconnect(); unreadObserver = null; }
     unreadObserver = new MutationObserver(() => {
       debounce(checkUnread, CONFIG.mutationDebounceMs, "unread-mutation");
     });
-    unreadObserver.observe(leftPanel, {
+    unreadObserver.observe(observeTarget, {
       attributes: true,
       childList: true,
       subtree: true,
@@ -489,15 +510,15 @@ const observeUnreadHandlers = {
         if (!state.lastCalendarNotificationTime || timeSinceLastNotification > CONFIG.calendarReminderThrottleMs) {
           const reminderDetails = [];
           reminderElements.forEach((reminder) => {
-            const subject = reminder.getAttribute('subject') || 'Reminder';
+            const subject = reminder.getAttribute('subject') || tr('reminderFallback');
             const timeDisplay = reminder.getAttribute('starttimedisplaystring') || '';
             const timeUntil = reminder.getAttribute('timeuntildisplaystring') || '';
             const location = reminder.getAttribute('location') || '';
 
             let details = subject;
-            if (timeDisplay) details += ` at ${timeDisplay}`;
-            if (timeUntil) details += ` (${timeUntil})`;
-            if (location) details += ` - ${location}`;
+            if (timeDisplay) details += ` ${tr('calendarAt')} ${timeDisplay}`;
+            if (timeUntil) details += ` (${tr('calendarUntil')} ${timeUntil})`;
+            if (location) details += ` ${tr('calendarLocation')} ${location}`;
 
             reminderDetails.push(details);
           });
@@ -518,6 +539,7 @@ const observeUnreadHandlers = {
     };
 
     // Observe for DOM changes
+    if (notificationObserver) { notificationObserver.disconnect(); notificationObserver = null; }
     notificationObserver = new MutationObserver(() => {
       debounce(checkNotifications, CONFIG.mutationDebounceMs, "notification-mutation");
     });
@@ -552,21 +574,24 @@ const initializeEmailMonitoring = () => {
   const failedHandlers = [];
 
   for (const interfaceType in observeUnreadHandlers) {
-    if (deadHandlers[interfaceType]) continue; // v3.3.22: dead after 5 failures
+    if (retryState.dead[interfaceType]) continue; // v3.3.22: dead after 5 failures
     const handler = observeUnreadHandlers[interfaceType];
     const started = handler();
 
     if (started) {
-      handlerFailCount[interfaceType] = 0;
+      retryState.failCount[interfaceType] = 0;
+      delete retryState.dead[interfaceType];
+      delete retryState.deadSince[interfaceType];
       debug(`Successfully connected to ${interfaceType} interface`);
       startedHandlers.push(interfaceType);
     } else {
-      handlerFailCount[interfaceType] = (handlerFailCount[interfaceType] || 0) + 1;
-      if (handlerFailCount[interfaceType] >= 5) {
-        deadHandlers[interfaceType] = true;
+      retryState.failCount[interfaceType] = (retryState.failCount[interfaceType] || 0) + 1;
+      if (retryState.failCount[interfaceType] >= 5) {
+        retryState.dead[interfaceType] = true;
+        retryState.deadSince[interfaceType] = Date.now();
         debug(`Giving up on ${interfaceType} after 5 failures (interface removed by Outlook?)`);
       } else {
-        debug(`Failed to connect to ${interfaceType} interface (${handlerFailCount[interfaceType]}/5)`);
+        debug(`Failed to connect to ${interfaceType} interface (${retryState.failCount[interfaceType]}/5)`);
       }
       failedHandlers.push(interfaceType);
     }
@@ -576,7 +601,7 @@ const initializeEmailMonitoring = () => {
   if (startedHandlers.length > 0) {
     window.__utoutlookObserverActive = true;
     // Reset backoff on success
-    retryDelay = CONFIG.initialRetryDelayMs;
+    retryState.delay = CONFIG.initialRetryDelayMs;
     debug(`Observer active (${startedHandlers.length} handler(s) connected)`);
   } else {
     window.__utoutlookObserverActive = false;
@@ -584,13 +609,13 @@ const initializeEmailMonitoring = () => {
 
   // Retry failed handlers with exponential backoff — but NOT forever:
   // v3.3.22 dead handlers (5 consecutive failures) are excluded from the retry.
-  const retryable = failedHandlers.filter(f => !deadHandlers[f]);
-  if (retryable.length > 0 || (startedHandlers.length === 0 && Object.keys(deadHandlers).length < Object.keys(observeUnreadHandlers).length)) {
-    const currentDelay = retryDelay;
+  const retryable = failedHandlers.filter(f => !retryState.dead[f]);
+  if (retryable.length > 0 || (startedHandlers.length === 0 && Object.keys(retryState.dead).length < Object.keys(observeUnreadHandlers).length)) {
+    const currentDelay = retryState.delay;
     debug(`Retrying in ${currentDelay / 1000}s (failed: ${retryable.join(', ') || 'all'})`);
     retryTimer = setTimeout(() => {
       // Exponential backoff: double the delay, capped at max
-      retryDelay = Math.min(retryDelay * 2, CONFIG.maxRetryDelayMs);
+      retryState.delay = Math.min(retryState.delay * 2, CONFIG.maxRetryDelayMs);
       initializeEmailMonitoring();
     }, currentDelay);
   } else {
@@ -614,6 +639,7 @@ const debounce = (() => {
   };
 })();
 
-debug('init monitor');
+// v4.1.1: un seul « init monitor » par injection (initializeEmailMonitoring()
+// le loggue déjà) — l'ancien double log doublait le bruit dans wrapper.log.
 initializeEmailMonitoring();
 })(); // end IIFE

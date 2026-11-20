@@ -3,7 +3,7 @@
 
 
 ## make an outlookmail client for ubtouch 
-based on work by  Julian Alarcon who based his work on electron-outlook by Howard J
+Inspired from Julien Alarcon, who based his work on electron-outlook by Howard J
 
 
 

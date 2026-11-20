@@ -1,6 +1,6 @@
 import net from 'node:net';
 import fs from 'node:fs';
-import {SOCKET_PATH} from './config.mjs';
+import {CONFIG_DIR, SOCKET_PATH} from './config.mjs';
 import {logger} from './logger.mjs';
 
 // ============================================================
@@ -32,6 +32,16 @@ let activeConnections = new Set();
  * @returns {net.Server}
  */
 export function startSocketServer(handlers) {
+    // Correctif CI : le dossier de config peut ne pas encore exister (runner
+    // CI, premier demarrage, HOME vierge). net.listen() sur un socket dont le
+    // parent est absent echoue en ENOENT de facon asynchrone — le test
+    // "handleCommand processes quit" passait en local (dossier present) mais
+    // echouait sur GitHub Actions (Node 22 et 24).
+    try {
+        fs.mkdirSync(CONFIG_DIR, {recursive: true, mode: 0o700});
+    } catch (err) {
+        logger.error('Cannot create config dir:', err);
+    }
     // Remove stale socket file
     if (fs.existsSync(SOCKET_PATH)) {
         try { fs.unlinkSync(SOCKET_PATH); } catch (e) { /* ignore */ }
@@ -75,8 +85,9 @@ export function startSocketServer(handlers) {
     });
 
     server.listen(SOCKET_PATH, () => {
-        // Make socket accessible to the phablet user
-        try { fs.chmodSync(SOCKET_PATH, 0o666); } catch (e) { /* ignore */ }
+        // v4.1.0 (revue C12): 0600 — le wrapper tourne sous le même UID que
+        // l'app, aucun besoin d'ouvrir le socket à tous les processus locaux.
+        try { fs.chmodSync(SOCKET_PATH, 0o600); } catch (e) { /* ignore */ }
         logger.info(`Socket server listening on ${SOCKET_PATH}`);
     });
 
@@ -149,8 +160,11 @@ function handleCommand(msg, handlers, socket) {
             return {ok: true};
 
         case 'eval':
+            // v4.1.0 (revue C12): arbitraire en release — uniquement en debug.
+            if (process.env.UTOUTLOOK_DEBUG !== '1') {
+                return {ok: false, error: 'eval disabled'};
+            }
             // Debug: run JS in the renderer, reply asynchronously on the socket.
-            // Usage from adb: python3 send '{"cmd":"eval","code":"document.title"}'
             if (handlers.onEval) {
                 Promise.resolve(handlers.onEval(msg.code || ''))
                     .then(r => socket.write(JSON.stringify({ok: true, result: String(r).substring(0, 4000)}) + '\n'))

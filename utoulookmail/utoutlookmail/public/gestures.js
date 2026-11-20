@@ -116,18 +116,37 @@
     };
     const isField = el => el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
     let lastField = null; // v4.0.1: champ ciblé même si le focus a brièvement bougé
+    // v4.0.126: repli « au-dessus du clavier » partagé par les deux boutons de la
+    // page de login (⌫ et « Première installation »). Sur Lomiri/Wayland le clavier
+    // Maliit est un overlay : visualViewport NE RÉTRÉCIT PAS toujours → kb=0.
+    const aboveKeyboardBottom = () => {
+        const vv = window.visualViewport;
+        const kb = vv ? Math.max(0, window.innerHeight - vv.height - (vv.offsetTop || 0)) : 0;
+        // v4.1.0: repli 62 % → 72 % — à 62 % le bouton restait sous le clavier
+        // Maliit sur écran couvert à ~55-65 % (signalé par Mathias).
+        return kb > 0 ? (kb + 24) : Math.round(window.innerHeight * 0.72);
+    };
     // v4.0.5: remonte le bouton ⌫ au-dessus du clavier virtuel (Maliit/Wayland est un
     // overlay : visualViewport.height < innerHeight quand le clavier est ouvert) et ne
     // l'affiche que sur la page de login, uniquement quand un champ de saisie a le focus.
     const positionBsButton = (b) => {
-        const vv = window.visualViewport;
-        const kb = vv ? Math.max(0, window.innerHeight - vv.height - (vv.offsetTop || 0)) : 0;
         // v4.0.121: sous Lomiri/Wayland le clavier Maliit est un overlay et
         // visualViewport NE RÉTRÉCIT PAS toujours → kb=0 → le bouton restait
         // à 14 px du bas, caché par le clavier pendant la saisie du login.
-        // Si le clavier n'est pas mesurable, on le place à 38 % de la hauteur
-        // (au-dessus de l'overlay), sinon juste au-dessus du clavier mesuré.
-        const bottom = kb > 0 ? (kb + 20) : Math.round(window.innerHeight * 0.38);
+        // v4.0.126: 38 % était ENCORE sous le clavier sur les écrans couverts
+        // à ~55 % — on monte le repli à 62 % et, quand le champ actif est
+        // connu, on ancre le bouton au-dessus de ce champ (c'est lui que
+        // Maliit remonte au-dessus du clavier). kb mesuré reste prioritaire.
+        const field = isField(document.activeElement) ? document.activeElement : lastField;
+        let bottom = aboveKeyboardBottom();
+        if (field && field.getBoundingClientRect) {
+            const r = field.getBoundingClientRect();
+            if (r.top > 0 && r.top < window.innerHeight) {
+                bottom = Math.max(bottom, Math.round(window.innerHeight - r.top + 12));
+            }
+        }
+        // bouton de 56 px + marge : ne jamais sortir de l'écran
+        bottom = Math.min(bottom, window.innerHeight - 72);
         b.style.bottom = bottom + 'px';
     };
     const ensureBsButton = () => {
@@ -179,41 +198,73 @@
     // de login (le bouton ⌫ est en bas à droite — aucun chevauchement, aucun contenu masqué).
     // Vide cookies + localStorage + sessionStorage + IndexedDB puis recharge la page,
     // pour repartir d'un état vierge quand une session Microsoft bloque (boucle 2FA, etc.). ---
+    // v4.1.5: icône « double tap » = DEUX DOIGTS stylisés qui tapent (avec
+    // pastille de contact sous chaque doigt) + chiffre 2 — plus explicite que
+    // les flèches d'avant (qui ressemblaient à une flamme). i18n-indépendant.
+    const DOUBLE_TAP_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28">' +
+        '<rect x="5" y="1" width="6" height="12" rx="3" fill="#E95420"/>' +
+        '<rect x="17" y="1" width="6" height="12" rx="3" fill="#E95420"/>' +
+        '<circle cx="8" cy="15" r="2" fill="#E95420"/>' +
+        '<circle cx="20" cy="15" r="2" fill="#E95420"/>' +
+        '<text x="14" y="27" font-family="Arial,sans-serif" font-size="12" font-weight="bold" fill="#E95420" text-anchor="middle">2</text>' +
+        '</svg>'
+    );
+
     const ensureFirstInstallButton = () => {
         if (!LOGIN_HOSTS_RE.test(location.hostname)) return;
         if (document.getElementById('utoutlook-first-install')) return;
         const i18n = window.__utoutlookI18n || {};
         const b = document.createElement('button');
         b.id = 'utoutlook-first-install';
-        b.textContent = i18n.firstInstall || 'First install';
-        b.setAttribute('aria-label', b.textContent);
-        b.style.cssText = 'position:fixed;left:14px;bottom:14px;padding:8px 14px;border-radius:20px;border:2px solid #E95420;background:rgba(255,255,255,.92);color:#E95420;font:600 13px/1 system-ui,sans-serif;z-index:2147483647;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.15);';
+        // v4.1.4: texte dans un span dédié pour que l'icône ne soit pas écrasée
+        // par les changements de texte (armement / confirmation).
+        const label = document.createElement('span');
+        label.className = 'ut-first-label';
+        label.textContent = i18n.firstInstall || 'First install';
+        const icon = document.createElement('img');
+        icon.src = DOUBLE_TAP_ICON;
+        icon.alt = '';
+        icon.width = 24; icon.height = 24;
+        icon.style.cssText = 'display:inline-block;width:24px;height:24px;vertical-align:middle;margin-right:5px;';
+        b.appendChild(icon);
+        b.appendChild(label);
+        b.setAttribute('aria-label', label.textContent);
+        b.style.cssText = 'position:fixed;left:26px;top:26px;padding:6px 12px;border-radius:20px;border:2px solid #E95420;background:rgba(255,255,255,.92);color:#E95420;font:600 13px/1 system-ui,sans-serif;z-index:2147483647;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.15);';
+        // v4.1.0 (fix login invisible): éloigné du bord (10 px → 26 px) — un tap
+        // destiné au champ pouvait tomber dessus et ouvrir le dialogue natif.
+        // En bas il recouvrait le champ de login (clavier Maliit bloqué).
+        b.addEventListener('mousedown', e => e.preventDefault()); // ne pas voler le focus
         // v3.3.66: window.confirm() is NOT implemented in Electron (always returns
         // false) — the native confirm dialog is shown by the main process via IPC.
         // Fallback without electronAPI: two-tap pattern (tap once to arm, tap again
         // within 3s to confirm).
         let armed = false, armTimer = null;
         b.addEventListener('click', async () => {
-            if (window.electronAPI && typeof window.electronAPI.firstInstall === 'function') {
-                await window.electronAPI.firstInstall(); // native dialog inside, wipes + reloads
-                return;
-            }
+            // v4.1.0: plus de raccourci vers le dialogue NATIF (showMessageBox
+            // s'ouvrait hors écran sous Lomiri → blur, OSK fermé, fenêtre
+            // invisible). Confirmation en page UNIQUEMENT (double-tap 3 s).
             if (!armed) {
                 armed = true;
-                const orig = b.textContent;
-                b.textContent = (i18n.firstInstallConfirmAction || 'Wipe everything') + ' ?';
+                const orig = label.textContent;
+                label.textContent = (i18n.firstInstallConfirmAction || 'Wipe everything') + ' ?';
+                b.setAttribute('aria-label', label.textContent);
                 b.style.background = '#E95420';
                 b.style.color = '#fff';
+                icon.style.filter = 'brightness(0) invert(1)'; // icône blanche sur fond orange
                 armTimer = setTimeout(() => {
                     armed = false;
-                    b.textContent = orig;
+                    label.textContent = orig;
+                    b.setAttribute('aria-label', orig);
                     b.style.background = 'rgba(255,255,255,.92)';
                     b.style.color = '#E95420';
+                    icon.style.filter = '';
                 }, 3000);
                 return;
             }
             clearTimeout(armTimer);
             armed = false;
+            console.info('[utoutlook] first-install confirmed — wiping session');
             // Fallback: in-page clear, awaiting IndexedDB deletion BEFORE reload
             // (an immediate reload cancels the async deleteDatabase calls).
             try { localStorage.clear(); } catch (_) {}
@@ -240,6 +291,10 @@
                         : Promise.resolve()));
                 }
             } catch (_) {}
+            if (window.electronAPI && typeof window.electronAPI.firstInstall === 'function') {
+                await window.electronAPI.firstInstall(); // wipe partition + reload (côté principal)
+                return;
+            }
             location.reload();
         });
         (document.body || document.documentElement).appendChild(b);
@@ -247,6 +302,52 @@
     ensureFirstInstallButton();
     new MutationObserver(() => ensureFirstInstallButton())
         .observe(document.documentElement, {childList: true, subtree: true});
+
+    // --- v4.0.127: override manuel du rendu logiciel (auto + bascule sur
+    // crash GPU côté wrapper). Bouton sur la page de login, à gauche sous le
+    // bouton « Première installation », avec le même placement anti-clavier. ---
+    const ensureRenderModeButton = () => {
+        if (!LOGIN_HOSTS_RE.test(location.hostname)) return;
+        if (document.getElementById('utoutlook-render-mode')) return;
+        const i18n = window.__utoutlookI18n || {};
+        const b = document.createElement('button');
+        b.id = 'utoutlook-render-mode';
+        b.style.cssText = 'position:fixed;left:26px;top:74px;padding:6px 12px;border-radius:18px;border:2px solid #E95420;background:rgba(255,255,255,.92);color:#E95420;font:600 12px/1 system-ui,sans-serif;z-index:2147483647;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.15);';
+        // v4.1.0: en haut, sous « Première installation », sans recouvrir l'input.
+        b.addEventListener('mousedown', e => e.preventDefault());
+        const refresh = async () => {
+            let mode = 'auto';
+            try { mode = await window.electronAPI.getRenderMode(); } catch (_) {}
+            b.textContent = mode === 'software'
+                ? (i18n.renderSoftwareDisable || 'Disable software rendering')
+                : (i18n.renderSoftwareEnable || 'Enable software rendering');
+        };
+        b.addEventListener('click', async () => {
+            let mode = 'auto';
+            try { mode = await window.electronAPI.getRenderMode(); } catch (_) {}
+            const next = (mode === 'software') ? 'hardware' : 'software';
+            try { await window.electronAPI.setRenderMode(next); } catch (_) {}
+            await refresh(); // effectif au prochain lancement
+        });
+        refresh();
+        (document.body || document.documentElement).appendChild(b);
+    };
+    ensureRenderModeButton();
+    new MutationObserver(() => ensureRenderModeButton())
+        .observe(document.documentElement, {childList: true, subtree: true});
+
+    // v4.1.0: masquer les boutons utilitaires dès qu'un champ a le focus —
+    // ils ne doivent jamais intercepter un tap destiné au champ de login.
+    const syncUtilityButtons = () => {
+        const inField = isField(document.activeElement) || isField(lastField);
+        for (const id of ['utoutlook-first-install', 'utoutlook-render-mode']) {
+            const el = document.getElementById(id);
+            if (el) el.style.display = inField ? 'none' : 'block';
+        }
+    };
+    syncUtilityButtons();
+    document.addEventListener('focusin', syncUtilityButtons, true);
+    document.addEventListener('focusout', () => setTimeout(syncUtilityButtons, 150), true);
 
     // --- v3.3.42: masquer le bouton « Options de connexion » ---
     // Sur la page de saisie du mot de passe Microsoft, ce lien mène à la page

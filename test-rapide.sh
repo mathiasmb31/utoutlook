@@ -1,6 +1,10 @@
 #!/bin/bash
 # Test rapide utoutlook sur le téléphone (adb 57606579)
-set -e
+# v4.1.10: PAS de `set -e` — c'est un outil de diagnostic : chaque section doit
+# s'afficher même si la précédente échoue (ex. `head -1` ferme le pipe → SIGPIPE
+# côté grep/device → adb retourne non-zéro → avec set -e le script s'arrêtait
+# après « URL courante » et masquait toutes les sections suivantes).
+set +e
 
 if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
   echo "Usage: ./test-rapide.sh [version]"
@@ -11,7 +15,7 @@ if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
   exit 0
 fi
 
-DEV="57606579"
+DEV="${DEVICE:-${ADB_SERIAL:-57606579}}"
 V="${1:-}"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
@@ -36,16 +40,22 @@ adb -s $DEV shell "cd /opt/click.ubuntu.com/utoutlook.mathias/$V && setsid ./bin
 echo "attente 40s..."
 sleep 40
 
-echo "=== Process (doit être > 5) ==="
-adb -s $DEV shell 'ps aux | grep "prospect-mail --" | grep -v grep | wc -l'
+echo "=== Process (doit être > 5 ; inclut command.sh + prospect-mail) ==="
+adb -s $DEV shell 'ps aux | grep -E "prospect-mail|command.sh" | grep -v grep | wc -l'
 
 echo "=== Heartbeat (doit augmenter) ==="
 adb -s $DEV shell 'cat /home/phablet/.config/utoutlook.mathias/follow 2>/dev/null || echo "pas de heartbeat"'
 sleep 5
 adb -s $DEV shell 'cat /home/phablet/.config/utoutlook.mathias/follow 2>/dev/null'
 
-echo "=== URL courante ==="
-adb -s $DEV shell "printf '%s\n' '{\"cmd\":\"eval\",\"code\":\"window.location.href\"}' | timeout 5 nc -U /home/phablet/.config/utoutlook.mathias/utoutlook.sock 2>&1 | head -1 | grep -oE 'https://[a-z0-9.-]+/[a-zA-Z0-9./_%-]{0,60}' | head -1"
+echo "=== Socket IPC vivant (ping) ==="
+adb -s $DEV shell "printf '%s\n' '{\"cmd\":\"ping\"}' | timeout 5 nc -U /home/phablet/.config/utoutlook.mathias/utoutlook.sock 2>&1 | head -1 || echo 'socket injoignable'"
+
+echo "=== URL courante (depuis wrapper.log ; eval désactivé en release v4.1.0) ==="
+# v4.1.6: la commande socket 'eval' est désactivée hors debug (UTOUTLOOK_DEBUG!=1)
+# → on lisait plus rien. On prend la dernière URL de "Page loaded" dans le log,
+# en ne gardant que domaine+chemin (JAMAIS la query string : jetons/state secrets).
+adb -s $DEV shell 'grep "Page loaded" /home/phablet/.config/utoutlook.mathias/wrapper.log 2>/dev/null | tail -1 | grep -oE "https://[a-z0-9.-]+/[a-zA-Z0-9./_-]{0,50}" | head -1'
 
 echo "=== Dernières pages chargées ==="
 adb -s $DEV shell 'grep "Page loaded" /home/phablet/.config/utoutlook.mathias/wrapper.log 2>/dev/null | tail -6 | grep -oE "https://[a-z0-9.-]+/[a-zA-Z0-9./_-]{0,50}"'

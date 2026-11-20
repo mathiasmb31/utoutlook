@@ -73,16 +73,31 @@ test('client-injector: caches results', async () => {
 // ============================================================
 
 test('ipc-socket: handleCommand processes quit', async () => {
-    // We test the internal handleCommand via a mock
-    // Since handleCommand is not exported, we test via the public API
+    // v4.1.0 (revue F5): vrai test via une connexion socket — l'ancien test
+    // initialisait quitCalled=false sans jamais l'asserter (faux positif).
+    const net = await import('node:net');
     const {startSocketServer, stopSocketServer} = await import('../src/ipc-socket.mjs');
+    const {SOCKET_PATH} = await import('../src/config.mjs');
     let quitCalled = false;
-    const server = startSocketServer({
-        onQuit: () => { quitCalled = true; },
-    });
-    // Server started, now stop it
-    stopSocketServer();
-    assert.ok(server);
+    const server = startSocketServer({ onQuit: () => { quitCalled = true; } });
+    try {
+        const response = await new Promise((resolve, reject) => {
+            const c = net.createConnection(SOCKET_PATH);
+            let buf = '';
+            const timer = setTimeout(() => { c.destroy(); reject(new Error('socket timeout')); }, 2000);
+            c.on('connect', () => c.write(JSON.stringify({cmd: 'quit'}) + '\n'));
+            c.on('data', (d) => {
+                buf += d.toString();
+                if (buf.includes('\n')) { clearTimeout(timer); c.end(); resolve(buf); }
+            });
+            c.on('error', (e) => { clearTimeout(timer); reject(e); });
+        });
+        assert.ok(response.includes('"ok":true'), 'quit command must be acknowledged');
+        assert.ok(quitCalled, 'onQuit handler must actually be called (v4.1.0)');
+        assert.ok(server);
+    } finally {
+        stopSocketServer();
+    }
 });
 
 // ============================================================
@@ -182,18 +197,13 @@ test('i18n: returns key for missing translation', async () => {
     assert.strictEqual(t('nonexistent.key'), 'nonexistent.key');
 });
 
-test('i18n: supports 8 languages', async () => {
+test('i18n: supports 10 languages', async () => {
     const {getAvailableLanguages} = await import('../src/i18n.mjs');
     const langs = getAvailableLanguages();
-    assert.strictEqual(Object.keys(langs).length, 8);
-    assert.ok(langs.fr);
-    assert.ok(langs.en);
-    assert.ok(langs.es);
-    assert.ok(langs.de);
-    assert.ok(langs.it);
-    assert.ok(langs.pt);
-    assert.ok(langs.zh);
-    assert.ok(langs.ar);
+    assert.strictEqual(Object.keys(langs).length, 10);
+    for (const l of ['fr','en','es','de','it','pt','zh','ar','ca','eu']) {
+        assert.ok(langs[l], `language ${l} must be declared`);
+    }
 });
 
 test('i18n: detectLanguage parses locale strings', async () => {
@@ -256,7 +266,8 @@ test('observer: script uses exponential backoff for retries', async () => {
     const content = fs.readFileSync(observerPath, 'utf-8');
     assert.ok(content.includes('maxRetryDelayMs'),
         'Observer should have a max retry delay cap');
-    assert.ok(content.includes('retryDelay * 2') || content.includes('retryDelay*2'),
+    assert.ok(content.includes('retryDelay * 2') || content.includes('retryDelay*2') ||
+              content.includes('retryState.delay * 2'),
         'Observer should use exponential backoff (doubling delay)');
 });
 
@@ -345,17 +356,16 @@ test('command.sh: uses utoutlook_notify instead of direct notify calls', async (
         'command.sh should not call notify binary directly');
 });
 
-test('command.sh: waits for notifications before welcome', async () => {
+test('command.sh: waits for notifications service (welcome now sent by Electron)', async () => {
     const fs = await import('node:fs');
     const cmdPath = path.resolve(__dirname, '../../command.sh');
     const content = fs.readFileSync(cmdPath, 'utf-8');
     assert.ok(content.includes('utoutlook_wait_notifications'),
-        'command.sh should wait for notification service before welcome');
-    // wait should come before the welcome notification
-    const waitPos = content.indexOf('utoutlook_wait_notifications');
-    const welcomePos = content.indexOf("shell.welcome");
-    assert.ok(waitPos !== -1 && welcomePos !== -1, 'Both wait and welcome should exist');
-    assert.ok(waitPos < welcomePos, 'Wait should come before welcome notification');
+        'command.sh should wait for notification service before launching Electron');
+    // v4.2.8: le message "welcome" n'est plus envoyé par le wrapper (c'est
+    // Electron qui le fait après 10 s si la fenêtre n'est pas visible).
+    assert.ok(!content.includes('shell.welcome'),
+        'wrapper must not send the welcome notification directly (v4.2.8)');
 });
 
 test('common.sh: utoutlook_wait_notifications uses silent badge probe (no visible test notification)', async () => {
@@ -517,8 +527,8 @@ test('mail-window-controller: CSP script-src includes CDN domains', async () => 
     const cspMatch = content.match(/script-src[^;]+/);
     assert.ok(cspMatch, 'CSP should have script-src directive');
     for (const domain of ['msocdn.com', 'msecnd.net', 'msftauth.net', 'cdn.office.net', 'onecdn.static.microsoft', 'microsoftonline.com']) {
-        assert.ok(content.includes(domain),
-            `CSP constants should include ${domain} (Outlook boot JS served from CDN)`);
+        assert.ok(cspMatch[0].includes('MS_CDN') && content.includes(domain),
+            `script-src must use MS_CDN containing ${domain} (Outlook boot JS served from CDN)`);
     }
 });
 
@@ -570,11 +580,11 @@ test('assets: simplified logo exists for launcher icon', async () => {
     const launcherLogo = path.resolve(__dirname, '../../assets/logo.png');
     assert.ok(fs.existsSync(simpleLogo), 'Simplified logo (logo-simple.png) should exist');
     assert.ok(fs.existsSync(launcherLogo), 'Launcher logo (logo.png) should exist');
-    // Launcher logo should be the simplified version (no circular text)
-    const simpleSize = fs.statSync(simpleLogo).size;
-    const launcherSize = fs.statSync(launcherLogo).size;
-    assert.strictEqual(launcherSize, simpleSize,
-        'Launcher logo should be the simplified version (same as logo-simple.png)');
+    // v4.1.0: comparer le CONTENU, pas seulement la taille (F13).
+    const crypto = await import('node:crypto');
+    const hash = (f) => crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
+    assert.strictEqual(hash(launcherLogo), hash(simpleLogo),
+        'Launcher logo must be byte-identical to the simplified version');
 });
 
 // ============================================================
@@ -695,7 +705,7 @@ test('observer: new-mail notification compares against previous count (hotfix #1
 
     // The new-mail notification must compare unread against the PREVIOUS count,
     // not the just-updated state.lastUnreadCount (which equals unread → always false).
-    assert.ok(content.includes('unread > previousUnreadCount && !checkOnlyZeroUnread'),
+    assert.ok(content.includes('unread > previousUnreadCount && !silentNotifications'),
         'New-mail notification should compare unread > previousUnreadCount');
 
     // The zero-unread confirmation must also key off the previous count.
@@ -826,8 +836,8 @@ test('mail-window-controller: show-notification IPC suppressed when window is vi
         'handleNotification must still be called for background notifications (hotfix #13)');
 
     // The check must be inside the show-notification IPC handler, not global.
-    const ipcStart = content.indexOf('ipcMain.on("show-notification"');
-    const ipcEnd = content.indexOf('ipcMain.on(', ipcStart + 1);
+    const ipcStart = content.indexOf('"show-notification"');
+    const ipcEnd = content.indexOf('this._on(ipcMain,', ipcStart + 1);
     const ipcBody = content.slice(ipcStart, ipcEnd === -1 ? undefined : ipcEnd);
     assert.ok(ipcBody.includes('isVisible()') && ipcBody.includes('isFocused()'),
         'Visibility check must be inside the show-notification IPC handler (hotfix #13)');
@@ -1192,14 +1202,18 @@ test('command.sh: GPU options must not allow the "GPU process isn\'t usable. Goo
     // --disable-gpu + --disable-software-rasterizer left no fallback (swiftshader
     // lib was stripped from the package): when the separate GPU process failed to
     // spawn 3x (error_code=1002, intermittent), Chromium FATAL'd and killed the app.
-    const m = content.match(/gpuoptions="([^"]*)"/);
-    assert.ok(m, 'gpuoptions must be defined');
-    assert.ok(!m[1].includes('--disable-software-rasterizer'),
-        'must NOT disable software rasterizer — no GPU fallback on the phone (v3.3.8)');
-    assert.ok(!m[1].includes('--disable-gpu '),
-        'must NOT use --disable-gpu (separate GPU process still spawns and can FATAL) (v3.3.8)');
-    assert.ok(m[1].includes('--in-process-gpu'),
-        'must use --in-process-gpu so no separate GPU process is ever spawned (v3.3.8)');
+    // v4.1.0: les flags sont calculés par compute_gpu_options() pour les deux
+    // modes (la bascule auto doit pouvoir les recalculer à chaque relance).
+    const all = [...content.matchAll(/gpuoptions="([^"]*)"/g)].map(m => m[1]);
+    assert.ok(all.length >= 2, 'both hardware and software gpuoptions must be defined (v4.1.0)');
+    for (const opts of all) {
+        assert.ok(!opts.includes('--disable-software-rasterizer'),
+            'must NOT disable software rasterizer — no GPU fallback on the phone (v3.3.8)');
+        assert.ok(opts.includes('--in-process-gpu'),
+            'must use --in-process-gpu so no separate GPU process is ever spawned (v3.3.8)');
+    }
+    assert.ok(all.some(o => o.includes('--disable-gpu')),
+        'software mode must force CPU compositing (Electron 44 has no ANGLE libs) (v4.1.0)');
 });
 
 test('command.sh: on "cleaning" the wrapper RELAUNCHES instead of exiting (v3.3.9)', async () => {
@@ -1426,7 +1440,7 @@ test('v3.3.20: section 11b avec ancres réelles du DOM Outlook (aria-label/data-
 test('v3.3.20: CSS/gestures injectés aussi dans les fenêtres secondaires (compose) (v3.3.20)', async () => {
     const fs = await import('node:fs');
     const ctrl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
-    assert.ok(ctrl.includes("app.on('browser-window-created'"),
+    assert.ok(ctrl.includes("this._on(app, 'browser-window-created'"),
         'must listen to browser-window-created to style secondary windows (compose) (v3.3.20)');
     assert.ok(ctrl.includes('async injectStyles(targetWin = null)'),
         'injectStyles must accept a target window (v3.3.20)');
@@ -1439,11 +1453,11 @@ test('v3.3.21: notif du nb de non lus même quand la boîte est ouverte + alerte
     const ctrl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
 
     // 1. updateUnread notifie le count même si la fenêtre est visible
-    const upd = ctrl.slice(ctrl.indexOf('ipcMain.on("updateUnread"'), ctrl.indexOf('ipcMain.on("show-notification"'));
+    const upd = ctrl.slice(ctrl.indexOf('this._on(ipcMain, "updateUnread"'), ctrl.indexOf('this._on(ipcMain, "show-notification"'));
     assert.ok(upd.includes('lastNotifiedUnread') && upd.includes('notif.newMessages.body'),
         'updateUnread must notify the unread count even when the window is visible (v3.3.21)');
     // 2. urgent bypass la suppression foreground
-    const notif = ctrl.slice(ctrl.indexOf('ipcMain.on("show-notification"'));
+    const notif = ctrl.slice(ctrl.indexOf('this._on(ipcMain, "show-notification"'));
     assert.ok(notif.includes('!urgent && this.win.isVisible()'),
         'urgent notifications must bypass the foreground suppression (v3.3.21)');
     // 3. plus de thèmes injectés (dark/focus/accent)
@@ -1489,8 +1503,213 @@ test('v3.3.22: guards this.win null dans les handlers + retry limité à 5 éche
         'show() must guard !this.alive (v3.3.22)');
 
     const obs = fs.readFileSync(path.resolve(__dirname, '../public/unread-number-observer.js'), 'utf-8');
-    assert.ok(obs.includes('deadHandlers') && obs.includes('>= 5'),
+    assert.ok(obs.includes('retryState.dead') && obs.includes('>= 5'),
         'observer must stop retrying a handler after 5 failures (v3.3.22)');
+});
+
+test('v4.1.1: retry persisté entre réinjections (anti-spam « 1/5 » dans wrapper.log)', async () => {
+    const fs = await import('node:fs');
+    const obs = fs.readFileSync(path.resolve(__dirname, '../public/unread-number-observer.js'), 'utf-8');
+    assert.ok(obs.includes('window.__utoutlookRetryState'),
+        'retry counters must survive re-injection on window (v4.1.1)');
+    assert.ok(obs.includes('RETRY_COOLDOWN_MS'),
+        'dead handlers must be revived after a cooldown when Outlook comes back (v4.1.1)');
+    assert.ok(!obs.includes('const handlerFailCount = {}'),
+        'local fail counters must be removed (v4.1.1)');
+    assert.equal((obs.match(/debug\('init monitor'\)/g) || []).length, 1,
+        'only one "init monitor" log per injection (v4.1.1)');
+});
+
+test('v4.1.2: cookie auth sauvegardé par batch (anti-tempête login invisible)', async () => {
+    const fs = await import('node:fs');
+    const ctrl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    assert.ok(ctrl.includes('_authCookieBatch'),
+        'auth cookies must be accumulated in a batch, not written one by one (v4.1.2)');
+    assert.ok(ctrl.includes('scheduleAuthCookieFlush'),
+        'batch flush must be debounced (v4.1.2)');
+    assert.ok(ctrl.includes('AUTH_BATCH_MS'),
+        'batch window must be bounded (v4.1.2)');
+    assert.ok(!/v4\.0\.47: auth cookie détecté/.test(ctrl),
+        'per-cookie INFO log must be removed — it caused 334 lines in 3s (v4.1.2)');
+    assert.ok(ctrl.includes('startCookieFlush'),
+        'periodic flush must remain as persistence fallback (v4.1.2)');
+});
+
+test('v4.1.3: barre liste — badge UBtouch décoratif + bouton first-install (i18n 8 langues)', async () => {
+    const fs = await import('node:fs');
+    const btn = fs.readFileSync(path.resolve(__dirname, '../public/reload-button.js'), 'utf-8');
+    const i18n = fs.readFileSync(path.resolve(__dirname, '../src/i18n.mjs'), 'utf-8');
+    const ctrl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    const preload = fs.readFileSync(path.resolve(__dirname, '../src/controller/preload.js'), 'utf-8');
+
+    // Les 4 boutons partagent le MÊME style de base (même taille, bords arrondis).
+    assert.ok(btn.includes('const BTN_STYLE'), 'shared button style (v4.1.3)');
+    assert.ok(/border-radius:1[24]px/.test(btn), 'uniform rounded corners (v4.1.3/v4.1.8)');
+    assert.ok(btn.includes("UBTOUCH_ID = 'utoutlook-ubtouch-badge'"), 'UBtouch decorative badge id (v4.1.3)');
+    assert.ok(btn.includes('aria-hidden'), 'UBtouch badge hidden from assistive tech (v4.1.3)');
+    assert.ok(btn.includes('UBTOUCH_SVG'), 'UBtouch round SVG logo (v4.1.3)');
+    assert.ok(btn.includes("FIRST_ID = 'utoutlook-first-install-btn'"), 'first-install button id (v4.1.3)');
+    assert.ok(btn.includes("fire('first')"), 'first-install wired to fire(first) (v4.1.3)');
+    assert.ok(btn.includes("window.electronAPI.firstInstall"), 'first-install uses IPC (v4.1.3)');
+    // Connectique : preload → IPC → handler principal
+    assert.ok(preload.includes('firstInstall: () => ipcRenderer.invoke("first-install")'),
+        'preload exposes firstInstall IPC (v4.1.3)');
+    assert.ok(ctrl.includes('ipcMain.handle("first-install"'), 'main handles first-install IPC (v4.1.3)');
+    assert.ok(ctrl.includes('settings.clear()'), 'first-install clears settings too (v4.1.3)');
+    assert.ok(ctrl.includes('global.restartRequested = true'), 'first-install triggers wrapper relaunch (v4.1.3)');
+    // i18n 8 langues
+    for (const key of ['action.firstInstall', 'action.firstInstallConfirm', 'action.firstInstallNotify']) {
+        assert.ok(i18n.includes(`'${key}':`), `i18n key ${key} (v4.1.3)`);
+        const seg = i18n.slice(i18n.indexOf(`'${key}':`), i18n.indexOf(`'${key}':`) + 400);
+        for (const lang of ['fr', 'en', 'es', 'de', 'it', 'pt', 'zh', 'ar', 'ca', 'eu']) {
+            assert.ok(new RegExp(`\\b${lang}:`).test(seg), `${key} has ${lang} (v4.1.3)`);
+        }
+    }
+});
+
+test('v4.1.5: cocarde UBtouch officielle + icône deux doigts sur les boutons', async () => {
+    const fs = await import('node:fs');
+    const gestures = fs.readFileSync(path.resolve(__dirname, '../public/gestures.js'), 'utf-8');
+    const btn = fs.readFileSync(path.resolve(__dirname, '../public/reload-button.js'), 'utf-8');
+    // Nouveau dessin double-tap : DEUX DOIGTS (rects) + pastilles + chiffre 2.
+    for (const [name, src] of [['login', gestures], ['liste', btn]]) {
+        assert.ok(src.includes('DOUBLE_TAP_ICON'), `${name}: icône double-tap définie (v4.1.5)`);
+        assert.ok((src.match(/<rect x="5"/g) || []).length >= 1 &&
+                  (src.match(/<rect x="17"/g) || []).length >= 1,
+            `${name}: deux doigts stylisés (v4.1.7)`);
+        assert.ok(src.includes('<circle cx="8" cy="15"') &&
+                  src.includes('<circle cx="20" cy="15"'),
+            `${name}: pastilles de contact sous les doigts (v4.1.7)`);
+        assert.ok(!/stroke-linecap="round"/.test(src.slice(src.indexOf('DOUBLE_TAP_ICON'), src.indexOf('DOUBLE_TAP_ICON') + 600)),
+            `${name}: plus de flèches « flamme » (v4.1.5)`);
+    }
+    // VRAIE cocarde Ubuntu Touch officielle (fond orange + path blanc 772 chars).
+    assert.ok(btn.includes('viewBox="0 30 73 73"'), 'cocarde recadrée sur toute sa hauteur (v4.1.7)');
+    assert.ok(btn.includes('M72.712 0H0v114.48h72.712z'), 'fond orange officiel (v4.1.5)');
+    assert.ok(btn.includes('M16.625 80.772'), 'path blanc de la cocarde officielle (v4.1.5)');
+    assert.ok(!/r="19" fill="none" stroke/.test(btn), 'plus de faux cercle approximatif (v4.1.5)');
+    // Le texte vit dans un span dédié pour ne pas écraser l'icône.
+    assert.ok(gestures.includes("label.className = 'ut-first-label'"),
+        'login: span de texte dédié (v4.1.4)');
+    assert.ok(btn.includes("span.className = 'ut-first-label'"),
+        'liste: span de texte dédié (v4.1.4)');
+    assert.ok(btn.includes('setFirstLabel'), 'liste: setFirstLabel cible le span (v4.1.4)');
+    assert.ok(!/first\.textContent = tr/.test(btn),
+        'liste: plus de textContent direct sur le bouton first (v4.1.4)');
+});
+
+test('v4.1.11: WD dérivé du vrai cwd (pwd -P), pas de la variable PWD périmée', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    assert.ok(cmd.includes('export WD="$(pwd -P 2>/dev/null || pwd)"'),
+        'WD must use pwd -P builtin, not $PWD env (stale under Lomiri/setsid) (v4.1.11)');
+    assert.ok(cmd.includes('*utoutlook.mathias*)') && cmd.includes('${_SRC%/bin/command.sh}'),
+        'WD must have a fallback derived from $0 when cwd is not the click dir (v4.1.11)');
+    assert.ok(!/export WD=\$\(pwd\)/.test(cmd),
+        'plain $(pwd) without -P must not be used (v4.1.11)');
+});
+
+test('v4.2.3: identité fenêtre = état v4.0.98 (aucun --class / StartupWMClass)', async () => {
+    const fs = await import('node:fs');
+    const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    const desktop = fs.readFileSync(path.resolve(__dirname, '../../utoutlook.desktop'), 'utf-8');
+    const bump = fs.readFileSync(path.resolve(__dirname, '../../../bump-version.sh'), 'utf-8');
+    // Retour exact à v4.0.98 : pas de --class, pas de calcul d'identité.
+    const cmdCode = cmd.split('\n').filter(l => !l.trimStart().startsWith('#')).join('\n');
+    assert.ok(!/classoption|--class=/.test(cmdCode),
+        'wrapper must NOT pass any --class to Electron: causes unknown.qtmir yellow icon (v4.2.3)');
+    assert.ok(cmd.includes('prospect-mail "$dpioptions" "$sandboxoptions" "$gpuoptions" &'),
+        'wrapper must keep the background launch (watchdog intact) (v4.2.3)');
+    assert.ok(main.includes('app.setDesktopName("UToutlookmail")'),
+        'setDesktopName must be the exact v4.0.98 value (v4.2.3)');
+    assert.ok(!/^StartupWMClass=/m.test(desktop),
+        'desktop must have NO StartupWMClass (v4.2.3)');
+    assert.ok(!/^[^#]*sed -i[^\n]*StartupWMClass=/m.test(bump),
+        'bump-version.sh must not reintroduce StartupWMClass (v4.2.3)');
+});
+
+test('v4.3.5: debounce rotation — capteur USB ne fait plus planter l app', async () => {
+    const fs = await import('node:fs');
+    const ctl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    assert.ok(ctl.includes('_pendingRotationKey !== keyOriented'),
+        'rotation needs 3 consecutive ticks before triggering (v4.3.5)');
+    assert.ok(ctl.includes('recentDisplayKeys.includes(keyOriented)) this._pendingRotationKey = null'),
+        'transient orientation must be forgotten when returning to a known state (v4.3.5)');
+});
+
+test('v4.3.3: goodbye envoye par Electron au quit, pas par le wrapper', async () => {
+    const fs = await import('node:fs');
+    const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    assert.ok(main.includes("execFile(`${process.env.WD}/bin/notify`, [t('shell.goodbye')]"),
+        'Electron must send goodbye immediately on clean quit (v4.3.3)');
+    assert.ok(!main.includes('import {execFile, execFileSync}'),
+        'goodbye notification must NOT block the main thread / freeze the Quit button (v4.3.4)');
+    assert.ok(!cmd.includes("utoutlook_notify \"$(utoutlook_t 'shell.goodbye')\""),
+        'wrapper must not send goodbye (killed too late by Lomiri) (v4.3.3)');
+});
+
+test('v4.3.2: pas de bascule ni notification si deja software', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    assert.ok(cmd.includes('[ "${RENDER_MODE:-}" = "software" ]'),
+        'must not flip when already software (v4.3.2)');
+    assert.ok(cmd.includes('read -r cur < "${UTOUTLOOK_RENDER_MODE_FILE}"'),
+        'must read render-mode with bash builtin, not external cat/tr (v4.3.2)');
+});
+
+test('v4.3.1: fausse rotation au demarrage ignoree + show apres roue', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    const ctl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    assert.ok(ctl.includes('this.appStartedAt') && ctl.includes('Date.now() - this.appStartedAt < 15000'),
+        'ignore false rotation during first 15s (v4.3.1)');
+    assert.ok((cmd.match(/utoutlook_send_socket_cmd '\{"cmd":"show"\}'/g) || []).length >= 2,
+        'send show after closing relaunch QML screen to restore Mir session (v4.3.1)');
+});
+
+test('v4.2.9: notification de demarrage apres 10 s si fenetre pas reellement affichee', async () => {
+    const fs = await import('node:fs');
+    const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
+    const i18n = fs.readFileSync(path.resolve(__dirname, '../src/i18n.mjs'), 'utf-8');
+    assert.ok(main.includes('win.isVisible() && win.isFocused()') &&
+              main.includes('}, 10000)'),
+        'startup notification must check the real window (visible AND focused) after 10s (v4.2.9)');
+    assert.ok(!main.includes('mainWindowEverVisible || !process.env.WD'),
+        'must NOT rely on mainWindowEverVisible which can lie when no Mir session (v4.2.9)');
+    assert.ok(i18n.includes("UToutlook Mail démarre, veuillez patienter…"),
+        'welcome message must tell the user the app is starting (v4.2.8)');
+});
+
+test('v4.2.7: pulses de focus au démarrage pour forcer la session Mir', async () => {
+    const fs = await import('node:fs');
+    const ctl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    assert.ok(ctl.includes('_surfaceHealthTicks'),
+        'startup focus pulse counter must exist (v4.2.7)');
+    assert.ok(ctl.includes('this.show()') && ctl.includes('startup focus pulse (force Mir session)'),
+        'surface health poll must call show() to create the Mir session (v4.2.7)');
+});
+
+test('v4.2.5: quit propre détecté dès la 1re stagnation (avant SIGKILL Lomiri)', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    assert.ok(cmd.includes('utoutlook_exitclient_ours "${exitclient}"') &&
+              cmd.includes('clean quit, wrapper exits now'),
+        'wrapper must exit on first stagnation when exitclient is fresh and ours (v4.2.5)');
+    assert.ok(cmd.includes('at ${stagnantCount}/2'),
+        'early clean-quit check must be inside the stagnation branch (v4.2.5)');
+});
+
+test('v4.2.4: barre QML de démarrage désactivée — anti unknown.qtmir (icône jaune)', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    const common = fs.readFileSync(path.resolve(__dirname, '../../utils/common.sh'), 'utf-8');
+    assert.ok(cmd.includes('export UTOUTLOOK_DISABLE_STARTUP_QML=1'),
+        'startup QML bar must be disabled (v4.2.4)');
+    assert.ok(common.includes('UTOUTLOOK_DISABLE_STARTUP_QML:-0') &&
+              common.includes('return 0'),
+        'utoutlook_set_start_step must skip QML window when disabled (v4.2.4)');
 });
 
 test('v3.3.22: uncaughtException ne tue plus l\'app au premier coup (exit seulement après 5 en 60s)', async () => {
@@ -1659,10 +1878,10 @@ test('v3.3.30: démarrage rapide + wrapper périmé silencieux (pas de kill du n
     // kill_app: fast path — if no prospect-mail is running, return BEFORE the
     // close-flag write + 3s sleep (cleanup calls it 3x per start = 9s lost)
     const killApp = common.slice(common.indexOf('utoutlook_kill_app()'), common.indexOf('utoutlook_cleanup_locks()'));
-    const checkPos = killApp.indexOf('pkill" -0 prospect-mail');
+    const checkPos = killApp.indexOf('if ! utoutlook_prospect_running; then');
     const flagPos = killApp.indexOf('echo "closed:${UTOUTLOOK_WRAPPER_PID:-unknown}" > "${UTOUTLOOK_EXITCOMMAND}"');
     assert.ok(checkPos !== -1 && flagPos !== -1 && checkPos < flagPos,
-        'kill_app must check pkill -0 prospect-mail BEFORE writing the close flag / sleeping (v3.3.30)');
+        'kill_app must check live processes (zombies ignored) BEFORE writing the close flag / sleeping (v3.3.30/v4.1.0)');
     // kill_stale_wrappers: SIGKILL only, never SIGTERM (a TERM runs the EXIT trap
     // which writes the close flag / socket quit and can kill the NEW instance)
     const ksw = common.slice(common.indexOf('utoutlook_kill_stale_wrappers()'), common.indexOf('utoutlook_cleanup_flags()'));
@@ -1677,10 +1896,10 @@ test('v3.3.30: démarrage rapide + wrapper périmé silencieux (pas de kill du n
     // cleanup: pid is recorded BEFORE kill_stale_wrappers so the stale wrapper
     // sees it is no longer the owner
     const cu = cmd.slice(cmd.indexOf('function cleanup()'), cmd.indexOf('function launch_prospect'));
-    const pidPos = cu.indexOf('echo $$ > "${UTOUTLOOK_DATA_DIR}/wrapper.pid"');
+    const pidPos = cu.indexOf('echo $$ > "${_pf}"');
     const kswPos = cu.indexOf('utoutlook_kill_stale_wrappers');
     assert.ok(pidPos !== -1 && kswPos !== -1 && pidPos < kswPos,
-        'cleanup must write wrapper.pid BEFORE kill_stale_wrappers (v3.3.30)');
+        'cleanup must claim/verify wrapper.pid BEFORE kill_stale_wrappers (v3.3.30/v4.1.0)');
 });
 
 test('v4.0.10: upgrade depuis une version < 3.0 — plus de démarrage bloqué sur le splash', async () => {
@@ -1739,7 +1958,7 @@ test('v3.3.45: retour au Wayland natif (Lomiri) — plus de forçage X11, le cla
 test('v3.3.32: repaint forcé au réveil (veille → écran blanc en X11) + pas de background throttling', async () => {
     const fs = await import('node:fs');
     const m = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
-    assert.ok(m.includes('powerMonitor') && m.includes("powerMonitor.on('resume'"),
+    assert.ok(m.includes('powerMonitor') && m.includes("this._on(powerMonitor, 'resume'"),
         'must listen to powerMonitor resume (v3.3.32)');
     assert.ok(m.includes('webContents.invalidate()'),
         'must call webContents.invalidate() to force repaint after wake (v3.3.32)');
@@ -1771,8 +1990,9 @@ test('v3.3.50: badge logo + « Made for Ubtouch » injecté sur la page de login
     const i18n = fs.readFileSync(path.resolve(__dirname, '../src/i18n.mjs'), 'utf-8');
     assert.ok(i18n.includes("'login.madeFor'"),
         'i18n.mjs must define login.madeFor (v3.3.50)');
-    for (const lang of ['fr','en','es','de','it','pt','zh','ar']) {
-        assert.ok(new RegExp("'login.madeFor'[\\s\\S]*?" + lang + ":").test(i18n),
+    for (const lang of ['fr','en','es','de','it','pt','zh','ar','ca','eu']) {
+        const block = i18n.slice(i18n.indexOf("'login.madeFor'"), i18n.indexOf("'login.madeFor'") + 400);
+        assert.ok(block.includes(lang + ':'),
             `login.madeFor must exist for ${lang} (v3.3.50)`);
     }
 });
@@ -1893,7 +2113,7 @@ test('v4.0.95: bouton « Recharger les messages » injecté, câblé IPC et i18n
         'preload must send the reload-messages IPC (v4.0.95)');
 
     // Le contrôleur écoute le canal, injecte le bouton et recharge réellement.
-    assert.ok(controller.includes('ipcMain.on("reload-messages"'),
+    assert.ok(controller.includes('this._on(ipcMain, "reload-messages"'),
         'main process must handle reload-messages (v4.0.95)');
     assert.ok(controller.includes('injectReloadButton'),
         'controller must inject the reload button (v4.0.95)');
@@ -1934,7 +2154,7 @@ test('v4.0.95: bouton « Recharger les messages » injecté, câblé IPC et i18n
         const start = i18n.indexOf(`'${key}'`);
         assert.ok(start >= 0, `missing i18n key ${key} (v4.0.95)`);
         const block = i18n.slice(start, i18n.indexOf('},', start));
-        for (const lang of ['fr', 'en', 'es', 'de', 'it', 'pt', 'zh', 'ar']) {
+        for (const lang of ['fr', 'en', 'es', 'de', 'it', 'pt', 'zh', 'ar', 'ca', 'eu']) {
             assert.ok(block.includes(`${lang}:`), `i18n ${key} missing ${lang} (v4.0.95)`);
         }
     }
@@ -1948,9 +2168,12 @@ test('v4.0.99: roue de relance réactivée + zombies du wrapper récupérés', a
     // Le flag de rotation doit être réécrit par Electron (plus de quit au pivot).
     assert.ok(ctrl.includes('fs.writeFileSync(ROTATION_RELAUNCH_FILE'),
         'controller must write the rotation flag for the wrapper (v4.0.99)');
-    // Le wrapper doit afficher la roue même quand l'app est vivante.
-    assert.ok(cmd.includes('rotation relaunch screen shown (app still alive'),
-        'wrapper must show the wheel without waiting for a dead heartbeat (v4.0.99)');
+    // v4.3.6: la roue n'est PLUS affichée sur simple rotation (app vivante) —
+    // elle volait la session Mir et cassait l'observer (No inbox element found).
+    assert.ok(!cmd.includes('rotation relaunch screen shown (app still alive'),
+        'wrapper must NOT show the wheel when app is alive on rotation (v4.3.6)');
+    assert.ok(cmd.includes('if [ -f "${rotationflag}" ]; then'),
+        'wrapper must still clear the rotation flag (v4.3.6)');
     // wait après chaque kill de child (CLIENT_PID, QML_PID, RELAUNCH_QML_PID).
     assert.ok((cmd.match(/wait "\$\{CLIENT_PID\}"/g) || []).length >= 1,
         'wrapper must wait() its client child after SIGKILL (v4.0.99)');
@@ -1962,8 +2185,8 @@ test('v4.0.99: roue de relance réactivée + zombies du wrapper récupérés', a
     const splash = fs.readFileSync(path.resolve(__dirname, '../../qml/startup.qml'), 'utf-8');
     assert.ok(splash.includes('NumberAnimation') && splash.includes('#E95420'),
         'startup.qml must show an animated orange progress bar (v4.0.105)');
-    assert.ok(cmd.includes('qml/startup.qml') && cmd.includes('STARTUP_QML_PID'),
-        'wrapper must launch and close the startup progress screen (v4.0.105)');
+    assert.ok(cmd.includes('UTOUTLOOK_STARTUP_QML') && cmd.includes('STARTUP_QML_PID'),
+        'wrapper must launch and close the generated startup progress screen (v4.0.105/v4.1.0)');
 });
 
 test('v4.0.107: wrapper — plus de /usr/bin/date (AppArmor) + scaling jamais 0.00', async () => {
@@ -2107,8 +2330,10 @@ test('v4.0.121: notification clear throttlée + bouton ⌫ au-dessus du clavier'
         'ClearPersistent notification helper must be removed entirely (v4.0.122)');
     assert.ok(!cmd.includes('.notifs-cleared'),
         'old throttle flag must be gone (v4.0.122)');
-    assert.ok(gestures.includes('Math.round(window.innerHeight * 0.38)'),
-        'backspace button must be raised above the Maliit keyboard overlay (v4.0.121)');
+    assert.ok(gestures.includes('Math.round(window.innerHeight * 0.72)'),
+        'backspace button must be raised above the Maliit keyboard overlay (v4.0.121/126, 0.72 in v4.1.0)');
+    assert.ok(gestures.includes('top:26px') && gestures.includes('syncUtilityButtons'),
+        'utility login buttons must stay at top-left (clear of the border) and hide while a field is focused (v4.1.0)');
 });
 
 test('v4.0.123: l observer ne clique plus sur le volet de navigation', async () => {
@@ -2135,4 +2360,460 @@ test('v4.0.124: badge non lus préservé sans ouvrir le volet', async () => {
         'inbox lookup must stay DOM-based, not visibility-based (v4.0.124)');
     assert.ok(!obs.includes('btn.click()'),
         'no programmatic click may reopen the nav pane (v4.0.124)');
+});
+
+test('v4.0.126: splash QML dès la 1re ligne du wrapper + étape i18n', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    const common = fs.readFileSync(path.resolve(__dirname, '../../utils/common.sh'), 'utf-8');
+    const qml = fs.readFileSync(path.resolve(__dirname, '../../qml/startup.qml'), 'utf-8');
+
+    // La barre doit être lancée AVANT test_net (6 s de sondes) et avant les
+    // cleanup() successifs — c'était le motif du splash trop tardif.
+    const startIdx = cmd.indexOf('\nstart_startup_qml #');
+    const netIdx = cmd.indexOf('\ntest_net\n');
+    assert.ok(startIdx >= 0 && netIdx >= 0 && startIdx < netIdx,
+        'startup QML must be launched before test_net (v4.0.126)');
+    assert.ok(cmd.includes('utoutlook_set_start_step 2') &&
+              cmd.includes('utoutlook_set_start_step 3') &&
+              cmd.includes('utoutlook_set_start_step 4') &&
+              cmd.includes('utoutlook_set_start_step 5'),
+        'all startup steps must be announced (v4.0.126)');
+
+    // Message d'étape : 8 langues, numéro substitué sans sed (AppArmor).
+    assert.ok(common.includes('"qml.startStep")'),
+        'i18n step message must live in the shell catalog (v4.0.126)');
+    for (const needle of ['Starting up', 'Iniciando', 'Startvorgang', 'Avvio',
+                          'A iniciar', '正在启动', 'جارٍ التشغيل', 'Démarrage']) {
+        assert.ok(common.includes(needle), `missing step translation: ${needle} (v4.0.126)`);
+    }
+    assert.ok(common.includes('msg="${msg//%N/${n}}"'),
+        'step number must be replaced with a bash builtin, not sed (v4.0.126)');
+    assert.ok(common.includes('utoutlook_startup_qml_alive()') &&
+              cmd.includes('if utoutlook_startup_qml_alive; then'),
+        'wrapper must preserve our early splash window (v4.0.126)');
+
+    // v4.1.0: AppArmor refuse au qmlscene la lecture d'un .qml dans /tmp —
+    // la barre doit être AUTONOME (aucun fichier externe) sous peine de
+    // laisser l'utilisateur bloqué sur la splash Lomiri.
+    assert.ok(!qml.includes('Loader {') && !qml.includes('source:') && !qml.includes('import "/tmp'),
+        'startup.qml must NOT depend on an external QML file (v4.1.0 regression)');
+    assert.ok(common.includes('UTOUTLOOK_STEP_FILE="${UTOUTLOOK_CONFIG_DIR}/start-step"'),
+        'step info must be written as plain text in the app config dir (v4.1.0)');
+    assert.ok(common.includes('utoutlook_write_startup_qml()') &&
+              common.includes('UTOUTLOOK_STARTUP_QML="${UTOUTLOOK_CONFIG_DIR}/startup.qml"') &&
+              common.includes('text: "%s"'),
+        'startup QML with the step label must be generated in the app config dir (v4.1.0)');
+    assert.ok(cmd.includes('qmlscene "${UTOUTLOOK_STARTUP_QML}"'),
+        'wrapper must launch the generated QML (v4.1.0)');
+});
+
+test('v4.0.127: rendu logiciel auto sur crash GPU + override utilisateur', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    const common = fs.readFileSync(path.resolve(__dirname, '../../utils/common.sh'), 'utf-8');
+    const afterPack = fs.readFileSync(path.resolve(__dirname, '../build/afterPack.mjs'), 'utf-8');
+    const i18n = fs.readFileSync(path.resolve(__dirname, '../src/i18n.mjs'), 'utf-8');
+    const preload = fs.readFileSync(path.resolve(__dirname, '../src/controller/preload.js'), 'utf-8');
+    const gestures = fs.readFileSync(path.resolve(__dirname, '../public/gestures.js'), 'utf-8');
+
+    // Détection auto : signature GPU + marqueur pour ne rebaser qu'une fois.
+    assert.ok(common.includes('utoutlook_resolve_render_mode()'),
+        'shell must resolve the render mode at each launch (v4.0.127)');
+    assert.ok(common.includes('GPU process isn\'t usable|error_code=1002'),
+        'GPU crash signatures must be scanned (v4.0.127)');
+    assert.ok(common.includes('UTOUTLOOK_GPU_CRASH_MARKER') &&
+              common.includes('UTOUTLOOK_RENDER_MODE_FILE'),
+        'auto fallback must be persisted and crashes consumed (v4.0.127)');
+    assert.ok(common.includes('seen=${last}'),
+        'first launch must consume old crash history without switching (v4.0.127)');
+    assert.ok(common.includes('"shell.softwareMode")'),
+        'auto switch must be announced with an i18n notification (v4.0.127)');
+    for (const needle of ['Software rendering enabled', 'Renderizado por software',
+                          'Software-Rendering', 'Rendering software', 'Renderização por software',
+                          '软件渲染', 'العرض البرمجي', 'Rendu logiciel']) {
+        assert.ok(common.includes(needle), `missing software-mode translation: ${needle} (v4.0.127)`);
+    }
+
+    // Le wrapper applique le mode au lancement d'Electron.
+    assert.ok(cmd.includes('RENDER_MODE=$(utoutlook_resolve_render_mode)'),
+        'wrapper must apply the resolved render mode (v4.0.127)');
+    // Electron 44 n'embarque plus libEGL.so/libGLESv2.so : les flags ANGLE
+    // swiftshader font échouer le GPU process (1002) puis FATAL → l'app ne
+    // démarre plus. Le mode logiciel doit rester in-process + compositing CPU.
+    assert.ok(cmd.includes('--in-process-gpu --disable-gpu --disable-gpu-compositing --enable-unsafe-swiftshader') &&
+              !cmd.includes('--use-angle=swiftshader') && !cmd.includes('--use-gl=angle') &&
+              cmd.includes('--enable-unsafe-swiftshader'),
+        'software mode must use in-process GPU + CPU compositing, not ANGLE (v4.1.0)');
+
+    // SwiftShader doit rester dans le click, sinon le mode logiciel est vide.
+    assert.ok(!afterPack.includes("tryRemove('libvk_swiftshader.so')") &&
+              !afterPack.includes("tryRemove('libvulkan.so.1')") &&
+              !afterPack.includes("tryRemove('vk_swiftshader_icd.json')"),
+        'afterPack must keep SwiftShader libs for software rendering (v4.0.127)');
+
+    // Override utilisateur : bouton page de login + IPC, libellés 8 langues.
+    assert.ok(preload.includes('getRenderMode') && preload.includes('setRenderMode'),
+        'preload must expose the render-mode override (v4.0.127)');
+    assert.ok(gestures.includes('ensureRenderModeButton'),
+        'login page must expose the software-rendering toggle (v4.0.127)');
+    assert.ok(i18n.includes("'render.enable'") && i18n.includes("'render.disable'"),
+        'toggle labels must be in the i18n catalog (v4.0.127)');
+});
+
+test('v4.1.0: bascule auto du mode rendu après échec de démarrage, avec message i18n', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    const common = fs.readFileSync(path.resolve(__dirname, '../../utils/common.sh'), 'utf-8');
+
+    assert.ok(cmd.includes('function flip_render_mode()') &&
+              cmd.includes('function compute_gpu_options()') &&
+              cmd.includes('compute_gpu_options "${RENDER_MODE}"') &&
+              cmd.includes('flip_render_mode || utoutlook_notify') &&
+              cmd.includes('flip_render_mode || true') &&
+              cmd.includes('RENDER_FLIPS=0') &&
+              cmd.includes('"${RENDER_FLIPS:-0}" -ge 2'),
+        'wrapper must auto-flip render mode on startup failure, max twice (v4.1.0)');
+    assert.ok(common.includes('"shell.autoFallback")') &&
+              common.includes('Display mode changed automatically') &&
+              common.includes('Mode d\'affichage changé automatiquement'),
+        'auto fallback must be announced in the i18n catalog (v4.1.0)');
+});
+
+test('v4.0.128: écran de secours QML rendu logiciel / OpenGL sur crash GPU', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    const common = fs.readFileSync(path.resolve(__dirname, '../../utils/common.sh'), 'utf-8');
+    const qml = fs.readFileSync(path.resolve(__dirname, '../../qml/render-rescue.qml'), 'utf-8');
+
+    // Le QML ne peut pas écrire de fichier : il loggue son choix sur stdout.
+    assert.ok(qml.includes('UT_RENDER_CHOICE=software') &&
+              qml.includes('UT_RENDER_CHOICE=opengl') &&
+              qml.includes('Qt.exit(10)') && qml.includes('Qt.exit(11)') &&
+              qml.includes('requestActivate()'),
+        'rescue buttons must log + exit with distinct codes and activate window (v4.1.0)');
+    const rescueStart = cmd.indexOf('function show_render_rescue()');
+    const rescueBody = cmd.slice(rescueStart, cmd.indexOf('###init', rescueStart));
+    assert.ok(rescueBody.includes('while [ ${i} -lt 30 ]') && rescueBody.includes('rc=$?') &&
+              rescueBody.includes('[ "${rc}" -eq 11 ]') && rescueBody.includes('[ "${rc}" -eq 10 ]'),
+        'show_render_rescue must wait 30s and read the exit code as a fallback (v4.1.0)');
+    assert.ok(!qml.includes('/tmp/utoutlook-qml-i18n.js'),
+        'rescue screen must NOT import a /tmp JS file — AppArmor denies it (v4.1.0)');
+    assert.ok(!qml.includes('import QtQuick.Controls'),
+        'rescue screen must stay pure QtQuick for qmlscene on UT (v4.0.128)');
+    assert.ok(common.includes('utoutlook_write_rescue_qml()') &&
+              common.includes('${UTOUTLOOK_CONFIG_DIR}/render-rescue.qml'),
+        'rescue screen must be generated in the app config dir with labels (v4.1.0)');
+
+    // Le wrapper détecte le crash FRAIS avant de consommer le marqueur.
+    assert.ok(common.includes('utoutlook_gpu_crash_is_new()'),
+        'wrapper must detect fresh GPU crashes before resolving mode (v4.0.128)');
+    assert.ok(common.includes("utoutlook_t 'qml.renderRescueTitle'") &&
+              common.includes("utoutlook_t 'qml.renderSoftware'") &&
+              common.includes("utoutlook_t 'qml.renderOpengl'"),
+        'rescue labels must come from the i18n catalog (v4.1.0)');
+    for (const needle of ['UToutlook hit a graphics problem', 'UToutlook tuvo un problema gráfico',
+                          'UToutlook hatte ein Grafikproblem', 'UToutlook ha riscontrato un problema grafico',
+                          'O UToutlook teve um problema gráfico', 'UToutlook 遇到图形问题',
+                          'واجه UToutlook مشكلة رسومية', 'UToutlook a rencontré un problème graphique']) {
+        assert.ok(common.includes(needle), `missing rescue-screen translation: ${needle} (v4.0.128)`);
+    }
+
+    // Affiché seulement sans override, 8 s max, puis le choix est persisté.
+    assert.ok(cmd.includes('function show_render_rescue()') &&
+              cmd.includes('GPU_CRASH_NEW=1') &&
+              cmd.includes('UT_RENDER_CHOICE=opengl') &&
+              cmd.includes('UT_RENDER_CHOICE=software'),
+        'wrapper must read the rescue choice markers (v4.0.128)');
+    assert.ok(cmd.includes('show_render_rescue') && cmd.includes('start_startup_qml # réafficher'),
+        'wrapper must restore the progress bar after the rescue screen (v4.0.128)');
+});
+
+test('v4.1.0: crédit « Inspired from Julien Alarcon » + liens réels du projet', async () => {
+    const fs = await import('node:fs');
+    const root = path.resolve(__dirname, '../../..');
+    const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf-8'));
+    const i18n = fs.readFileSync(path.resolve(__dirname, '../src/i18n.mjs'), 'utf-8');
+    const readme = fs.readFileSync(path.resolve(root, 'README.md'), 'utf-8');
+    const about = fs.readFileSync(path.resolve(__dirname, '../../patches/about.html'), 'utf-8');
+
+    assert.strictEqual(pkg.author.name, 'Inspired from Julien Alarcon',
+        'author credit must say inspired, not authored (v4.1.0)');
+    assert.strictEqual(pkg.build.appId, 'io.github.mathiasmb31.utoutlook',
+        'Electron appId must point to the real project (v4.1.0)');
+    assert.ok(pkg.homepage === 'https://github.com/mathiasmb31/utoutlook' &&
+              pkg.bugs.url === 'https://github.com/mathiasmb31/utoutlook/issues' &&
+              pkg.repository.url.includes('mathiasmb31/utoutlook'),
+        'package.json links must point to the utoutlook project (v4.1.0)');
+    assert.ok(readme.includes('Inspired from Julien Alarcon') &&
+              readme.includes('./build-deploy.sh') &&
+              about.includes('Inspired from Julien Alarcon'),
+        'README/about credit and links must be updated (v4.1.0)');
+    assert.ok(!/julian[-\s]?alarcon/i.test(readme + about + JSON.stringify(pkg)),
+        'no stale upstream credit or link may remain (v4.1.0)');
+    for (const needle of ['Inspiré de Julien Alarcon', 'Inspired from Julien Alarcon',
+                          'Inspirado en Julien Alarcon', 'Inspiriert von Julien Alarcon',
+                          'Ispirato a Julien Alarcon', 'Inspirado em Julien Alarcon',
+                          '灵感来自 Julien Alarcon', 'مستوحى من Julien Alarcon']) {
+        assert.ok(i18n.includes(needle), `missing about credit translation: ${needle} (v4.1.0)`);
+    }
+});
+
+test('v4.1.0: icône — WM_CLASS alignée sur le click + démarrage en 6 étapes', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    const common = fs.readFileSync(path.resolve(__dirname, '../../utils/common.sh'), 'utf-8');
+    const desktop = fs.readFileSync(path.resolve(__dirname, '../../utoutlook.desktop'), 'utf-8');
+    const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
+
+    assert.ok(!/^StartupWMClass=/m.test(desktop),
+        'desktop file must have no StartupWMClass (v4.2.3, back to v4.0.98)');
+    assert.ok(main.includes('app.setDesktopName("UToutlookmail")'),
+        'Electron desktop name must be the v4.0.98 value (v4.2.3)');
+    assert.ok(cmd.includes('prospect-mail "$dpioptions" "$sandboxoptions" "$gpuoptions" &'),
+        'wrapper must keep launching Electron in background with no --class (v4.2.3)');
+
+    // Étape 3 → 4 avancée après l'extinction des vieux process (~50 s sinon).
+    assert.ok(common.includes('of 6') && common.includes('sur 6'),
+        'startup steps must be numbered out of 6 (v4.1.0)');
+    assert.ok(cmd.includes('utoutlook_set_start_step 4') &&
+              cmd.includes('utoutlook_set_start_step 5') &&
+              cmd.includes('utoutlook_set_start_step 6'),
+        'all 6 startup steps must be announced (v4.1.0)');
+
+    // Cause racine de la lenteur : les zombies comptés comme vivants.
+    assert.ok(common.includes('utoutlook_pid_is_zombie()') &&
+              common.includes('utoutlook_prospect_running()'),
+        'shell must distinguish zombies from live processes (v4.1.0)');
+    assert.ok(!common.includes('pkill" -0 prospect-mail'),
+        'kill_app must not use pkill -0 which matches zombies (v4.1.0)');
+    assert.ok(cmd.includes('utoutlook_prospect_running'),
+        'wrapper liveness check must ignore zombies (v4.1.0)');
+
+    // Prévention : wrapper-quit transforme le SIGTERM du wrapper en vrai quit
+    // (le swipe-close Lomiri, sans flag, continue de seulement masquer).
+    assert.ok(fs.readFileSync(path.resolve(__dirname, '../src/config.mjs'), 'utf-8')
+              .includes('FORCE_QUIT_FILE'),
+        'a dedicated force-quit flag file must exist (v4.1.0)');
+    const sigterm = main.slice(main.indexOf('process.on("SIGTERM"'),
+                               main.indexOf('app.on("window-all-closed"'));
+    assert.ok(sigterm.includes('FORCE_QUIT_FILE') && sigterm.includes('cleanupAndExit()') &&
+              sigterm.includes('win.hide()'),
+        'SIGTERM must clean-quit with the flag, hide on swipe-close (v4.1.0)');
+    assert.ok(common.includes('printf \'quit:%s\' "${UTOUTLOOK_WRAPPER_PID:-unknown}" > "${UTOUTLOOK_FORCE_QUIT}"'),
+        'wrapper must write the force-quit flag before SIGTERM (v4.1.0)');
+    assert.ok(!cmd.includes('pkill -9 -f "bin/App/prospect-mail"') &&
+              cmd.includes('pkill -TERM -f "bin/App/prospect-mail"') &&
+              cmd.includes('kill -TERM "${_pid}"'),
+        'wrapper must stop SIGKILLing Electron at startup (v4.1.0)');
+    assert.ok(common.includes('kill -TERM "$pid"') && !common.includes('kill -9 "$pid"'),
+        'proc scan must use TERM so Electron can reap its children (v4.1.0)');
+
+    // Course entre deux wrappers : le pidfile doit être écrit dès la 1re ligne
+    // et un wrapper périmé doit sortir au lieu de tuer le plus récent.
+    assert.ok(cmd.indexOf('echo $$ > "${UTOUTLOOK_DATA_DIR}/wrapper.pid"') <
+              cmd.indexOf('test_net\n'),
+        'wrapper must claim the pidfile before any long wait (v4.1.0)');
+    assert.ok(common.includes('wrapper $self périmé (owner=$p) — sortie immédiate'),
+        'stale wrapper must exit instead of killing the newer one (v4.1.0)');
+
+    // i18n QML : plus de fichier dans /tmp (AppArmor) — import par nom
+    // résolu via l'option -I passée à qmlscene.
+    assert.ok(common.includes('utoutlook_write_error_qmls()') &&
+              common.includes('${UTOUTLOOK_CONFIG_DIR}/nonetwork.qml'),
+        'QML screens must be generated in the app config dir (v4.1.0)');
+    assert.ok(!fs.readFileSync(path.resolve(__dirname, '../../qml/nonetwork.qml'), 'utf-8')
+              .includes('/tmp/utoutlook-qml-i18n.js') &&
+              !fs.readFileSync(path.resolve(__dirname, '../../qml/exit.qml'), 'utf-8')
+              .includes('/tmp/utoutlook-qml-i18n.js'),
+        'QML screens must import i18n by name (v4.1.0)');
+    assert.ok(cmd.includes('qmlscene "${UTOUTLOOK_CONFIG_DIR}"/nonetwork.qml'),
+        'wrapper must launch the generated nonetwork QML (v4.1.0)');
+
+    // Démarrage long : attentes réduites (notification/flag de fermeture).
+    assert.ok(cmd.includes('utoutlook_wait_notifications 6') &&
+              !cmd.includes('utoutlook_wait_notifications 15'),
+        'notification wait must be shortened to 6s (v4.1.0)');
+    assert.ok(cmd.includes('while [ ${_i} -lt 4 ]') && cmd.includes('sleep_int 2'),
+        'closing-flag wait must be 4x2s instead of 5x3s (v4.1.0)');
+    assert.ok(fs.readFileSync(path.resolve(__dirname, '../../utils/mkdir.c'), 'utf-8')
+              .includes('errno != EEXIST'),
+        'mkdir must treat EEXIST as success (no log noise) (v4.1.0)');
+
+    // Fenêtre "visible" pour Electron mais surface Mir perdue après unlock.
+    const ctl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    assert.ok(ctl.includes('resurfaceWindow(stealFocus = false)') &&
+              ctl.includes('setAlwaysOnTop(true)') && ctl.includes('webContents.invalidate()'),
+        'controller must re-surface the Mir window without hide() (v4.1.0)');
+    assert.ok(ctl.includes("this._on(powerMonitor, 'unlock-screen'") &&
+              ctl.includes('surfaceHealthPoll = setInterval'),
+        'unlock-screen + periodic re-surface must be wired (v4.1.0)');
+    assert.ok(main.includes('this.mailController.resurfaceWindow(true);'),
+        'socket show must force surface re-integration (v4.1.0)');
+    // Fix "login invisible": le pulse alwaysOnTop seul ne suffit pas — il faut
+    // un vrai re-map de la surface. v4.1.8: le +1px ne suffisait pas sur device,
+    // remplacé par un déplacement réel (x + 40) puis restauration 250 ms plus tard.
+    assert.ok(ctl.includes('setBounds({ ...b, x: b.x + 40 })') &&
+              ctl.includes("this._resurfaceNudgePending = false;\n                }, 250);"),
+        'surface re-map must use a real offscreen bounce, restored after 250ms (v4.1.8)');
+    assert.ok(ctl.includes('this.win.on("focus", () => {') &&
+              ctl.includes('this.resurfaceWindow(false);'),
+        'login blur must force a real surface re-map on focus (v4.1.0)');
+});
+
+test('v4.0.125: bouton Quitter — cleanupAndExit plus court-circuité (app vivante mais invisible)', async () => {
+    const fs = await import('node:fs');
+    const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');
+    const controller = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+
+    // before-quit / will-quit posaient isQuitting AVANT d'appeler
+    // cleanupAndExit(), dont le garde-fou `if (this.isQuitting) return`
+    // sortait immédiatement : aucun exitclient, heartbeat toujours actif,
+    // fenêtre masquée → « app vivante mais invisible » après le bouton Quitter.
+    for (const evt of ['will-quit', 'before-quit']) {
+        const start = main.indexOf(`app.on("${evt}"`);
+        assert.ok(start >= 0, `${evt} handler must exist (v4.0.125)`);
+        const block = main.slice(start, main.indexOf('});', start));
+        assert.ok(block.includes('e.preventDefault()'),
+            `${evt} must cancel the default quit so cleanup can run (v4.0.125)`);
+        assert.ok(!block.includes('this.isQuitting = true'),
+            `${evt} must NOT set isQuitting before calling cleanupAndExit (v4.0.125)`);
+        assert.ok(block.includes('this.cleanupAndExit()'),
+            `${evt} must call cleanupAndExit (v4.0.125)`);
+    }
+
+    const caeStart = main.indexOf('    async cleanupAndExit() {');
+    const cae = main.slice(caeStart, main.indexOf('\n    createControllers()', caeStart));
+    assert.ok(cae.includes('if (this.cleanupStarted) return;'),
+        'cleanupAndExit must guard on a dedicated cleanupStarted flag (v4.0.125)');
+    assert.ok(!cae.includes('if (this.isQuitting) return;'),
+        'cleanupAndExit must not guard on isQuitting (v4.0.125)');
+    assert.ok(cae.includes('global.utoutlookQuitting = true'),
+        'cleanupAndExit must flag a real quit for the window controller (v4.0.125)');
+
+    // Avec hideOnClose=true (forcé sur UT), intercepter 'close' pendant le
+    // quit masque la fenêtre et annule app.quit() → app invisible.
+    const closeStart = controller.indexOf('this.win.on("close", (e) => {');
+    const close = controller.slice(closeStart, controller.indexOf('});', closeStart));
+    assert.ok(close.includes('settings.get("hideOnClose")'),
+        'hideOnClose must still apply outside a quit (v4.0.125)');
+    assert.ok(close.includes('!global.utoutlookQuitting'),
+        'close handler must skip hideOnClose during a real quit (v4.0.125)');
+});
+
+test('v4.1.0 (revue): outillage release et garde-fous', async () => {
+    const fs = await import('node:fs');
+    const root = path.resolve(__dirname, '../../..');
+    const watch = fs.readFileSync(path.resolve(root, 'watch-log.sh'), 'utf-8');
+    const menu = fs.readFileSync(path.resolve(root, 'menu.sh'), 'utf-8');
+    const store = fs.readFileSync(path.resolve(root, 'openstore-prepare.sh'), 'utf-8');
+    const hook = fs.readFileSync(path.resolve(root, 'githooks/pre-push'), 'utf-8');
+
+    assert.ok(watch.includes('adb devices') && watch.includes('appareil verrouillé'),
+        'watch-log must check the device and explain locked-device failures');
+    assert.ok(menu.includes('-maxdepth 4'), 'menu must detect version in subfolders');
+    assert.ok(store.includes('UPLOAD_OK') && store.includes('"OK"'),
+        'OpenStore upload must require the explicit OK argument');
+    assert.ok(hook.includes('--not --remotes') && !hook.includes('--not --all'),
+        'pre-push must inspect new-branch objects (F16)');
+});
+
+test('v4.1.0: QML générés (étape/erreurs) — pas de modèle testé à la place', async () => {
+    const fs = await import('node:fs');
+    const common = fs.readFileSync(path.resolve(__dirname, '../../utils/common.sh'), 'utf-8');
+    assert.ok(common.includes('utoutlook_write_startup_qml()') &&
+              common.includes('text: "%s"') &&
+              common.includes('NumberAnimation'),
+        'startup QML generator must embed the step label and the animation');
+    assert.ok(common.includes('utoutlook_write_error_qmls()') &&
+              common.includes('QmlI18n.NO_NETWORK/${repl}') &&
+              common.includes('QmlI18n.EXIT_TIMEOUT/${repl}'),
+        'error QML generators must inline translated labels (F11)');
+    assert.ok(common.includes('source: \\"${WD}/qml/no-network-icon.png\\"') &&
+              common.includes('source: \\"${WD}/qml/exit.jpg\\"'),
+        'generated QML must use absolute image paths inside the click');
+});
+
+test('v4.1.0 (revue B8): destroy() retire les listeners à la recréation', async () => {
+    const fs = await import('node:fs');
+    const ctrl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    const tray = fs.readFileSync(path.resolve(__dirname, '../src/controller/tray-controller.mjs'), 'utf-8');
+    assert.ok(ctrl.includes('_on(target, event, handler)') &&
+              ctrl.includes('removeListener(event, handler)'),
+        'controller must track and remove its listeners');
+    assert.ok(ctrl.includes('destroy()') && ctrl.includes('ipcMain.removeHandler(channel)') &&
+              ctrl.includes('ipcMain.removeAllListeners(channel)'),
+        'destroy() must clear IPC handlers as well');
+    assert.ok(tray.includes('ctl.destroy()') && tray.indexOf('quitAll()') < tray.indexOf('ctl.destroy()'),
+        'toggleWindowFrame must close windows then destroy controllers (v4.1.0)');
+    assert.ok(ctrl.includes("this._on(app, 'browser-window-created'") &&
+              ctrl.includes("this._on(powerMonitor, 'unlock-screen'"),
+        'app/powerMonitor/screen listeners must be registered through _on');
+});
+
+test('v4.1.0 (analyse approfondie): correctifs applicatifs et outillage', async () => {
+    const fs = await import('node:fs');
+    const root = path.resolve(__dirname, '../../..');
+    const cmd = fs.readFileSync(path.resolve(root, 'utoulookmail/command.sh'), 'utf-8');
+    const common = fs.readFileSync(path.resolve(root, 'utoulookmail/utils/common.sh'), 'utf-8');
+    const clickable = fs.readFileSync(path.resolve(root, 'utoulookmail/clickable.yaml'), 'utf-8');
+    const ctl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    const tray = fs.readFileSync(path.resolve(__dirname, '../src/controller/tray-controller.mjs'), 'utf-8');
+    const obs = fs.readFileSync(path.resolve(__dirname, '../public/unread-number-observer.js'), 'utf-8');
+    const gestures = fs.readFileSync(path.resolve(__dirname, '../public/gestures.js'), 'utf-8');
+    const reload = fs.readFileSync(path.resolve(__dirname, '../public/reload-button.js'), 'utf-8');
+    const store = fs.readFileSync(path.resolve(root, 'openstore-prepare.sh'), 'utf-8');
+    const ci = fs.readFileSync(path.resolve(root, '.github/workflows/build-click.yml'), 'utf-8');
+
+    // socket sans python3 (non embarqué) — helper C dédié
+    assert.ok(!common.includes('python3') && common.includes('socketcli'),
+        'socket helpers must use the embedded C helper, not python3 (F3)');
+    assert.ok(clickable.includes('socketcli.c -o') && clickable.includes('prospect-mail-${v}-arm64.tar.gz'),
+        'socket helper compiled and tar.gz selected by manifest version (F5)');
+
+    // swipe-close: fenêtre masquée, watchdog neutralisé
+    assert.ok(cmd.includes('UTOUTLOOK_SWIPE_HIDDEN') && cmd.includes('LOMIRI_TERM:-0') ,
+        'wrapper must flag swipe-close (E2)');
+    assert.ok(ctl.includes('SWIPE_HIDDEN_FILE') && ctl.includes('if (this.recreating)'),
+        'controller must honour swipe-hidden and ignore closed during recreation (E1/E2)');
+    assert.ok(tray.includes('ctl.recreating = true') && !tray.includes('app.relaunch();'),
+        'tray must flag recreation and let the wrapper relaunch (E1/M5)');
+
+    // observer: badge toujours à jour, notifications pas supprimées par le timer
+    assert.ok(obs.includes('silentNotifications') && obs.includes('updateUnreadDebounced(unread);') &&
+              obs.includes('observeTarget = leftPanel || document.body'),
+        'observer must update badge and keep detecting without the pane (renderer #1/#2)');
+    assert.ok(obs.includes('tr(\'observerDomChanged\')') && obs.includes('tr(\'reminderFallback\')'),
+        'observer texts must be i18n (renderer #6)');
+
+    // boutons login hors du champ + first-install dispatch par envoyeur
+    assert.ok(gestures.includes('top:26px') && gestures.includes('syncUtilityButtons') &&
+              gestures.includes("mousedown', e => e.preventDefault()") &&
+              gestures.includes('window.innerHeight * 0.72'),
+        'login utility buttons must stay clear of the input and the OSK (v4.1.0)');
+    assert.ok(!ctl.includes('dialog.showMessageBox'),
+        'first-install must not open a native modal dialog (blur + invisible window on Lomiri) (v4.1.0)');
+    assert.ok(ctl.includes('static byWebContents') && ctl.includes('const owner = MailWindowController.byWebContents.get(event.sender)'),
+        'IPC handlers must dispatch to the controller owning the sender (M4)');
+
+    // reload button visible when the list is broken
+    assert.ok(reload.includes("reload.style.display = listReady() ? '' : 'none'") &&
+              !reload.includes("a.style.setProperty('overflow', 'visible'"),
+        'reload button must be available on broken lists without breaking scroll (renderer #4/#5)');
+    assert.ok(ctl.includes('render-process-gone') && ctl.includes('this.win.reload()'),
+        'dead renderer must trigger a reload (M6)');
+
+    // release/outillage
+    assert.ok(store.includes("d['data'].get('version')") && store.includes('--config -'),
+        'OpenStore API v4 and API key must be handled correctly (F7/F8)');
+    assert.ok(!ci.includes('*.click') && ci.includes('*.tar.gz'),
+        'CI must never publish .click files (F2)');
+    assert.ok(fs.readFileSync(path.resolve(root, 'check-history.sh'), 'utf-8').includes('--strict'),
+        'history confidentiality guard must exist (F1)');
+    assert.ok(common.includes('utoutlook_qml_escape'), 'QML strings must be escaped (renderer #8)');
+    const buildFast = fs.readFileSync(path.resolve(root, 'utoulookmail/build-fast.sh'), 'utf-8');
+    assert.ok(buildFast.includes('cmake -G Ninja') &&
+              buildFast.includes('"$PROJECT_DIR/CMakeCache.txt"') &&
+              !buildFast.includes('rm -f "$PROJECT_DIR/Makefile"'),
+        'build-fast must clean in-source cmake artifacts WITHOUT deleting the real Makefile (F4)');
 });

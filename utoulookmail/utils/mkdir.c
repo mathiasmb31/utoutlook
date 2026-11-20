@@ -22,14 +22,14 @@ int main()
     int c;
     build_paths();
 
-    if ( mkdir( PATH, 0755 ) != 0 ) {
+    // v4.1.0: un dossier déjà présent n'est PAS une erreur — le wrapper
+    // appelle mkdir à chaque lancement et le bruit "Impossible de créer..."
+    // polluait wrapper.log sans rien signaler de utile.
+    if ( mkdir( PATH, 0755 ) != 0 && errno != EEXIST ) {
         fprintf( stderr, "Impossible de créer le dossier %s : \n", PATH );
         switch( errno ) {
             case EACCES:
                 fprintf( stderr, "\tTu n'as pas les droits\n" );
-                break;
-            case EEXIST:
-                fprintf( stderr, "\tLe dossier existe déjà.\n" );
                 break;
             default:
                 fprintf( stderr, "\tJe ne t'en dirais pas plus ;-)" );
