@@ -59,7 +59,18 @@ if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
   exit 0
 fi
 
-ROOT="$(cd "$(dirname "$0")" && pwd)"
+# v4.3.6: résoudre le VRAI chemin du script — le script peut être lancé via
+# un lien symbolique depuis un autre worktree (utoutlook/, vibeworkspace/, ...).
+# $0 pointe alors vers le lien, et ROOT serait mauvais (click introuvable).
+# On résout avec `readlink -f` (script HÔTE, pas dans le click : AppArmor ne
+# s'applique pas ici) avec repli builtin sur $0.
+_SELF="${BASH_SOURCE[0]}"
+case "$_SELF" in
+  /*) ;;
+  *) _SELF="$PWD/$_SELF" ;;
+esac
+_REAL="$(readlink -f "$_SELF" 2>/dev/null || echo "$_SELF")"
+ROOT="$(cd "$(dirname "$_REAL")" && pwd)"
 APP="utoutlook.mathias"
 cd "$ROOT"
 
