@@ -1629,6 +1629,15 @@ test('v4.2.3: identité fenêtre = état v4.0.98 (aucun --class / StartupWMClass
         'bump-version.sh must not reintroduce StartupWMClass (v4.2.3)');
 });
 
+test('v4.3.2: pas de bascule ni notification si deja software', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    assert.ok(cmd.includes('[ "${RENDER_MODE:-}" = "software" ]'),
+        'must not flip when already software (v4.3.2)');
+    assert.ok(cmd.includes('read -r cur < "${UTOUTLOOK_RENDER_MODE_FILE}"'),
+        'must read render-mode with bash builtin, not external cat/tr (v4.3.2)');
+});
+
 test('v4.3.1: fausse rotation au demarrage ignoree + show apres roue', async () => {
     const fs = await import('node:fs');
     const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');

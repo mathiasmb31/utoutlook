@@ -90,10 +90,25 @@ function flip_render_mode() {
 		echo "auto render fallback skipped (${RENDER_FLIPS} flips this session)"
 		return 1
 	fi
+	# v4.3.2: ne JAMAIS rebasculer quand on est DEJA en software — le message
+	# "passage en software" s'affichait alors que le mode etait deja software.
+	# RENDER_MODE est deja resolu au demarrage (utoutlook_resolve_render_mode) :
+	# s'il vaut software, on ne touche a rien et on ne notifie pas.
+	if [ "${RENDER_MODE:-}" = "software" ]; then
+		echo "already software — no flip, no notification"
+		return 0
+	fi
 	local cur new
-	cur=$("${UTOUTLOOK_BIN}/cat" "${UTOUTLOOK_RENDER_MODE_FILE}" 2>/dev/null | "${UTOUTLOOK_BIN}/tr" -d '[:space:]')
+	# Lecture avec le BUILTIN read (les binaires cat/tr externes renvoyaient
+	# vide au moment du flip : log "auto render fallback:  -> software").
+	cur=""
+	[ -f "${UTOUTLOOK_RENDER_MODE_FILE}" ] && read -r cur < "${UTOUTLOOK_RENDER_MODE_FILE}" 2>/dev/null || true
+	cur="${cur//[[:space:]]/}"
 	case "${cur}" in
-		software|on|1) new="hardware" ;;
+		software|on|1)
+			echo "already software (file) — no flip, no notification"
+			return 0
+			;;
 		*) new="software" ;;
 	esac
 	printf '%s' "${new}" > "${UTOUTLOOK_RENDER_MODE_FILE}" 2>/dev/null || true
