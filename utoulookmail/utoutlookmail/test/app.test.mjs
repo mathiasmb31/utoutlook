@@ -2862,3 +2862,52 @@ test('v4.3.7: list-ready glass effect is one-shot and respects reduced motion', 
               css.includes('animation: none !important'),
         'reduced-motion users must get no animation (v4.3.7)');
 });
+
+// ============================================================
+// v4.3.7 — robustesse : logs bornes et polls en arriere-plan
+// ============================================================
+
+test('v4.3.7: crash.log is capped without touching wrapper.log line numbers', async () => {
+    const {capLogIfLarge, MAX_CRASH_LOG_BYTES} = await import('../src/log-rotation.mjs');
+    let size = MAX_CRASH_LOG_BYTES - 1;
+    let truncated = 0;
+    const fakeFs = {
+        statSync: () => ({size}),
+        writeFileSync: (_p, data) => { assert.strictEqual(data, ''); truncated++; },
+    };
+    assert.strictEqual(capLogIfLarge('crash.log', MAX_CRASH_LOG_BYTES, fakeFs), false);
+    assert.strictEqual(truncated, 0, 'a log below the limit must be left alone');
+    size = MAX_CRASH_LOG_BYTES + 1;
+    assert.strictEqual(capLogIfLarge('crash.log', MAX_CRASH_LOG_BYTES, fakeFs), true);
+    assert.strictEqual(truncated, 1, 'an oversized log must be truncated');
+    assert.strictEqual(capLogIfLarge('missing.log', MAX_CRASH_LOG_BYTES, {
+        statSync: () => { throw new Error('ENOENT'); },
+        writeFileSync: () => { throw new Error('should not write'); },
+    }), false);
+});
+
+test('v4.3.7: watchdog noise is debug-only and background gating is whitelisted', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const wrapper = fs.readFileSync(path.resolve(here, '../../command.sh'), 'utf-8');
+    const ctl = fs.readFileSync(path.join(here, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    const main = fs.readFileSync(path.join(here, '../src/main.mjs'), 'utf-8');
+
+    assert.ok(wrapper.includes('[ "${UTOUTLOOK_DEBUG:-0}" = "1" ] && echo "done"'),
+        'watchdog "done" noise must be debug-only (v4.3.7)');
+    assert.ok(wrapper.includes('[ "${UTOUTLOOK_DEBUG:-0}" = "1" ] && echo "client is alive"'),
+        'watchdog "client is alive" noise must be debug-only (v4.3.7)');
+    assert.ok(ctl.includes('isBackgrounded()') &&
+              ctl.includes('if (this.isBackgrounded()) return; // v4.3.7: inutile quand masque') &&
+              ctl.includes('if (this.isBackgrounded()) return;\n\n            try {'),
+        'only the list watchdog and connectivity poll may be gated (v4.3.7)');
+    const gates = ctl.match(/if \(this\.isBackgrounded\(\)\) return;/g) || [];
+    assert.strictEqual(gates.length, 2,
+        'only the list watchdog and the connectivity poll may use the background gate');
+    assert.ok(!main.includes('isBackgrounded'),
+        'heartbeat lives in main.mjs and must never be gated (v4.2.5 clean quit)');
+    assert.ok(main.includes('capLogIfLarge(file, MAX_CRASH_LOG_BYTES)'),
+        'crash.log must be capped from main.mjs (v4.3.7)');
+});

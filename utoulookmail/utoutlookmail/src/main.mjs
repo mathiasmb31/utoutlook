@@ -4,6 +4,7 @@ import AccountManager from './account-manager.mjs';
 import {TrayController} from './controller/tray-controller.mjs';
 import {startSocketServer, stopSocketServer} from './ipc-socket.mjs';
 import {logger} from './logger.mjs';
+import {capLogIfLarge, MAX_CRASH_LOG_BYTES} from './log-rotation.mjs';
 import {setLanguage, t} from './i18n.mjs';
 import {execFile} from 'node:child_process';
 import {resolveLanguage, writeLangFile, settings} from './settings.mjs';
@@ -33,12 +34,15 @@ app.commandLine.appendSwitch('js-flags', '--stack-size=4000');
 // of null). Now: log + crash.log always, exit only after 5 errors in 60s.
 let uncaughtCount = 0;
 let uncaughtWindowStart = Date.now();
+// v4.3.7: crash.log borne a 1 Mo — sans binaire externe (AppArmor), via fs.
+const appendCrash = (line) => {
+    const file = `${CONFIG_DIR}/crash.log`;
+    capLogIfLarge(file, MAX_CRASH_LOG_BYTES);
+    fs.writeFile(file, line, {flag: 'a'}, () => {});
+};
 process.on('uncaughtException', (err) => {
     logger.error('Uncaught exception:', err);
-    fs.writeFile(`${CONFIG_DIR}/crash.log`,
-        `${new Date().toISOString()} [uncaughtException] ${err.stack}\n`, {flag: 'a'},
-        () => {}
-    );
+    appendCrash(`${new Date().toISOString()} [uncaughtException] ${err.stack}\n`);
     const now = Date.now();
     if (now - uncaughtWindowStart > 60000) { uncaughtCount = 0; uncaughtWindowStart = now; }
     uncaughtCount++;
@@ -52,10 +56,7 @@ process.on('uncaughtException', (err) => {
 
 process.on('unhandledRejection', (reason, promise) => {
     logger.error('Unhandled rejection at:', promise, 'reason:', reason);
-    fs.writeFile(`${CONFIG_DIR}/crash.log`,
-        `${new Date().toISOString()} [unhandledRejection] ${reason}\n`, {flag: 'a'},
-        () => {}
-    );
+    appendCrash(`${new Date().toISOString()} [unhandledRejection] ${reason}\n`);
 });
 
 // Ensure config directory exists
