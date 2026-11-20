@@ -132,6 +132,19 @@ const T = {
         it: 'Dati cancellati — riavvio…', pt: 'Dados apagados — reiniciando…', zh: '数据已清除 — 正在重启…', ar: 'تم مسح البيانات — جارٍ إعادة التشغيل…',
         ca: 'S’han esborrat les dades. S’està reiniciant…', eu: 'Datuak ezabatu dira — berrabiaratzen…',
     },
+    // v4.3.7: bouton diagnostics + message apres generation du rapport
+    'action.diagnostics': {
+        fr: 'Diagnostics', en: 'Diagnostics', es: 'Diagnóstico', de: 'Diagnose',
+        it: 'Diagnostica', pt: 'Diagnóstico', zh: 'Diagnostics', ar: 'التشخيص',
+        ca: 'Diagnòstic', eu: 'Diagnostikoa',
+    },
+    'diagnostics.saved': {
+        fr: 'Rapport enregistré : {path}', en: 'Report saved to: {path}',
+        es: 'Informe guardado en: {path}', de: 'Bericht gespeichert unter: {path}',
+        it: 'Report salvato in: {path}', pt: 'Relatório guardado em: {path}',
+        zh: 'Report saved to: {path}', ar: 'تم حفظ التقرير في: {path}',
+        ca: 'Informe desat al directori: {path}', eu: 'Txostena gorde da: {path}',
+    },
     'common.show': {
         fr: 'Afficher', en: 'Show', es: 'Mostrar', de: 'Anzeigen',
         it: 'Mostra', pt: 'Mostrar', zh: '显示', ar: 'إظهار',

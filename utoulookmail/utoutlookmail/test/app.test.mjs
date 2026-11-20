@@ -2960,3 +2960,64 @@ test('v4.3.7: reverse supervision uses cleanupAndExit with quit/rotation guards'
     assert.ok(block.includes("state === 'unknown'") || block.includes("// 'unknown'"),
         'unknown state must be explicitly ignored');
 });
+
+// ============================================================
+// v4.3.7 — bouton diagnostics : rapport whiteliste, jamais de log brut
+// ============================================================
+
+test('v4.3.7: diagnostics report contains only structural, non-private data', async () => {
+    const {buildDiagnostics} = await import('../src/diagnostics.mjs');
+    const fake = {
+        readFileSync: (p) => {
+            if (String(p).endsWith('lang')) return 'fr\n';
+            if (String(p).endsWith('render-mode')) return 'software\n';
+            if (String(p).endsWith('follow')) return '42';
+            throw new Error('ENOENT');
+        },
+        existsSync: (p) => String(p).endsWith('wrapper.pid'),
+        statSync: () => ({size: 1234}),
+    };
+    const report = buildDiagnostics({
+        version: '4.3.7', now: () => 1700000000000,
+        configDir: '/cfg', dataDir: '/data', heartbeatFile: '/cfg/follow',
+        readFileSync: fake.readFileSync, existsSync: fake.existsSync, statSync: fake.statSync,
+    });
+    assert.strictEqual(report.version, '4.3.7');
+    assert.strictEqual(report.language, 'fr');
+    assert.strictEqual(report.renderMode, 'software');
+    assert.strictEqual(report.heartbeat, '42');
+    assert.strictEqual(report.wrapperPidPresent, true);
+    assert.strictEqual(report.socketPresent, false);
+    assert.strictEqual(report.flags.exitclient, false);
+    assert.strictEqual(report.logBytes.wrapper, 1234);
+    const json = JSON.stringify(report);
+    assert.ok(!/[a-z0-9._%+-]+@[a-z0-9.-]+/.test(json), 'no email address in the report');
+    assert.ok(!json.includes('wrapper.log content'), 'no raw log content in the report');
+});
+
+test('v4.3.7: diagnostics IPC is guarded and the button uses i18n labels', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const ctl = fs.readFileSync(path.join(here, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    const preload = fs.readFileSync(path.join(here, '../src/controller/preload.js'), 'utf-8');
+    const btn = fs.readFileSync(path.join(here, '../public/reload-button.js'), 'utf-8');
+    const i18n = fs.readFileSync(path.join(here, '../src/i18n.mjs'), 'utf-8');
+
+    assert.ok(ctl.includes('ipcMain.handle("get-diagnostics"') &&
+              ctl.includes('MailWindowController.byWebContents.has(event.sender)'),
+        'only the trusted mail renderer may request diagnostics');
+    assert.ok(ctl.includes('buildDiagnostics({version: app.getVersion()})'),
+        'diagnostics must use the whitelisted builder');
+    assert.ok(!/get-diagnostics[\s\S]{0,600}wrapper\.log/.test(ctl),
+        'raw wrapper.log must never be exported');
+    assert.ok(preload.includes('getDiagnostics: () => ipcRenderer.invoke("get-diagnostics")'),
+        'preload must expose the diagnostics bridge');
+    assert.ok(btn.includes('utoutlook-diagnostics-btn') &&
+              btn.includes("tr('action.diagnostics'") &&
+              btn.includes("tr('diagnostics.saved'"),
+        'diagnostics button labels must come from i18n (10 languages)');
+    assert.ok(i18n.includes("'action.diagnostics':") && i18n.includes("'diagnostics.saved':"),
+        'new i18n keys must exist');
+});

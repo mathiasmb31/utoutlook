@@ -18,6 +18,8 @@
     //   - FIRST_ID   : « Première installation » — wipe complet + notif + relance.
     const UBTOUCH_ID = 'utoutlook-ubtouch-badge';
     const FIRST_ID = 'utoutlook-first-install-btn';
+    // v4.3.7: bouton compact « ⓘ » — rapport de diagnostic whiteliste.
+    const DIAG_ID = 'utoutlook-diagnostics-btn';
     // v4.1.5: VRAIE cocarde Ubuntu Touch officielle (fond orange #E95420 +
     // les 3 pastilles/arcs blancs), extraite du logo Wikimedia "Ubuntu touch
     // logo 2025 dark.svg" — pas une approximation. Cadrée sur le carré 73x73.
@@ -246,6 +248,36 @@
                 e.preventDefault(); e.stopPropagation(); fire('quit');
             });
             bar.appendChild(quit);
+        }
+
+        // v4.3.7: bouton diagnostics — icône seule pour ne pas élargir la
+        // barre (4 boutons déjà calibrés pour 612 px logiques). Le libellé
+        // accessible et le message passent par le catalogue i18n 10 langues.
+        let diag = document.getElementById(DIAG_ID);
+        if (!diag) {
+            diag = document.createElement('button');
+            diag.id = DIAG_ID;
+            diag.type = 'button';
+            diag.textContent = 'ⓘ';
+            const label = tr('action.diagnostics', 'Diagnostics');
+            diag.title = label;
+            diag.setAttribute('aria-label', label);
+            diag.style.cssText = BTN_STYLE +
+                'background:rgba(15,15,26,0.92);color:#E95420;border:1px solid #E95420;' +
+                'padding:7px 9px;min-width:34px;';
+            diag.addEventListener('click', async (e) => {
+                e.preventDefault(); e.stopPropagation();
+                try {
+                    if (!window.electronAPI ||
+                        typeof window.electronAPI.getDiagnostics !== 'function') return;
+                    const out = await window.electronAPI.getDiagnostics();
+                    if (out) {
+                        window.alert(tr('diagnostics.saved', 'Report saved to: {path}')
+                            .replace('{path}', out));
+                    }
+                } catch (err) { /* diagnostic ne doit jamais casser l'UI */ }
+            });
+            bar.appendChild(diag);
         }
 
         // v4.1.3: badge UBtouch — décoratif, aucune action, inséré avant les
