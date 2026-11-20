@@ -20,6 +20,7 @@ import {
     SWIPE_HIDDEN_FILE,
 } from '../config.mjs';
 import {logger} from '../logger.mjs';
+import {buildDiagnostics} from '../diagnostics.mjs';
 
 const __filenameNew = fileURLToPath(import.meta.url);
 const __dirnameNew = path.dirname(__filenameNew);
@@ -2019,6 +2020,23 @@ class MailWindowController {
         // fichier au prochain lancement (auto + bascule sur crash GPU).
         // v4.1.0 (revue B9): un handle par compte lève "second handler" dès le
         // 2ᵉ compte → uncaughtException → app.exit(1). On retire avant d'ajouter.
+        // v4.3.7: rapport de diagnostic WHITELISTE — jamais de wrapper.log brut
+        // (titres/sujets de notifications et console du renderer peuvent contenir
+        // du contenu de messages). Seules des donnees structurelles sont ecrites.
+        ipcMain.removeHandler("get-diagnostics");
+        ipcMain.handle("get-diagnostics", async (event) => {
+            if (!MailWindowController.byWebContents.has(event.sender)) return null;
+            const report = buildDiagnostics({version: app.getVersion()});
+            const out = path.join(CONFIG_DIR, 'diagnostics.json');
+            try {
+                fs.mkdirSync(CONFIG_DIR, {recursive: true});
+                fs.writeFileSync(out, JSON.stringify(report, null, 2) + '\n', {mode: 0o600});
+                return out;
+            } catch (e) {
+                logger.warn(`v4.3.7: impossible d'ecrire diagnostics.json: ${e.message}`);
+                return null;
+            }
+        });
         ipcMain.removeHandler("get-render-mode");
         ipcMain.handle("get-render-mode", () => {
             try { return fs.readFileSync(RENDER_MODE_FILE, 'utf-8').trim() || 'auto'; }
