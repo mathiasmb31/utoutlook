@@ -18,7 +18,7 @@ Tout projet d'app DOIT être internationalisé : **aucun texte visible par l'uti
 (UI, notifications, bulles, messages shell, pages statiques splash/offline/nonetwork/about,
 titres de fenêtres). Tout passe par le catalogue i18n du projet.
 
-- Langues minimum : les 8 de la convention transverse (FR, EN, ES, DE, IT, PT, ZH, AR).
+- Langues minimum : les 10 de la convention transverse (FR, EN, ES, DE, IT, PT, ZH, AR, CA, EU).
 - Couvre aussi : notifications push/D-Bus, messages shell (fonction t/i18n), pages statiques.
 - Détection auto de la langue système, fallback FR.
 - Avant commit : aucun texte utilisateur hardcodé — vérifier par grep des chaînes
@@ -148,7 +148,7 @@ ESLINT_USE_FLAT_CONFIG=false npm run lint                     # obligatoire : ES
 ## Pièges coûteux
 
 - **AppArmor** : une app click ne peut pas exécuter de binaire hors de son paquet. D'où `"${WD}"/bin/...` partout et la liste `cp /usr/bin/...` de `clickable.yaml`. Toute nouvelle commande système (grep, nc, sleep…) utilisée par un script du click doit y être ajoutée, sinon échec **uniquement sur device** (tout marche en local).
-- **i18n dédoublé** : `src/i18n.mjs` (UI Electron) **et** `utils/common.sh` → `utoutlook_t()` (notifications shell + chaînes QML, écrites dans `/tmp/utoutlook-qml-i18n.js`). Une chaîne visible = les deux catalogues, 8 langues (fr en es de it pt zh ar), fallback fr.
+- **i18n dédoublé** : `src/i18n.mjs` (UI Electron) **et** `utils/common.sh` → `utoutlook_t()` (notifications shell + chaînes QML, écrites dans `/tmp/utoutlook-qml-i18n.js`). Une chaîne visible = les deux catalogues, 10 langues (fr en es de it pt zh ar ca eu), fallback fr.
 - **QML** : QML brut lu par `qmlscene` ; `.import` est rejeté (`Expected token numeric literal`) → utiliser `import`.
 - **`package.json`** : la clé `"type:"` (deux-points) est une typo laissée exprès ; ne pas la « corriger » en `"type": "module"`, les preloads `src/controller/*.js` sont en CommonJS (`require`).
 - **Chemins** : tout est centralisé dans `src/config.mjs` (`APP_ID`, `CONFIG_DIR`, `SOCKET_PATH`, fichiers de flags). Ne pas recoder `/home/phablet` en dur.
