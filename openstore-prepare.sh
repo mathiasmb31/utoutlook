@@ -131,6 +131,11 @@ else
   TRANSLATED=""
 fi
 
+# v4.3.6: ne PAS écraser un whatsnew.txt rédigé à la main (le script l'écrasait
+# systématiquement, rendant impossible un texte soigné validé par Mathias).
+if [ -f "$KIT/whatsnew.txt" ]; then
+  echo "whatsnew.txt existant conservé (rédigé manuellement) — non écrasé."
+else
 {
   echo "Version $VERSION — $(LC_ALL=C date +"%d %B %Y")"
   echo ""
@@ -148,6 +153,7 @@ fi
   echo "Built and tested by Mathias — code written by Vibe, reviewed and controlled by Mathias."
 } > "$KIT/whatsnew.txt"
 echo "whatsnew.txt généré (traduit en anglais) depuis $LAST_PUBLISHED ($RANGE)"
+fi
 
 [ -f "$KIT/metadata.json" ] || echo '{"name":"UToutlook Mail","description":"Outlook mail client for Ubuntu Touch"}' > "$KIT/metadata.json"
 
