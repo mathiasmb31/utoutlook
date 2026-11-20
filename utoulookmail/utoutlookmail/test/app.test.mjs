@@ -1629,6 +1629,16 @@ test('v4.2.3: identité fenêtre = état v4.0.98 (aucun --class / StartupWMClass
         'bump-version.sh must not reintroduce StartupWMClass (v4.2.3)');
 });
 
+test('v4.3.1: fausse rotation au demarrage ignoree + show apres roue', async () => {
+    const fs = await import('node:fs');
+    const cmd = fs.readFileSync(path.resolve(__dirname, '../../command.sh'), 'utf-8');
+    const ctl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    assert.ok(ctl.includes('this.appStartedAt') && ctl.includes('Date.now() - this.appStartedAt < 15000'),
+        'ignore false rotation during first 15s (v4.3.1)');
+    assert.ok((cmd.match(/utoutlook_send_socket_cmd '\{"cmd":"show"\}'/g) || []).length >= 2,
+        'send show after closing relaunch QML screen to restore Mir session (v4.3.1)');
+});
+
 test('v4.2.9: notification de demarrage apres 10 s si fenetre pas reellement affichee', async () => {
     const fs = await import('node:fs');
     const main = fs.readFileSync(path.resolve(__dirname, '../src/main.mjs'), 'utf-8');

@@ -841,6 +841,11 @@ while true; do
 		kill "${RELAUNCH_QML_PID}" 2>/dev/null || true
 		wait "${RELAUNCH_QML_PID}" 2>/dev/null || true # v4.0.99: récupérer le zombie
 		RELAUNCH_QML_PID=""
+		# v4.3.1: la fenêtre QML de relance prend la session Mir ; quand on
+		# la tue, Electron ne récupère PAS la sienne (device 20/11 11:15 :
+		# faux rotation -> relaunch.qml -> app vivante mais invisible, un
+		# `show` socket recréait la session). On renvoie `show` après fermeture.
+		utoutlook_send_socket_cmd '{"cmd":"show"}'
 		echo "relaunch screen closed — client is back"
 	fi
 
@@ -853,6 +858,7 @@ while true; do
 		kill "${RELAUNCH_QML_PID}" 2>/dev/null || true
 		wait "${RELAUNCH_QML_PID}" 2>/dev/null || true
 		RELAUNCH_QML_PID=""
+		utoutlook_send_socket_cmd '{"cmd":"show"}' # v4.3.1: récupérer la session Mir
 		echo "relaunch screen closed — watchdog timeout (20s) — client is back"
 	fi
 
