@@ -2901,9 +2901,9 @@ test('v4.3.7: watchdog noise is debug-only and background gating is whitelisted'
         'watchdog "client is alive" noise must be debug-only (v4.3.7)');
     assert.ok(ctl.includes('isBackgrounded()') &&
               ctl.includes('if (this.isBackgrounded()) return; // v4.3.7: inutile quand masque') &&
-              ctl.includes('if (this.isBackgrounded()) return;\n\n            try {'),
+              ctl.includes('if (this.isBackgrounded() && !this.isOffline) return;'),
         'only the list watchdog and connectivity poll may be gated (v4.3.7)');
-    const gates = ctl.match(/if \(this\.isBackgrounded\(\)\) return;/g) || [];
+    const gates = ctl.match(/if \(this\.isBackgrounded\(\)(?: && !this\.isOffline)?\) return;/g) || [];
     assert.strictEqual(gates.length, 2,
         'only the list watchdog and the connectivity poll may use the background gate');
     assert.ok(!main.includes('isBackgrounded'),
@@ -3079,4 +3079,40 @@ test('v4.3.7: content hub hook is declared but not wired to a visible QML window
         fs.readFileSync(path.join(qmlDir, f), 'utf-8').includes('ContentPeerPicker'));
     assert.deepStrictEqual(withPicker, [],
         'no visible QML picker yet — a separate QML window creates unknown.qtmir (§2.14)');
+});
+
+// ============================================================
+// v4.3.7 — ecran hors-ligne natif (pas de QML separe)
+// ============================================================
+
+test('v4.3.7: two consecutive failures are required before the offline screen', async () => {
+    const {shouldShowOfflineScreen, STARTUP_NETWORK_CHECKS} =
+        await import('../src/network-check.mjs');
+    assert.strictEqual(STARTUP_NETWORK_CHECKS, 2);
+    assert.strictEqual(shouldShowOfflineScreen(0), false);
+    assert.strictEqual(shouldShowOfflineScreen(1), false, 'one slow network must not block startup');
+    assert.strictEqual(shouldShowOfflineScreen(2), true);
+    assert.strictEqual(shouldShowOfflineScreen(3), true);
+});
+
+test('v4.3.7: offline screen is native Electron and survives a hidden window', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const ctl = fs.readFileSync(path.join(here, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+
+    assert.ok(ctl.includes('this.startStartupNetworkCheck()'),
+        'startup network check must be wired at window setup');
+    const block = ctl.slice(ctl.indexOf('startStartupNetworkCheck()'));
+    assert.ok(block.includes("this.showOfflineOverlay('offline')") &&
+              block.includes('this.startConnectivityMonitor()'),
+        'offline screen must use the native overlay and keep polling for recovery');
+    assert.ok(!block.slice(0, 1800).includes('qmlscene'),
+        'no separate QML window for offline (yellow icon rule §2.14)');
+    assert.ok(ctl.includes('if (document.body) inject();') &&
+              ctl.includes("addEventListener('DOMContentLoaded'"),
+        'overlay injection must wait for the DOM at startup');
+    assert.ok(ctl.includes('if (this.isBackgrounded() && !this.isOffline) return;'),
+        'recovery poll must keep running while the offline screen is displayed');
 });
