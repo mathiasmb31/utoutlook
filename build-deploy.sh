@@ -14,6 +14,21 @@ VERSION="${1:-$(grep '"version"' utoulookmail/utoutlookmail/package.json | head 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
+# v4.3.7 (debug device 2026-11-21): electron-builder NE suit PAS un
+# node_modules symlinké pour les dépendances transitives. Résultat : l'asar
+# ne contenait que `electron-store` (dépendance directe) sans `conf` /
+# `type-fest` → `ERR_MODULE_NOT_FOUND` au lancement → Electron crashait en
+# boucle et le wrapper finissait par afficher nonetwork.qml (faux "pas de
+# réseau" alors que la connexion était bonne). On force un vrai dossier
+# avant de builder — garde-fou reproductible pour tous les workspaces.
+NODE_MODULES="$ROOT/utoulookmail/utoutlookmail/node_modules"
+if [ -L "$NODE_MODULES" ]; then
+  echo "=== node_modules est un symlink — copie réelle avant build ==="
+  NM_TARGET="$(readlink -f "$NODE_MODULES")"
+  rm "$NODE_MODULES"
+  cp -a "$NM_TARGET" "$NODE_MODULES"
+fi
+
 # v4.0.110: supprimer les anciens .click du dossier de build AVANT de
 # reconstruire. clickable garde toutes les versions (103 fichiers, ~10 Go ici)
 # et ne prends que le plus récent — nettoyer évite l'encombrement. Les .click
