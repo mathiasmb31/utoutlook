@@ -2,7 +2,7 @@ import path from 'node:path';
 import {app, BrowserWindow, globalShortcut, session} from 'electron';
 import AccountManager from './account-manager.mjs';
 import {TrayController} from './controller/tray-controller.mjs';
-import {startSocketServer, stopSocketServer} from './ipc-socket.mjs';
+import {startSocketServer, stopSocketServer, notifyQuitting} from './ipc-socket.mjs';
 import {logger} from './logger.mjs';
 import {capLogIfLarge, MAX_CRASH_LOG_BYTES} from './log-rotation.mjs';
 import {checkWrapperAlive} from './wrapper-monitor.mjs';
@@ -459,6 +459,10 @@ class ProspectMail {
         // Skipped when the quit is a restart (settings import/reset).
         // v4.0.84: skipCleanExitFlag = relance volontaire après rotation (le wrapper doit relancer l'app)
         if (!global.restartRequested && !global.skipCleanExitFlag) markCleanExit();
+        // v4.3.7: prevenir le wrapper (long-poll) DES MAINTENANT. Sans ca,
+        // socketcli reste bloque jusqu'a la fermeture effective du socket
+        // puis reessaye 5 s en mode "wait" -> relance rapide impossible.
+        notifyQuitting();
         // v4.3.3: envoyer "goodbye" IMMEDIATEMENT ici, pendant que l'app est
         // encore vivante. Le wrapper ne peut plus le faire : Lomiri le tue par
         // SIGKILL quelques secondes apres la fermeture de la fenetre, donc sa

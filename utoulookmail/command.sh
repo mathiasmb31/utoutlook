@@ -867,7 +867,24 @@ launch_prospect
 # sommeil supplementaire etait redondant. Le premier tick arrive desormais
 # 3 s apres le lancement (mesure device : detection a +3 s au lieu de +21 s).
 while true; do
-	sleep_int 3
+	# v4.3.7 (21/11): LONG-POLL evenementiel au lieu de `sleep_int 3`.
+	# Electron garde la connexion ouverte 3 s (cmd=hold) et repond held:true.
+	# Le C (socketcli) bloque dans select() : aucun sleep externe, aucune
+	# boucle de polling dans le shell. Sur un quit propre, Electron ferme le
+	# socket -> select() rend la main IMMEDIATEMENT (plus de latence de 3 s).
+	# 4e argument "wait" : reessais de connexion pendant le demarrage froid
+	# (socket pas encore cree) sans faire tourner le shell en boucle serree.
+	# Le timeout 5 s couvre le cas d'un event-loop Electron bloque : verify()
+	# fait alors le garde-fou stagnation/hang habituel.
+	HOLD_ANS=$("${WD}"/bin/socketcli "${socketpath}" '{"cmd":"hold","ms":3000}' 4 wait 2>/dev/null || true)
+	# Electron annonce explicitement son quit des le debut de cleanupAndExit :
+	# on sort IMMEDIATEMENT, sans attendre le timer 3 s ni la fermeture du
+	# socket (qui declencherait 4 s de reessais en mode wait).
+	case "${HOLD_ANS}" in
+		*'"quitting":true'*)
+			echo "clean quit announced by Electron — wrapper exits now"
+			exit 0 ;;
+	esac
 
 	verify_prospect_life
 

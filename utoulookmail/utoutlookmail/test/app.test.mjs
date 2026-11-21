@@ -100,6 +100,67 @@ test('ipc-socket: handleCommand processes quit', async () => {
     }
 });
 
+test('ipc-socket: hold command keeps the connection open then replies (v4.3.7)', async () => {
+    // Long-poll du watchdog : la reponse doit etre DIFFEREE (pas "ok" immediat)
+    // et porter held:true. C'est ce qui permet au wrapper de detecter un quit
+    // par fermeture du socket, sans sleep ni polling (commit 8b8e647+).
+    const net = await import('node:net');
+    const {startSocketServer, stopSocketServer} = await import('../src/ipc-socket.mjs');
+    const {SOCKET_PATH} = await import('../src/config.mjs');
+    const server = startSocketServer({});
+    try {
+        const t0 = Date.now();
+        const response = await new Promise((resolve, reject) => {
+            const c = net.createConnection(SOCKET_PATH);
+            let buf = '';
+            const timer = setTimeout(() => { c.destroy(); reject(new Error('hold socket timeout')); }, 2000);
+            c.on('connect', () => c.write(JSON.stringify({cmd: 'hold', ms: 120}) + '\n'));
+            c.on('data', (d) => {
+                buf += d.toString();
+                if (buf.includes('\n')) { clearTimeout(timer); c.end(); resolve(buf); }
+            });
+            c.on('error', (e) => { clearTimeout(timer); reject(e); });
+        });
+        assert.ok(response.includes('"held":true'), 'hold must reply held:true (v4.3.7)');
+        assert.ok(!response.includes('"pong"'), 'hold must not be answered like ping');
+        assert.ok(Date.now() - t0 >= 90, 'hold must keep the connection open for the requested delay');
+        assert.ok(server);
+    } finally {
+        stopSocketServer();
+    }
+});
+
+test('ipc-socket: notifyQuitting releases long-poll clients immediately (v4.3.7)', async () => {
+    const net = await import('node:net');
+    const {startSocketServer, stopSocketServer, notifyQuitting} =
+        await import('../src/ipc-socket.mjs');
+    const {SOCKET_PATH} = await import('../src/config.mjs');
+    const server = startSocketServer({});
+    try {
+        const t0 = Date.now();
+        const response = await new Promise((resolve, reject) => {
+            const c = net.createConnection(SOCKET_PATH);
+            let buf = '';
+            const timer = setTimeout(() => { c.destroy(); reject(new Error('notifyQuitting timeout')); }, 2000);
+            c.on('connect', () => {
+                // hold 10 s : si notifyQuitting ne libere pas le client, le test expire a 2 s.
+                c.write(JSON.stringify({cmd: 'hold', ms: 10000}) + '\n');
+                setTimeout(() => notifyQuitting(), 60);
+            });
+            c.on('data', (d) => {
+                buf += d.toString();
+                if (buf.includes('\n')) { clearTimeout(timer); c.end(); resolve(buf); }
+            });
+            c.on('error', (e) => { clearTimeout(timer); reject(e); });
+        });
+        assert.ok(response.includes('"quitting":true'), 'quit announcement must carry quitting:true');
+        assert.ok(Date.now() - t0 < 1000, 'quit announcement must be immediate (not the 10 s hold)');
+        assert.ok(server);
+    } finally {
+        stopSocketServer();
+    }
+});
+
 // ============================================================
 // Tests for settings defaults
 // These require electron-store which needs the Electron runtime.
