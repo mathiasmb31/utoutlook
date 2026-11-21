@@ -427,7 +427,12 @@ function close_command() {
 		wait "${CLIENT_PID}" 2>/dev/null || true # v4.0.99: récupérer le zombie
 	fi
 	# v4.0.58: idem pour un éventuel qmlscene nonetwork.qml lancé par ce wrapper
-	if [ -n "${QML_PID}" ] && kill -0 "${QML_PID}" 2>/dev/null; then
+	# v4.3.7 (21/11): QML_PID est initialise a 0 et `[ -n "0" ]` est VRAI —
+	# sans ce garde-fou, ce bloc executait `kill -9 0` (signal a TOUT le
+	# groupe de processus) puis `wait 0` (attente de TOUS les enfants) alors
+	# qu'aucun ecran QML n'avait ete lance. Garde-fou de securite independant
+	# du correctif du watchdog (suppression du sleep_int 15 plus bas).
+	if [ -n "${QML_PID}" ] && [ "${QML_PID}" != "0" ] && kill -0 "${QML_PID}" 2>/dev/null; then
 		kill -9 "${QML_PID}" 2>/dev/null || true
 		wait "${QML_PID}" 2>/dev/null || true # v4.0.99: récupérer le zombie
 	fi
@@ -852,7 +857,15 @@ launch_prospect
 # v4.0.126: la barre est lancée au début du wrapper (voir start_startup_qml),
 # bien avant test_net / cleanup / attente notifications — ici rien de plus.
 
-sleep_int 15
+# v4.3.7 (21/11): SUPPRESSION du sleep_int 15 heritage de 2026-08. Ce delai
+# rendait le wrapper AVEUGLE pendant ~18 s (15 s + 3 s) apres le lancement :
+# si l'utilisateur quittait dans cette fenetre (typiquement des que la page
+# mail apparait), le watchdog ne detectait pas la mort d'Electron, le service
+# systemd restait actif et un relance rapide via lomiri-app-launch plantait
+# (SIGSEGV 139) sans rien demarrer. verify_prospect_life() a DEJA son propre
+# startupGrace (20 lectures x 3 s = 60 s) pour les demarrages lents : ce
+# sommeil supplementaire etait redondant. Le premier tick arrive desormais
+# 3 s apres le lancement (mesure device : detection a +3 s au lieu de +21 s).
 while true; do
 	sleep_int 3
 
