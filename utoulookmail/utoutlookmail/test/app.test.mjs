@@ -162,6 +162,45 @@ test('ipc-socket: notifyQuitting releases long-poll clients immediately (v4.3.7)
 });
 
 // ============================================================
+// v4.3.7 — relance apres fermeture : instance orpheline, pas de "au revoir"
+// ============================================================
+
+test('v4.3.7: a SIGKILLed wrapper is detected as dead (orphaned Electron)', async () => {
+    const {checkWrapperAlive} = await import('../src/wrapper-monitor.mjs');
+    const state = checkWrapperAlive({
+        pidFilePath: 'wrapper.pid',
+        expectedPid: '4242',
+        readFileSync: () => '4242\n',                          // pidfile encore l'ancien wrapper
+        readProc: () => { throw new Error('ENOENT'); },         // tue par Lomiri
+    });
+    assert.strictEqual(state, false,
+        'an orphaned Electron must be seen as wrapper-dead, not merely unknown');
+});
+
+test('v4.3.7: no goodbye when wrapper is gone; orphan closed before fresh launch', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const main = fs.readFileSync(path.join(here, '../src/main.mjs'), 'utf-8');
+    const cmd = fs.readFileSync(path.join(here, '../../command.sh'), 'utf-8');
+
+    assert.ok(main.includes('wrapperStillAlive'),
+        'goodbye must be gated on wrapper liveness (no au revoir at next launch)');
+    assert.ok(main.includes('if (process.env.WD && wrapperStillAlive)'),
+        'goodbye must be skipped when the wrapper is already dead');
+    assert.ok(main.includes('skipping goodbye notification'),
+        'the skipped goodbye must be observable in wrapper.log');
+
+    assert.ok(cmd.includes('PREV_WRAPPER_PID='),
+        'previous wrapper PID must be captured before cleanup() overwrites the pidfile');
+    assert.ok(cmd.includes('orphaned instance') && cmd.includes('closing it before fresh launch'),
+        'orphaned Electron must be closed then relaunched, never reused with show');
+    assert.ok(!cmd.includes('adopt'),
+        'no adopt loop: an already-quitting Electron must not be told to stay');
+});
+
+// ============================================================
 // Tests for settings defaults
 // These require electron-store which needs the Electron runtime.
 // Skip gracefully when running outside Electron (e.g. CI, plain node).

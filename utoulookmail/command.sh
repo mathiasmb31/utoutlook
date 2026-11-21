@@ -495,6 +495,10 @@ export socketpath="${UTOUTLOOK_SOCKET}"
 # tell a close flag written by ITS wrapper apart from one written by a dying
 # older wrapper (race: old wrapper writes "closed" after the new one cleaned up).
 export UTOUTLOOK_WRAPPER_PID=$$
+# v4.3.7 (21/11): capturer le PID du wrapper PRECEDENT avant que cleanup()
+# n'ecrase le pidfile. Sert a detecter une instance Electron ORPHELINE (son
+# wrapper a ete SIGKILL par Lomiri apres la fermeture de la fenetre).
+PREV_WRAPPER_PID=$("${WD}"/bin/cat "${UTOUTLOOK_DATA_DIR}/wrapper.pid" 2>/dev/null | "${WD}"/bin/tr -d '[:space:]')
 export UTOUTLOOK_SWIPE_HIDDEN="${UTOUTLOOK_CONFIG_DIR}/swipe-hidden"
 "${WD}"/bin/rm -f "${UTOUTLOOK_SWIPE_HIDDEN}" 2>/dev/null || true
 # v4.1.0: repartir d'un pidfile vide (revue M1).
@@ -681,13 +685,32 @@ cleanup
 # swipe-close racing us), fall through and start normally instead of exiting
 # into a void (intermittent "nothing happens" on relaunch).
 if utoutlook_socket_ping; then
-	echo "app already running — asking it to show (pid $$)"
-	utoutlook_send_socket_cmd '{"cmd":"show"}'
-	sleep_int 2
-	if utoutlook_socket_ping; then
-		exit 0
+	# v4.3.7 (21/11): apres une fermeture, Lomiri SIGKILL le wrapper mais
+	# l'ancien Electron peut rester vivant encore quelques secondes (fenetre
+	# masquee). Son wrapper est MORT : le reutiliser (show) le ferait quitter
+	# des que la supervision inverse se declenche -> "au revoir" au relance.
+	# On detecte ce cas via le pidfile quiet par l'ancien wrapper, on lui
+	# demande un quit SILENCIEUX (cote Electron, wrapper deja mort = pas de
+	# goodbye), on attend sa mort, puis on repart neuf. UNIQUEMENT ce cas.
+	if [ -n "${PREV_WRAPPER_PID}" ] && [ "${PREV_WRAPPER_PID}" != "$$" ] && \
+	   ! kill -0 "${PREV_WRAPPER_PID}" 2>/dev/null; then
+		echo "orphaned instance (wrapper ${PREV_WRAPPER_PID} gone) — closing it before fresh launch (pid $$)"
+		utoutlook_send_socket_cmd '{"cmd":"quit"}'
+		_i=0
+		while [ ${_i} -lt 8 ] && utoutlook_socket_ping; do
+			sleep_int 1
+			_i=$((_i + 1))
+		done
+		echo "orphan closed after ${_i}s — launching fresh (pid $$)"
+	else
+		echo "app already running — asking it to show (pid $$)"
+		utoutlook_send_socket_cmd '{"cmd":"show"}'
+		sleep_int 2
+		if utoutlook_socket_ping; then
+			exit 0
+		fi
+		echo "previous instance died after show — starting fresh (pid $$)"
 	fi
-	echo "previous instance died after show — starting fresh (pid $$)"
 fi
 # v4.0.37: refuse to launch while a previous instance is still closing (flag
 # set between SIGTERM and the goodbye notification, removed after). Wait up to

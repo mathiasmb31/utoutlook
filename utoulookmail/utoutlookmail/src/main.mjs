@@ -204,7 +204,7 @@ const heartbeatInterval = setInterval(() => {
             wrapperMisses++;
             if (wrapperMisses >= 3 && !global.utoutlookQuitting &&
                 !global.restartRequested && !global.skipCleanExitFlag) {
-                logger.warn(`Wrapper ${process.env.UTOUTLOOK_WRAPPER_PID} disappeared after ${wrapperChecks} checks — clean exit`);
+                logger.warn(`Wrapper ${process.env.UTOUTLOOK_WRAPPER_PID} disappeared after ${wrapperChecks} checks — silent exit (no goodbye)`);
                 appInstance.cleanupAndExit();
             }
         }
@@ -463,15 +463,26 @@ class ProspectMail {
         // socketcli reste bloque jusqu'a la fermeture effective du socket
         // puis reessaye 5 s en mode "wait" -> relance rapide impossible.
         notifyQuitting();
+        // v4.3.7 (21/11): le "goodbye" n'a de sens QUE si le wrapper est
+        // encore la (vrai quit demande par l'utilisateur). Quand Lomiri a
+        // SIGKILL le wrapper apres la fermeture de la fenetre, la supervision
+        // inverse peut declencher ce cleanup : un "au revoir" apparaissait
+        // alors au lancement suivant. On le supprime dans ce cas precis.
+        let wrapperStillAlive = true;
+        if (process.env.UTOUTLOOK_WRAPPER_PID) {
+            try {
+                wrapperStillAlive = checkWrapperAlive({
+                    pidFilePath: WRAPPER_PID_FILE,
+                    expectedPid: process.env.UTOUTLOOK_WRAPPER_PID,
+                }) !== false;
+            } catch (e) { /* on garde le goodbye par defaut */ }
+        }
+        if (!wrapperStillAlive) logger.info('Wrapper already gone — skipping goodbye notification');
         // v4.3.3: envoyer "goodbye" IMMEDIATEMENT ici, pendant que l'app est
-        // encore vivante. Le wrapper ne peut plus le faire : Lomiri le tue par
-        // SIGKILL quelques secondes apres la fermeture de la fenetre, donc sa
-        // notification partait trop tard (au lancement suivant).
-        // v4.3.4: execFile ASYNCHRONE — execFileSync bloquait le thread
-        // principal jusqu'a 4 s et le bouton Quitter de la liste semblait ne
-        // plus repondre (log "fermeture demandee" absent).
+        // encore vivante. v4.3.4: execFile ASYNCHRONE (execFileSync bloquait
+        // le thread principal jusqu'a 4 s et le bouton Quitter semblait geler).
         try {
-            if (process.env.WD) {
+            if (process.env.WD && wrapperStillAlive) {
                 execFile(`${process.env.WD}/bin/notify`, [t('shell.goodbye')],
                     {timeout: 4000}, () => {});
             }

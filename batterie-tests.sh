@@ -90,6 +90,42 @@ echo -n 'unknown final=' >> \"\$L\"; gdbus introspect --session --dest com.lomir
 echo -n 'flip fantome total=' >> \"\$L\"; grep -c 'auto render fallback' \"\$D/wrapper.log\" >> \"\$L\"
 echo -n 'clean quit detecte=' >> \"\$L\"; grep -c 'exitclient flag present' \"\$D/wrapper.log\" >> \"\$L\"
 echo -n 'wrapper SIGKILL=' >> \"\$L\"; journalctl --user --since '-5 min' --no-pager 2>/dev/null | grep -c 'Main process exited, code=killed, status=9/KILL' >> \"\$L\"
+echo '=== TEST 7: wrapper tue par Lomiri — pas de au revoir, reouverture propre ===' >> \"\$L\"
+# Condition reproduite : Lomiri SIGKILL le wrapper apres la fermeture de la
+# fenetre, Electron reste vivant encore quelques secondes. C'est ce cas qui
+# affichait "au revoir" au lancement suivant. Le CLI lomiri-app-launch ne
+# peut PAS etre rappele immediatement apres un SIGKILL (lanceur systeme en
+# erreur 139) : on valide le comportement d'Electron, puis une reouverture
+# normale une fois le service systemd libere.
+pkill -9 -x prospect-mail 2>/dev/null || true
+W=\$(cat \$D/data/wrapper.pid 2>/dev/null | tr -d '[:space:]'); [ -n \"\$W\" ] && kill -9 \"\$W\" 2>/dev/null || true
+sleep 4
+: > \"\$D/wrapper.log\"
+lomiri-app-launch $APPID >> \"\$L\" 2>&1
+for i in \$(seq 1 20); do sleep 1; : > \"\$R\"
+  printf '{\"cmd\":\"ping\"}\\n' | timeout 2 nc -U \"\$S\" > \"\$R\" 2>/dev/null
+  grep -q pong \"\$R\" && break
+done
+echo -n 'ORPHAN pret electron=' >> \"\$L\"; ps -eo comm | grep -cx prospect-mail >> \"\$L\"
+W=\$(cat \$D/data/wrapper.pid 2>/dev/null | tr -d '[:space:]')
+echo -n 'ORPHAN wrapper tue=' >> \"\$L\"; echo \"\$W\" >> \"\$L\"
+kill -9 \"\$W\" 2>/dev/null || true
+sleep 15
+echo -n 'ORPHAN goodbye saute=' >> \"\$L\"; grep -c 'skipping goodbye notification' \"\$D/wrapper.log\" >> \"\$L\"
+echo -n 'ORPHAN electron apres supervision=' >> \"\$L\"; ps -eo comm | grep -cx prospect-mail >> \"\$L\"
+# Le CLI lomiri-app-launch ne relance pas apres un SIGKILL du wrapper
+# (service systemd en echec) — seul le vrai lanceur Lomiri le peut. On
+# nettoie donc les restes et on verifie une reouverture sur etat propre.
+pkill -9 -x prospect-mail 2>/dev/null || true
+sleep 3
+lomiri-app-launch $APPID >> \"\$L\" 2>&1
+for i in \$(seq 1 25); do sleep 1; : > \"\$R\"
+  printf '{\"cmd\":\"ping\"}\\n' | timeout 2 nc -U \"\$S\" > \"\$R\" 2>/dev/null
+  if grep -q pong \"\$R\"; then echo \"ORPHAN reouverture apres nettoyage OK \${i}s\" >> \"\$L\"; break; fi
+done
+sleep 8
+echo -n 'ORPHAN stable=' >> \"\$L\"; ps -eo comm | grep -cx prospect-mail >> \"\$L\"
+echo -n 'ORPHAN unknown.qtmir=' >> \"\$L\"; gdbus introspect --session --dest com.lomiri.Shell --object-path /com/lomiri/Shell/Launcher --xml 2>/dev/null | grep -c unknown_2Eqtmir >> \"\$L\"
 echo '=== FIN ===' >> \"\$L\"
 EOS
 chmod +x $DIR/.batterie-run.sh
