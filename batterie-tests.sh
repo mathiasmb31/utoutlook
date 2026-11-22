@@ -29,7 +29,7 @@ echo "=== Batterie de tests UToutlook $VERSION (device $DEVICE) ==="
 
 # --- préparation : arrêter utoutlook uniquement ---
 $ADB shell "pkill -9 -x prospect-mail 2>/dev/null || true
-W=\$(cat $DIR/wrapper.pid 2>/dev/null | tr -d '[:space:]'); [ -n \"\$W\" ] && kill -9 \"\$W\" 2>/dev/null || true
+W=\$(cat $DIR/data/wrapper.pid 2>/dev/null | tr -d '[:space:]'); [ -n \"\$W\" ] && kill -9 \"\$W\" 2>/dev/null || true
 sleep 4" >/dev/null
 
 $ADB shell "cat > $DIR/.batterie-run.sh <<'EOS'

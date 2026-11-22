@@ -233,10 +233,13 @@ if (settings.get('startMinimized') !== false) {
             logger.warn(`Filtered ${accounts.length - validAccounts.length} invalid account(s)`);
             settings.set('accounts', validAccounts);
         }
-        // Ensure enabled defaults to true if missing
+        // v4.4.2: settings.get() retourne un clone — la normalisation devait
+        // être réécrite, sinon le compte restait désactivé au prochain lancement.
+        let enabledFixed = false;
         for (const acct of validAccounts) {
-            if (typeof acct.enabled !== 'boolean') acct.enabled = true;
+            if (typeof acct.enabled !== 'boolean') { acct.enabled = true; enabledFixed = true; }
         }
+        if (enabledFixed) settings.set('accounts', validAccounts);
     }
 }
 

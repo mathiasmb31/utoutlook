@@ -1,7 +1,7 @@
 // ============================================================
 // i18n.mjs — Internationalisation for UToutlook Mail
 //
-// Supported languages: fr (default), en, es, de, it, pt, zh, ar
+// Supported languages (10): fr (default), en, es, de, it, pt, zh, ar, ca, eu
 // Usage: import { t, getLanguage, setLanguage, getAvailableLanguages } from './i18n.mjs'
 //   t('tray.quit')           → "Quitter" / "Quit" / "Salir" ...
 //   t('notif.newMessages.body', { count: 5 }) → "5 messages non lus" / "5 unread messages"

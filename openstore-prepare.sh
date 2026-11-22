@@ -106,6 +106,9 @@ LIVRAISON="livraison/utoutlook-$VERSION"
 KIT="publishstore/utoutlook-$VERSION"
 # v4.1.0: glob sur les architectures (revue F24)
 CLICK=$(ls -1 utoulookmail/build/*/app/"${APP}_${VERSION}_arm64.click" 2>/dev/null | head -1)
+# v4.4.2: garde-fou AVANT toute creation de dossier/fichier — sinon le kit
+# parait pret alors que le click manque, et 'set -e' meurt sur un cp de ''.
+[ -n "$CLICK" ] && [ -f "$CLICK" ] || { echo "ERREUR: click ${APP}_${VERSION}_arm64.click introuvable — build d'abord"; exit 1; }
 
 echo "=== Préparation livraison $VERSION ==="
 mkdir -p "$LIVRAISON" "$KIT/screenshots"
@@ -136,16 +139,16 @@ EOF
   echo "README.txt généré (à compléter)"
 fi
 
-# Kit publishstore
-# v4.1.0 (revue F15): échouer si le click est absent — le kit ne doit pas paraître prêt.
-[ -n "$CLICK" ] && [ -f "$CLICK" ] || { echo "ERREUR: click ${APP}_${VERSION}_arm64.click introuvable — build d'abord"; exit 1; }
+# Kit publishstore (le garde-fou est desormais juste apres la detection du click)
 cp -f "$CLICK" "$KIT/"
 
 # whatsnew.txt : généré automatiquement depuis les commits git depuis la dernière version publiée sur OpenStore
 LAST_PUBLISHED=$(curl -sS --max-time 10 "https://open-store.io/api/v4/apps/${APP}" 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['data'].get('version',''))" 2>/dev/null || echo "")
 if [ -z "$LAST_PUBLISHED" ]; then
-  LAST_PUBLISHED=$(ls -1d livraison/utoutlook-* 2>/dev/null | sed 's|.*utoutlook-||' | sort -V | tail -1)
-  [ -z "$LAST_PUBLISHED" ] && LAST_PUBLISHED="4.0.93"
+  # v4.4.2: exclure la version en cours de preparation — sinon le fallback
+  # se designe lui-meme comme "derniere version publiee".
+  LAST_PUBLISHED=$(ls -1d livraison/utoutlook-* 2>/dev/null | grep -v "/utoutlook-${VERSION}$" | sed 's|.*utoutlook-||' | sort -V | tail -1)
+  [ -z "$LAST_PUBLISHED" ] && LAST_PUBLISHED="(inconnue)"
   echo "(API injoignable, fallback sur $LAST_PUBLISHED)"
 fi
 echo "Dernière version publiée sur OpenStore: $LAST_PUBLISHED"
@@ -159,10 +162,9 @@ else
   RANGE="${LAST_COMMIT}..HEAD"
 fi
 
-# Ligne one-shot (session de débogage) — à VIDER pour les versions suivantes :
-# v4.1.0: version COURTE et simplifiée demandée par Mathias. ASCII uniquement
-# (garde-fou store : aucun caractère accenté dans whatsnew.txt).
-DEBUG_SESSION_NOTE="HARD DEBUG SESSION :) - A long debugging session on the phone went into this release: more reliable startup, a visible progress screen, the right app icon, and cleaner quitting and relaunching. Thanks for testing every build!"
+# v4.4.2: l'ancienne note one-shot de la 4.1.0 etait toujours injectee dans
+# chaque whatsnew (et parlait d'un splash QML desormais desactive). On la vide.
+DEBUG_SESSION_NOTE=""
 
 # Commits (français) -> traduction auto en anglais : le whatsnew du store DOIT être en anglais
 RAW_COMMITS=$(git log "$RANGE" --format="- %s" 2>/dev/null | sed 's/ — Tests [0-9/]*\. Version [0-9.]*\.//; s/Tests [0-9/]*\. Version [0-9.]*\.//' | head -60)
@@ -215,7 +217,7 @@ fi
 
 # Garde-fou filet de sécurité : tout ce qui part au store doit être 100 % anglais (aucun accent)
 for f in "$KIT/whatsnew.txt" "$KIT/metadata.json" "$DESC"; do
-  if [ -f "$f" ] && grep -qP '[\x{00C0}-\x{00FF}]' "$f"; then
+  if [ -f "$f" ] && grep -qP '[\x{00C0}-\x{00FF}\x{0400}-\x{04ff}\x{4e00}-\x{9fff}\x{2018}-\x{201f}]' "$f"; then
     echo "ERREUR: $f contient des caractères accentués — le contenu envoyé au store doit être EN ANGLAIS. Upload bloqué."
     exit 1
   fi
@@ -260,33 +262,59 @@ if [ "$UPLOAD_REQUESTED" = 1 ]; then
     exit 1
   fi
   echo "=== Upload OpenStore $VERSION ==="
+  # v4.4.2: reponses HTTP dans un temp dir (pas de /tmp/opencode codé en dur).
+  RESP_DIR=$(mktemp -d)
+  REV_RESP="$RESP_DIR/revision.json"
   # v4.1.0: clé API jamais dans la ligne de commande (ps/logs) — curl --config sur stdin
-  printf 'url = "https://open-store.io/api/v3/manage/%s/revision?apikey=%s"\n' "$APP" "$OPENSTORE_APIKEY" | \
-  curl -sS -X POST --config - \
-    -H "Expect:" \
-    -F "file=@${LIVRAISON}/${APP}_${VERSION}_arm64.click" \
-    -F "changelog=<${KIT}/whatsnew.txt"
+  REV_STATUS=$(printf 'url = "https://open-store.io/api/v3/manage/%s/revision?apikey=%s"\n' "$APP" "$OPENSTORE_APIKEY" | \
+    curl -sS -X POST --config - \
+      -H "Expect:" \
+      -F "file=@${LIVRAISON}/${APP}_${VERSION}_arm64.click" \
+      -F "changelog=<${KIT}/whatsnew.txt" \
+      -w '%{http_code}' -o "$REV_RESP")
+  if [ "$REV_STATUS" != "200" ]; then
+    echo "ERREUR: revision refusee (HTTP $REV_STATUS) :"
+    cat "$REV_RESP" 2>/dev/null || true
+    rm -rf "$RESP_DIR"
+    exit 1
+  fi
   echo ""
 
-  # v4.4.1: la longue description est publiee AVEC la release, dans le meme
-  # flux. PUT /api/v3/manage/<app> — champ 'description' (source: openstore-api
-  # src/api/manage.ts, router.put('/:id')). Jamais de clé dans la ligne de cmd.
+  # v4.4.2: PUT /api/v3/manage/<app> — updateFromBody() SUPPRIME les screenshots
+  # et vide les keywords quand ces champs sont absents. On relit donc les
+  # metadonnees courantes et on les renvoie avec la description.
   if [ -f "$DESC" ]; then
     echo "=== Publication de la description $VERSION ==="
-    DESC_RESP="/tmp/opencode/openstore-description-response.txt"
+    META_RESP="$RESP_DIR/meta.json"
+    printf 'url = "https://open-store.io/api/v3/manage/%s?apikey=%s"\n' "$APP" "$OPENSTORE_APIKEY" | \
+      curl -sS --config - -o "$META_RESP"
+    SCREENSHOTS_JSON=$(python3 -c 'import json,sys
+try:
+    d=json.load(open(sys.argv[1])); o=d.get("data",d); print(json.dumps(o.get("screenshots",[])))
+except Exception: print("[]")' "$META_RESP")
+    KEYWORDS_CSV=$(python3 -c 'import json,sys
+try:
+    d=json.load(open(sys.argv[1])); o=d.get("data",d); k=o.get("keywords",[])
+    print(",".join(k) if isinstance(k,list) else (k or ""))
+except Exception: print("")' "$META_RESP")
+    DESC_RESP="$RESP_DIR/description.json"
     DESC_STATUS=$(printf 'url = "https://open-store.io/api/v3/manage/%s?apikey=%s"\n' "$APP" "$OPENSTORE_APIKEY" | \
       curl -sS -X PUT --config - \
         -H "Expect:" \
         -F "description=<${DESC}" \
+        -F "screenshots=${SCREENSHOTS_JSON}" \
+        -F "keywords=${KEYWORDS_CSV}" \
         -w '%{http_code}' -o "$DESC_RESP")
     if [ "$DESC_STATUS" != "200" ]; then
       echo "ERREUR: description non publiee (HTTP $DESC_STATUS) — réponse:"
       cat "$DESC_RESP" 2>/dev/null || true
-      echo "La revision $VERSION est bien uploadee, mais la description est restee a l'ancienne version."
+      echo "La revision $VERSION est uploadee, mais la description est restee a l'ancienne version."
+      rm -rf "$RESP_DIR"
       exit 1
     fi
-    echo "Description $VERSION publiee."
+    echo "Description $VERSION publiee (screenshots et keywords preservés)."
   fi
+  rm -rf "$RESP_DIR"
 
   echo "=== Vérification store ==="
   curl -sS "https://open-store.io/api/v4/apps/${APP}" | python3 -c "import json,sys; d=json.load(sys.stdin); print('version:', d['data'].get('version'))"

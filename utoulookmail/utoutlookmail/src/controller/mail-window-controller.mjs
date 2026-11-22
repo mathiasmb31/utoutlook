@@ -46,7 +46,9 @@ function safeUrl(raw) {
 // En release on ne garde que les signatures d'erreur utiles au diagnostic,
 // avec les URLs et adresses email masquées. Le message complet reste dispo
 // avec UTOUTLOOK_DEBUG=1.
-const SAFE_CONSOLE_RE = /^(?:Uncaught|TypeError|ReferenceError|RangeError|SyntaxError|Error:|Failed to load|Refused to|Maximum call stack|ResizeObserver loop completed|\[UTOUTLOOK)/;
+// v4.4.2: '[UTOUTLOOK' n'est PAS safe — les observer JS logguent le sujet/le
+// expediteur avec ce prefixe. Ces messages restent debug-only cote page.
+const SAFE_CONSOLE_RE = /^(?:Uncaught|TypeError|ReferenceError|RangeError|SyntaxError|Error:|Failed to load|Refused to|Maximum call stack|ResizeObserver loop completed)/;
 function sanitizeConsole(message) {
     return String(message)
         .replace(/https?:\/\/\S+/g, '[URL]')
@@ -175,7 +177,12 @@ class MailWindowController {
         this.recreating = false; // v4.1.0 (revue E1)
         // v4.1.0 (revue B8): registre des listeners pour destroy().
         this._listeners = [];
-        this._ipcHandleChannels = ['get-render-mode', 'set-render-mode', 'first-install'];
+        // v4.4.2: get-diagnostics et attach-from-hub etaient enregistres mais
+        // jamais retirees — handlers morts apres recreate de fenetre.
+        this._ipcHandleChannels = [
+            'get-render-mode', 'set-render-mode', 'first-install',
+            'get-diagnostics', 'attach-from-hub',
+        ];
         this.init();
         // Check both command-line flag and settings for initial minimization
         const hasMinimizedFlag = (global.cmdLine || []).indexOf("--minimized") !== -1;
@@ -2050,7 +2057,12 @@ class MailWindowController {
                 // hotfix #13: skip notification when the app is in the foreground —
                 // UNLESS urgent (e.g. DOM changed alert, v3.3.21).
                 if (!urgent && this.win.isVisible() && this.win.isFocused()) {
-                    logger.info(`[NOTIFICATION SUPPRESSED] foreground — title="${title}" body="${body}"`);
+                    // v4.4.2: jamais le titre/le corps (expediteur, sujet, lieu) dans les logs.
+                    if (process.env.UTOUTLOOK_DEBUG === '1') {
+                        logger.debug(`[NOTIFICATION SUPPRESSED] foreground — title="${title}" body="${body}"`);
+                    } else {
+                        logger.info('[NOTIFICATION SUPPRESSED] foreground (details hidden)');
+                    }
                     return;
                 }
                 this.handleNotification(title, body, icon);
@@ -2242,7 +2254,12 @@ class MailWindowController {
      * @param {string|null} icon
      */
     handleNotification(title, body, icon) {
-        logger.info(`[NOTIFICATION] title="${title}" body="${body}"`);
+        // v4.4.2: contenu de notification = donnees mail (confidentialite).
+        if (process.env.UTOUTLOOK_DEBUG === '1') {
+            logger.debug(`[NOTIFICATION] title="${title}" body="${body}"`);
+        } else {
+            logger.info('[NOTIFICATION] shown (details hidden)');
+        }
         fs.writeFile(NOTIF_FLAG_FILE, 'notif!', err => { if (err) logger.error(err); });
 
         // Relay to Ubuntu Touch notifications (D-Bus Postal / Lomiri)

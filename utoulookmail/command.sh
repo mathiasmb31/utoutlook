@@ -532,7 +532,7 @@ function start_startup_qml() {
 	# v4.2.4: ne pas créer la fenêtre QML de démarrage (voir note en tête de
 	# fichier — c'était elle qui créait l'item inconnu `unknown.qtmir`).
 	if [ "${UTOUTLOOK_DISABLE_STARTUP_QML:-0}" = "1" ]; then
-		echo "startup QML bar disabled (experiment v4.2.4)"
+		echo "startup QML bar disabled (permanent since v4.2.4 — native splash only)"
 		return 0
 	fi
 	qmlscene "${UTOUTLOOK_STARTUP_QML}" > "${UTOUTLOOK_CONFIG_DIR}/startup-qml.log" 2>&1 &

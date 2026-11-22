@@ -60,7 +60,6 @@ build:
 - cp /usr/bin/pgrep $INSTALL_DIR/bin
 - cp /usr/bin/awk $INSTALL_DIR/bin
 - cp /usr/bin/pkill $INSTALL_DIR/bin
-- cp /usr/bin/pgrep $INSTALL_DIR/bin
 - cp /usr/bin/nohup $INSTALL_DIR/bin
 - cp /usr/bin/rm $INSTALL_DIR/bin
 - cp /usr/bin/ps $INSTALL_DIR/bin
@@ -75,7 +74,7 @@ build:
 - cp /usr/bin/cut $INSTALL_DIR/bin
 - cp /usr/bin/gdbus $INSTALL_DIR/bin
 # Custom notify binary (D-Bus Postal + Launcher badge)
-- cp $ROOT/notify /$INSTALL_DIR/bin
+- cp $ROOT/notify $INSTALL_DIR/bin
 
 install_root_data:
 - manifest.json
@@ -89,6 +88,6 @@ install_root_data:
 - content-hub.json
 - pushexec
 # xdotool removed — no longer used (zoom/text handled natively by Electron)
-dependencies_host: ["netcat-traditional","libnotify-bin","notify-osd","psmisc","g++","jq","libgtk2.0-dev","libgtk-3-dev","libmaliit-glib-dev","build-essential","meson","libtool","m4","automake","squashfs-tools","qemu-user-static" , "tree" , "patchelf", "git", "jq", "curl", "build-essential", "python3", "python3-pip", "libudev-dev", "dpkg", "moreutils","libssl-dev", "libsqlite3-dev", "libcrypto++-dev", "libsqlcipher-dev", "npm", "git-lfs", "execstack", "imagemagick", "librsvg2-bin", "debhelper-compat", "xauth", "xvfb",'squashfs-tools']
+dependencies_host: ["netcat-traditional", "libnotify-bin", "notify-osd", "psmisc", "g++", "jq", "libgtk2.0-dev", "libgtk-3-dev", "libmaliit-glib-dev", "build-essential", "meson", "libtool", "m4", "automake", "squashfs-tools", "qemu-user-static", "tree", "patchelf", "git", "curl", "python3", "python3-pip", "libudev-dev", "dpkg", "moreutils", "libssl-dev", "libsqlite3-dev", "libcrypto++-dev", "libsqlcipher-dev", "npm", "git-lfs", "execstack", "imagemagick", "librsvg2-bin", "debhelper-compat", "xauth", "xvfb"]
 
 dependencies_target: [ "netcat-traditional","iputils-ping","notify-osd","libnotify-bin","psmisc","qemu-user-static","g++", "fuse", "zlib1g","libfuse2","squashfs-tools","libgtk2.0-dev","libgtk-3-dev","libmaliit-glib-dev"]

@@ -1,24 +1,25 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {execFile} from 'node:child_process';
+import {PHABLET_HOME, CACHE_DIR} from './config.mjs';
 
-// v4.3.7 — PREPARATION Content Hub (aucun appel D-Bus n'est encore cable).
-// Le click declare deja content-hub.json + content_exchange/source dans
-// l'AppArmor, mais aucun code Electron n'utilise le hook. Avant de brancher un
-// picker (QML visible = icone jaune, regle §2.14), on isole la seule partie
-// verifiable sans device : la validation du chemin de fichier recu.
+// v4.4 — pont Content Hub reel : le click declare content-hub.json et on parle
+// au service D-Bus directement (aucun QML visible, regle §2.14). Ce module
+// contient la validation du chemin recu ET le pont de transfert.
 export const TRANSFER_TIMEOUT_MS = 30000;
+// v4.4.2: au-dela, le base64 injecte dans executeJavaScript peut geler/OOM le
+// renderer. Au-dessus, on refuse le fichier avec une raison explicite.
+export const MAX_TRANSFER_BYTES = 20 * 1024 * 1024;
 
 // Racines ou le shell/Content Hub rend typiquement les fichiers sous UT 24.04.
-// A confirmer sur device (gdbus + test reel) avant de brancher le picker.
+// Derivees de config.mjs (plus de /home/phablet en dur) — marche aussi sur desktop.
 export const DEFAULT_ALLOWED_ROOTS = [
-    '/home/phablet/Downloads',
-    '/home/phablet/Documents',
-    '/home/phablet/Pictures',
-    '/home/phablet/Videos',
-    // v4.4: Store() du service renvoie par défaut ce dossier DANS LE CACHE
-    // du click — c'est la vraie destination des fichiers importés.
-    '/home/phablet/.cache/utoutlook.mathias/HubIncoming',
+    path.join(PHABLET_HOME, 'Downloads'),
+    path.join(PHABLET_HOME, 'Documents'),
+    path.join(PHABLET_HOME, 'Pictures'),
+    path.join(PHABLET_HOME, 'Videos'),
+    // Store() du service renvoie par defaut ce dossier DANS LE CACHE du click.
+    path.join(CACHE_DIR, 'HubIncoming'),
 ];
 
 export function normalizeContentUrl(raw) {
@@ -50,7 +51,12 @@ export function validateTransferPath(raw, {
     if (!inside) return {ok: false, reason: 'outside-allowed-roots'};
 
     try {
-        if (!fsApi.statSync(normalized).isFile()) return {ok: false, reason: 'not-a-file'};
+        const st = fsApi.statSync(normalized);
+        if (!st.isFile()) return {ok: false, reason: 'not-a-file'};
+        // v4.4.2: les faux stat des tests n'ont pas de champ size — on ignore.
+        if (typeof st.size === 'number' && st.size > MAX_TRANSFER_BYTES) {
+            return {ok: false, reason: 'too-large'};
+        }
     } catch (e) {
         return {ok: false, reason: 'not-readable'};
     }

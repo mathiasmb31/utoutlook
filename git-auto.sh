@@ -1,6 +1,8 @@
 #!/bin/bash
 # Workflow git rapide pour utoutlook (évite d'appeler l'IA pour les commits/push)
 set -e
+# v4.4.2: sans pipefail, `git push ... | tail` renvoyait 0 et masquait les echecs.
+set -o pipefail
 
 if [ "$1" = "--help" ] || [ "$1" = "-h" ] || [ -z "$1" ]; then
   echo "Usage: ./git-auto.sh <commande> [args]"

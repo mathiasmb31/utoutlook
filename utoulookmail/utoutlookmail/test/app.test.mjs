@@ -3165,9 +3165,12 @@ test('v4.3.7: diagnostics IPC is guarded and the button uses i18n labels', async
     assert.ok(preload.includes('getDiagnostics: () => ipcRenderer.invoke("get-diagnostics")'),
         'preload must expose the diagnostics bridge');
     assert.ok(btn.includes('utoutlook-diagnostics-btn') &&
-              btn.includes("tr('action.diagnostics'") &&
-              btn.includes("tr('diagnostics.saved'"),
-        'diagnostics button labels must come from i18n (10 languages)');
+              btn.includes("tr('actionDiagnostics'") &&
+              btn.includes("tr('diagnosticsSaved'"),
+        'diagnostics button labels must use the keys injected by the controller (v4.4.2)');
+    assert.ok(ctl.includes('actionDiagnostics: tr[\'action.diagnostics\']') &&
+              ctl.includes('diagnosticsSaved: tr[\'diagnostics.saved\']'),
+        'controller must inject the flat keys used by reload-button.js');
     assert.ok(i18n.includes("'action.diagnostics':") && i18n.includes("'diagnostics.saved':"),
         'new i18n keys must exist');
 });
@@ -3177,7 +3180,7 @@ test('v4.3.7: diagnostics IPC is guarded and the button uses i18n labels', async
 // ============================================================
 
 test('v4.3.7: content hub paths are whitelisted before reaching Outlook', async () => {
-    const {normalizeContentUrl, validateTransferPath, TRANSFER_TIMEOUT_MS} =
+    const {normalizeContentUrl, validateTransferPath, TRANSFER_TIMEOUT_MS, MAX_TRANSFER_BYTES} =
         await import('../src/content-hub.mjs');
     assert.strictEqual(TRANSFER_TIMEOUT_MS, 30000);
     assert.strictEqual(normalizeContentUrl('file:///home/phablet/Download/a%20b.pdf'),
@@ -3208,9 +3211,16 @@ test('v4.3.7: content hub paths are whitelisted before reaching Outlook', async 
     assert.deepStrictEqual(
         validateTransferPath('relative/file.pdf', opts),
         {ok: false, reason: 'invalid-path'});
+    assert.deepStrictEqual(
+        validateTransferPath('/home/phablet/Downloads/gros.pdf', {
+            allowedRoots: ['/home/phablet/Downloads'],
+            fsApi: {statSync: () => ({isFile: () => true, size: MAX_TRANSFER_BYTES + 1})},
+        }),
+        {ok: false, reason: 'too-large'},
+        'a huge file must be rejected before base64 injection (v4.4.2)');
 });
 
-test('v4.3.7: content hub hook is declared but not wired to a visible QML window', async () => {
+test('v4.3.7: Content Hub is wired via D-Bus, with no visible QML picker', async () => {
     const fs = await import('node:fs');
     const path = await import('node:path');
     const {fileURLToPath} = await import('node:url');
@@ -3244,8 +3254,11 @@ test('v4.4: Content Hub D-Bus replies are parsed without a QML picker', async ()
         '/transfers/utoutlook/import/1');
     assert.deepStrictEqual(parseCollectedUrls("([<('file:///home/phablet/Downloads/a%20b.pdf')>])"),
         ['file:///home/phablet/Downloads/a%20b.pdf']);
-    assert.ok(DEFAULT_ALLOWED_ROOTS.includes('/home/phablet/.cache/utoutlook.mathias/HubIncoming'),
-        'files really received via Content Hub land in the app cache (v4.4)');
+    assert.ok(DEFAULT_ALLOWED_ROOTS.some(r => r.endsWith('/.cache/utoutlook.mathias/HubIncoming')),
+        'files really received via Content Hub land in the app cache (v4.4.2, path from config.mjs)');
+    assert.ok(!DEFAULT_ALLOWED_ROOTS.some(r => r.startsWith('/home/phablet/')) ||
+              process.env.HOME === '/home/phablet',
+        'no hardcoded /home/phablet outside the device (v4.4.2)');
 });
 
 test('v4.4: importFiles drives Start/Collect/Finalize and validates the path', async () => {

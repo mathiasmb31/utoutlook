@@ -96,12 +96,9 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Download click package
-        uses: actions/download-artifact@v4
-        with:
-          name: utoutlook-click
-          path: ./release
-
+      # v4.4.2: aucun .click n'est uploade sur GitHub (regle Mathias) — le
+      # job 'build-click' ne publie que l'artifact electron-targz. Telecharger
+      # 'utoutlook-click' (inexistant) faisait echouer tous les tags.
       - name: Download Electron tar.gz
         uses: actions/download-artifact@v4
         with:

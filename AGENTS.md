@@ -159,7 +159,7 @@ ESLINT_USE_FLAT_CONFIG=false npm run lint                     # obligatoire : ES
 
 `command.sh` lance `bin/App/prospect-mail`, surveille le heartbeat `~/.config/utoutlook.mathias/follow`, tue/relance, et affiche les QML (`relaunch.qml` après rotation, `nonetwork.qml`, `exit.qml`). Flags de vie = fichiers dans `~/.config/utoutlook.mathias/` : `exitclient` (`quitclient:<wrapper-pid>`), `rotation-relaunch`, `close`, `init`, `killedmail`.
 
-Debug device sans rebuild (device adb `XXXX` ; l'ID `XXXX` du § OpenStore ci-dessus est périmé) :
+Debug device sans rebuild (device adb `XXXX`) :
 
 ```bash
 printf '{"cmd":"eval","code":"window.location.href"}\n' | nc -U /home/phablet/.config/utoutlook.mathias/utoutlook.sock
@@ -173,7 +173,7 @@ Commandes socket (`src/ipc-socket.mjs`) : `eval ping quit show zoom zoomIn zoomO
 
 - Build **jamais** depuis l'agent (§ Build manuel). `./build-deploy.sh [version]` = electron-builder arm64 + `clickable build --arch arm64` + install ; `utoulookmail/build-fast.sh [jobs] [--cpp-only|--electron-only]` pour le C++/Electron séparément (`make` dans `utoulookmail/`).
 - Ne pas utiliser `npm run dist:linux:targz` pour un click local : il construit x64 **et** arm64 (2× plus long) ; `build-deploy.sh` appelle `electron-builder --arm64` seul.
-- Le `README.md` racine est en partie obsolète (`cd prospectmailut`, `./make-project`) : se fier à `build-deploy.sh` / `build-fast.sh`.
+- Build : se fier à `build-deploy.sh` / `build-fast.sh` (le `README.md` racine est volontairement succinct).
 - CI `.github/workflows/ci.yml` : `npm test` (Node 22 et 24), `npm run lint`, build Electron sur push `main`/`feature/**`/`fix/**`/`hotfix/**` et PR vers `main`. `build-click.yml` ne tourne que sur tag `v*`, `workflow_dispatch` ou commit contenant `[click]` sur `main`.
 - Hooks actifs ici (`core.hooksPath=githooks`) : pre-commit bloque > 50 Mo hors `.click`, pre-push bloque les `.click` et les blobs > 100 Mo.
 - Livraison : `livraison/utoutlook-<ver>/` **de ce dépôt** (dernières : 4.0.41, 4.0.93) + kit `publishstore/utoutlook-<ver>/`. `./git-auto.sh livraison <ver> "titre"` copie le `.click` de **cette version** (depuis `utoulookmail/build/<arch>/app/`), exige `CHANGELOG.md` + `README.txt` (abandon sinon) et commit avec `git add -f`.

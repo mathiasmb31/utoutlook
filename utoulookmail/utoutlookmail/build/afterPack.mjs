@@ -31,7 +31,7 @@ export default async function afterPack(context) {
   tryRemove('chrome-sandbox');                // sandbox Chromium (--no-sandbox)
 
   // v4.1.0 (revue F23): seules les chaînes applicatives sont i18n (src/i18n.mjs,
-  // 8 langues) ; les chaînes natives Electron/Chromium restent en anglais.
+  // 10 langues) ; les chaînes natives Electron/Chromium restent en anglais.
   // --- Locales : ne garder que FR et EN ---
   const localesDir = join(appOutDir, 'locales');
   if (existsSync(localesDir)) {

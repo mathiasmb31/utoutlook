@@ -7,7 +7,7 @@
 set +e
 
 if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
-  echo "Usage: ./test-rapide.sh [version]"
+  echo "Usage: ./test-rapide.sh"
   echo "  Affiche les zombies AVANT le kill, tue les vieux process, lance l'app, puis affiche:"
   echo "  version installée, nb de process, heartbeat, URL courante,"
   echo "  dernières pages chargées, erreurs CSP/crash, boucles post.srf,"
@@ -16,16 +16,11 @@ if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
 fi
 
 DEV="${DEVICE:-${ADB_SERIAL:-XXXX}}"
-V="${1:-}"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
 echo "=== Version installée ==="
-if [ -n "$V" ]; then
-  adb -s $DEV shell "click info utoutlook.mathias | grep version"
-else
-  adb -s $DEV shell "click info utoutlook.mathias | grep version"
-fi
+adb -s $DEV shell "click info utoutlook.mathias | grep version"
 
 echo "=== Zombies avant kill ==="
 adb -s $DEV shell "ps -eo pid,stat,comm | awk '\$2 ~ /Z/ {z++} END {print \"zombies: \" (z+0)}'; echo \"process utoutlook avant kill: \$(ps aux | grep -E 'prospect-mail|command.sh' | grep -v grep | wc -l)\""

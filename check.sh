@@ -26,8 +26,11 @@ fail() { echo "  ERREUR: $*"; FAILED=1; }
 echo "== 1/7 bash -n des scripts"
 shopt -s nullglob
 tmp=$(mktemp)
-for s in ./*.sh ./utoulookmail/*.sh ./githooks/*; do
+for s in ./*.sh ./utoulookmail/*.sh ./utoulookmail/utils/*.sh ./githooks/*; do
   [ -f "$s" ] || continue
+  # v4.4.2: plusieurs utils/*.sh sont en fait des scripts Python — on ne
+  # verifie que ceux qui declarent un shebang shell.
+  head -1 "$s" | grep -qE '^#!.*(ba)?sh' || continue
   if bash -n "$s" 2>"$tmp"; then
     echo "  OK $s"
   else

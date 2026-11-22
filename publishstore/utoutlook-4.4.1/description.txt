@@ -24,4 +24,4 @@ Sign-in uses Microsoft's own page (email, password, Authenticator 2FA). The app 
 
 Made by a human up to version 3.0; AI-assisted from version 3.x onward. Made for my personal use, hoping it will be useful to you.
 
-Built and tested by Mathias - code written by Vibe, reviewed and controlled by Mathias.
+Built and tested by Mathias — code written by Vibe, reviewed and controlled by Mathias.

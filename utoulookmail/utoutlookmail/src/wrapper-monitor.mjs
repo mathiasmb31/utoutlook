@@ -13,7 +13,7 @@ import fs from 'node:fs';
 // /proc/<pid>/stat) etait considerée comme "wrapper mort". Desormais on ne
 // declare la mort QUE sur une preuve positive : signal 0 -> ESRCH, ou etat
 // /proc explicitement Z/X. Toute lecture impossible = 'unknown' = on ne quitte
-// pas. Cela supprime les faux positifs sans perter la detection reelle.
+// pas. Cela supprime les faux positifs sans perdre la detection reelle.
 
 function defaultProbe(pid) {
     try {

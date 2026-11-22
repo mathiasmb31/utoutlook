@@ -12,7 +12,8 @@ cd /home/mathias/vibeworkspace/utoutlook
 adb -s XXXX shell 'ps aux | grep -E "prospect-mail|command.sh" | grep -v grep | awk "{print \$2}" | while read p; do kill -9 $p 2>/dev/null; done'
 
 # Lancer l'app
-adb -s XXXX shell 'cd /opt/click.ubuntu.com/utoutlook.mathias/4.0.51 && setsid ./bin/command.sh > /dev/null 2>&1 &'
+V=$(adb -s XXXX shell 'click info utoutlook.mathias | grep version' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+adb -s XXXX shell "cd /opt/click.ubuntu.com/utoutlook.mathias/$V && setsid ./bin/command.sh > /dev/null 2>&1 &"
 
 # Vérifier qu'elle tourne
 adb -s XXXX shell 'ps aux | grep "prospect-mail --" | grep -v grep | wc -l'

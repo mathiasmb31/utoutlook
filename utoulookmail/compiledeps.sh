@@ -101,7 +101,7 @@ echo "Compile..."
 EDITOR=true dpkg-source --commit . fix-keyboard
 DEB_BUILD_OPTIONS="nocheck parallel=2" dpkg-buildpackage -us -uc -a arm64
 
-echo "[7/9] Copying files..."
+echo "Copying files..."
 
 echo "Copying dependencies..."
 cd ${BUILD_DIR}

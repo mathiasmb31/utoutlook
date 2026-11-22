@@ -247,7 +247,7 @@
             diag.id = DIAG_ID;
             diag.type = 'button';
             diag.textContent = 'ⓘ';
-            const label = tr('action.diagnostics', 'Diagnostics');
+            const label = tr('actionDiagnostics', 'Diagnostics');
             diag.title = label;
             diag.setAttribute('aria-label', label);
             diag.style.cssText = BTN_STYLE +
@@ -260,7 +260,7 @@
                         typeof window.electronAPI.getDiagnostics !== 'function') return;
                     const out = await window.electronAPI.getDiagnostics();
                     if (out) {
-                        window.alert(tr('diagnostics.saved', 'Report saved to: {path}')
+                        window.alert(tr('diagnosticsSaved', 'Report saved to: {path}')
                             .replace('{path}', out));
                     }
                 } catch (err) { /* diagnostic ne doit jamais casser l'UI */ }
