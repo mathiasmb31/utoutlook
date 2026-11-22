@@ -198,8 +198,18 @@ fi
 
 [ -f "$KIT/metadata.json" ] || echo '{"name":"UToutlook Mail","description":"Outlook mail client for Ubuntu Touch"}' > "$KIT/metadata.json"
 
+# v4.4.1: longue description du store, versionnée avec la release.
+# Un fichier absent n'est PAS une erreur (les anciennes releases n'en ont pas),
+# mais le recap le signale clairement a Mathias.
+DESC="$KIT/description.txt"
+if [ -f "$DESC" ]; then
+  echo "description.txt present — sera publie avec $VERSION"
+else
+  echo "ATTENTION: $KIT/description.txt absent — la description du store ne sera pas mise a jour"
+fi
+
 # Garde-fou filet de sécurité : tout ce qui part au store doit être 100 % anglais (aucun accent)
-for f in "$KIT/whatsnew.txt" "$KIT/metadata.json"; do
+for f in "$KIT/whatsnew.txt" "$KIT/metadata.json" "$DESC"; do
   if [ -f "$f" ] && grep -qP '[\x{00C0}-\x{00FF}]' "$f"; then
     echo "ERREUR: $f contient des caractères accentués — le contenu envoyé au store doit être EN ANGLAIS. Upload bloqué."
     exit 1
@@ -215,6 +225,11 @@ ls -la "$KIT"
 echo "whatsnew.txt :"
 cat "$KIT/whatsnew.txt" 2>/dev/null
 echo ""
+if [ -f "$DESC" ]; then
+  echo "description.txt (3 premieres lignes) :"
+  head -3 "$DESC"
+  echo ""
+fi
 echo "SHA512 du click :"
 sha512sum "$CLICK"
 
@@ -247,6 +262,27 @@ if [ "$UPLOAD_REQUESTED" = 1 ]; then
     -F "file=@${LIVRAISON}/${APP}_${VERSION}_arm64.click" \
     -F "changelog=<${KIT}/whatsnew.txt"
   echo ""
+
+  # v4.4.1: la longue description est publiee AVEC la release, dans le meme
+  # flux. PUT /api/v3/manage/<app> — champ 'description' (source: openstore-api
+  # src/api/manage.ts, router.put('/:id')). Jamais de clé dans la ligne de cmd.
+  if [ -f "$DESC" ]; then
+    echo "=== Publication de la description $VERSION ==="
+    DESC_RESP="/tmp/opencode/openstore-description-response.txt"
+    DESC_STATUS=$(printf 'url = "https://open-store.io/api/v3/manage/%s?apikey=%s"\n' "$APP" "$OPENSTORE_APIKEY" | \
+      curl -sS -X PUT --config - \
+        -H "Expect:" \
+        -F "description=<${DESC}" \
+        -w '%{http_code}' -o "$DESC_RESP")
+    if [ "$DESC_STATUS" != "200" ]; then
+      echo "ERREUR: description non publiee (HTTP $DESC_STATUS) — réponse:"
+      cat "$DESC_RESP" 2>/dev/null || true
+      echo "La revision $VERSION est bien uploadee, mais la description est restee a l'ancienne version."
+      exit 1
+    fi
+    echo "Description $VERSION publiee."
+  fi
+
   echo "=== Vérification store ==="
   curl -sS "https://open-store.io/api/v4/apps/${APP}" | python3 -c "import json,sys; d=json.load(sys.stdin); print('version:', d['data'].get('version'))"
 else
@@ -254,4 +290,5 @@ else
   echo "Pour uploader après relecture du récap :"
   echo "  OPENSTORE_APIKEY=... ./openstore-prepare.sh --upload OK"
   echo "  (version $VERSION par défaut — ou précisez-la avant --upload)"
+  echo "  Le fichier whatsnew.txt ET la description.txt du kit sont publies ensemble."
 fi
