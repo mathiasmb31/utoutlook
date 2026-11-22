@@ -30,6 +30,30 @@ const __dirnameNew = path.dirname(__filenameNew);
 // Zoom levels for mobile (step through with zoomIn/zoomOut)
 const ZOOM_LEVELS = [0.75, 0.85, 1.0, 1.15, 1.3, 1.5];
 
+// v4.4.1 — confidentialite : les URLs de login contiennent des jetons
+// (state, nonce, code_challenge, parfois login_hint). On ne journalise que
+// origine + chemin, jamais la query ni le fragment.
+function safeUrl(raw) {
+    try {
+        const u = new URL(String(raw));
+        return `${u.origin}${u.pathname}`;
+    } catch (_) {
+        return '[url]';
+    }
+}
+
+// v4.4.1 — la console du renderer peut afficher sujets/expéditeurs d'emails.
+// En release on ne garde que les signatures d'erreur utiles au diagnostic,
+// avec les URLs et adresses email masquées. Le message complet reste dispo
+// avec UTOUTLOOK_DEBUG=1.
+const SAFE_CONSOLE_RE = /^(?:Uncaught|TypeError|ReferenceError|RangeError|SyntaxError|Error:|Failed to load|Refused to|Maximum call stack|ResizeObserver loop completed|\[UTOUTLOOK)/;
+function sanitizeConsole(message) {
+    return String(message)
+        .replace(/https?:\/\/\S+/g, '[URL]')
+        .replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g, '[EMAIL]')
+        .slice(0, 200);
+}
+
 // v4.4: injection d'un fichier validé par Content Hub dans le <input type=file>
 // de la webapp Outlook. Le rendu est isolé : on passe les octets en base64, on
 // reconstruit un File côté page et on déclenche 'change'. On ne touche qu'UN
@@ -1706,7 +1730,7 @@ class MailWindowController {
             // ne soit remplacé / que la page mail ne soit réellement affichée).
             setTimeout(() => { this.fixMailLayout(); this.injectReloadButton(); }, 2000);
             const url = this.win.webContents.getURL();
-            logger.info(`Page loaded #${this.loginPage}: ${url}`);
+            logger.info(`Page loaded #${this.loginPage}: ${safeUrl(url)}`);
 
             // v3.3.14: re-sync on every load — cheap and keeps cloud.microsoft /
             // live.com in sync as Microsoft rotates domains during the redirect chain.
@@ -2307,7 +2331,7 @@ class MailWindowController {
                 if (this.pageRangeErrors.length >= 5 && !this.sessionClearedForLoop) {
                     this.sessionClearedForLoop = true;
                     const url = this.win.webContents.getURL();
-                    logger.warn(`v3.3.74: ${this.pageRangeErrors.length} RangeError/30s sur ${url} — session probablement vérolée, clear + reload avec prompt=login`);
+                    logger.warn(`v3.3.74: ${this.pageRangeErrors.length} RangeError/30s sur ${safeUrl(url)} — session probablement vérolée, clear + reload avec prompt=login`);
                     this.clearOutlookSession().then(() => {
                         this.pageRangeErrors = [];
                         // force prompt=login pour sauter le resume SSO silencieux
@@ -2321,16 +2345,21 @@ class MailWindowController {
                     }).catch(() => {});
                 }
             }
-            // Skip noisy messages
+            // v4.4.1: en release, la console du renderer n'est journalisee
+            // QUE pour les signatures d'erreur (et masquee). Le contenu complet
+            // (sujets/expediteurs/URLs de login) reste reserve au debug local.
             if (message.includes('Autofill') || message.includes('DevTools')) return;
-            logger.info(`[console.${levelName}] ${message.substring(0, 500)}`);
+            const debugConsole = process.env.UTOUTLOOK_DEBUG === '1';
+            if (!debugConsole && !SAFE_CONSOLE_RE.test(message)) return;
+            const text = debugConsole ? message.substring(0, 500) : sanitizeConsole(message);
+            logger.info(`[console.${levelName}] ${text}`);
         });
 
         // Log failed resource loads — helps diagnose boot failures (olkerror.html)
         this.win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
             // -3 (ERR_ABORTED) is normal for SPA redirects — skip it
             if (errorCode === -3) return;
-            logger.warn(`Load failed [${errorCode}] ${errorDescription}: ${validatedURL} (mainFrame=${isMainFrame})`);
+            logger.warn(`Load failed [${errorCode}] ${errorDescription}: ${safeUrl(validatedURL)} (mainFrame=${isMainFrame})`);
             // v4.0.10: a main-frame failure (network down, server unreachable,
             // renderer error page) will never match isMailInterfaceUrl/isLoginPageUrl
             // in did-finish-load — close the splash here so the user sees the
@@ -2381,7 +2410,7 @@ class MailWindowController {
         // Re-inject on SPA navigation (Outlook is a single-page app)
         this.win.webContents.on('did-navigate-in-page', (_event, url) => {
             if (!this.alive) return; // v3.3.22
-            logger.info(`SPA navigation: ${url}`);
+            logger.info(`SPA navigation: ${safeUrl(url)}`);
             this.trackInPageAuthLoop(url); // v4.0.37: la boucle 2FA desktop passe par des pushState sur ppsecure/post.srf
             this.injectStyles().catch(() => {});
             this.addUnreadNumberObserver().catch(() => {});
@@ -2413,7 +2442,7 @@ class MailWindowController {
                 && url.includes('login_hint=')) {
                 event.preventDefault();
                 this.loginHintIntercepts++;
-                logger.info(`Intercepted login_hint redirect #${this.loginHintIntercepts}: ${url}`);
+                logger.info(`Intercepted login_hint redirect #${this.loginHintIntercepts}: ${safeUrl(url)}`);
                 this.syncCookiesToLiveCom().then(() => {
                     logger.info(`Loading with synced cookies (login_hint preserved)`);
                     this.win.loadURL(url); // keep login_hint

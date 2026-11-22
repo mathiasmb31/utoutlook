@@ -3310,3 +3310,40 @@ test('v4.3.7: offline screen is native Electron and survives a hidden window', a
     assert.ok(ctl.includes('if (this.isBackgrounded() && !this.isOffline) return;'),
         'recovery poll must keep running while the offline screen is displayed');
 });
+
+// ============================================================
+// v4.4.1 — durcissement confidentialite
+// ============================================================
+
+test('v4.4.1: unused media permissions are removed from the click', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const apparmor = fs.readFileSync(path.join(here, '../../utoutlook.apparmor'), 'utf-8');
+    const groups = JSON.parse(apparmor).policy_groups;
+    for (const unused of ['audio', 'video', 'microphone', 'camera']) {
+        assert.ok(!groups.includes(unused), `${unused} is not used by the app (v4.4.1)`);
+    }
+    assert.ok(groups.includes('webview') && groups.includes('content_exchange'),
+        'required groups must stay');
+});
+
+test('v4.4.1: renderer console and URLs are redacted in release logs', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const ctl = fs.readFileSync(path.join(here, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+
+    assert.ok(ctl.includes('function safeUrl(') && ctl.includes('${u.origin}${u.pathname}'),
+        'logged URLs must keep origin+path only (v4.4.1)');
+    const rawUrlLogs = ctl.split('\n').filter(l =>
+        l.includes('logger.') && /\$\{(url|validatedURL)\}/.test(l));
+    assert.deepStrictEqual(rawUrlLogs, [], 'no logger may print a raw login URL');
+
+    assert.ok(ctl.includes("process.env.UTOUTLOOK_DEBUG === '1'") &&
+              ctl.includes('sanitizeConsole(message)') &&
+              ctl.includes('SAFE_CONSOLE_RE'),
+        'full renderer console output must be debug-only (v4.4.1)');
+});
