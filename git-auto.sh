@@ -8,7 +8,7 @@ if [ "$1" = "--help" ] || [ "$1" = "-h" ] || [ -z "$1" ]; then
   echo "Usage: ./git-auto.sh <commande> [args]"
   echo ""
   echo '  status                        -> branche courante, commits en avance, fichiers modifies'
-  echo '  commit "fix(vX.Y.Z): desc"    -> git add -A + commit avec pied Vibe + grep XXXX'
+  echo '  commit "fix(vX.Y.Z): desc"    -> git add -A + commit avec pied Vibe + grep identite proscrite'
   echo '  push                          -> push la branche (hook pre-push bloque les .click)'
   echo '  pr "Titre de la PR"           -> push + cree la PR (gh si installe, sinon URL GitHub)'
   echo '  livraison <version> "titre"    -> assemble livraison/utoutlook-<version>/ de CE dépôt (click + CHANGELOG + README), commit (git add -f)'
@@ -32,8 +32,9 @@ case "$CMD" in
     MSG="${2:?message requis}"
     git add -A
     # Garde-fou confidentialité (règle Mathias 2026-11-01)
-    if grep -ri XXXX --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=build --exclude-dir=dist --exclude=AGENTS.md --exclude=check.sh --exclude=git-auto.sh --exclude=menu.sh . 2>/dev/null | grep -q .; then
-      echo "ERREUR: 'XXXX' détecté dans le working tree — commit annulé (règle confidentialité)"
+    PAT="bre""thou"
+    if grep -ri "$PAT" --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=build --exclude-dir=dist --exclude=AGENTS.md --exclude=check.sh --exclude=git-auto.sh --exclude=menu.sh . 2>/dev/null | grep -q .; then
+      echo "ERREUR: identité proscrite détectée dans le working tree — commit annulé (règle confidentialité)"
       exit 1
     fi
     git commit -m "$MSG

@@ -26,13 +26,13 @@ titres de fenêtres). Tout passe par le catalogue i18n du projet.
 
 ## Confidentialité (OBLIGATOIRE — règle de Mathias, 2026-11-01)
 
-**Ne jamais publier l'email ni le nom « XXXX »** — ni dans les commits/PR
+**Ne jamais publier l'email ni le nom « <NOM-PROSCRIT> »** — ni dans les commits/PR
 (messages, auteurs, committers), ni dans le code, la doc, les logs, les captures,
-les tickets. RIEN de publié ne doit contenir `XXXX` (casse-insensible) ni
+les tickets. RIEN de publié ne doit contenir `<NOM-PROSCRIT>` (casse-insensible) ni
 l'adresse associée.
 
-- Avant chaque commit/PR : `grep -ri XXXX --exclude-dir=.git .` et
-  `git log --all --format='%ae %ce %B' | grep -i XXXX` doivent être vides.
+- Avant chaque commit/PR : `grep -ri <NOM-PROSCRIT> --exclude-dir=.git .` et
+  `git log --all --format='%ae %ce %B' | grep -i <NOM-PROSCRIT>` doivent être vides.
 - Exception : les données strictement locales et non publiées (cookies sur le
   téléphone, logs locaux du device, scratchpad) peuvent les contenir.
 - Si un nom/email perso apparaît dans un log ou une capture destiné à être
@@ -142,7 +142,7 @@ ESLINT_USE_FLAT_CONFIG=false npm run lint                     # obligatoire : ES
 ```
 
 - ESLint sort ~1170 warnings mais **0 erreur** : seul un passage à >0 erreur casse la CI.
-- `./check.sh` (racine) = pré-vol complet en une commande : `bash -n` (racine + `utoulookmail/` + `githooks/`), `node --check`, synchro `manifest.json`/`package.json`, `npm run lint`, `npm test`, grep `XXXX`, et scan i18n (informatif). Il sort en code 1 dès qu'une étape échoue.
+- `./check.sh` (racine) = pré-vol complet en une commande : `bash -n` (racine + `utoulookmail/` + `githooks/`), `node --check`, synchro `manifest.json`/`package.json`, `npm run lint`, `npm test`, grep `<NOM-PROSCRIT>`, et scan i18n (informatif). Il sort en code 1 dès qu'une étape échoue.
 - Version : `./bump-version.sh X.Y.Z` met à jour `manifest.json` **et** `package.json` (les deux doivent rester identiques).
 
 ## Pièges coûteux
