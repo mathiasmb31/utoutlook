@@ -39,13 +39,4 @@ export const logger = {
     error(...args) {
         if (LEVELS.error >= minLevel) console.error(...formatMessage('error', args));
     },
-    // Always log, regardless of level (for critical messages)
-    always(...args) {
-        console.log(...formatMessage('info', args));
-    },
-    setLevel(level) {
-        if (LEVELS[level] !== undefined) minLevel = LEVELS[level];
-    },
 };
-
-export default logger;

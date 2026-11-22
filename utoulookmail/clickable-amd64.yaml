@@ -22,25 +22,18 @@ build:
 - cd $INSTALL_DIR/bin/App && tar xvfz prospect.tar.gz --strip-components=1 
 - rm -f $INSTALL_DIR/bin/App/prospect.tar.gz
 - gcc $ROOT/utils/mkdir.c -o $ROOT/utils/mkdir
-- gcc $ROOT/utils/firstinstall.c -o $ROOT/utils/firstinstall
 - rm -rf ${ROOT}/squashfs-root/
 - echo '-----Compile debs and patches'
 - ${ROOT}/compiledeps-amd64.sh
-# Copie sélective de utils/ dans le click (exclut shutil 8.2 Mo, zlib/ 6.5 Mo,
-# xdg-open/ sources, .c, todo, cut.sh.sample — inutiles en runtime)
 - mkdir -p $INSTALL_DIR/utils
 - cp ${ROOT}/utils/*.sh $INSTALL_DIR/utils/
 - cp ${ROOT}/utils/settings.json $INSTALL_DIR/utils/
 - cp ${ROOT}/utils/mkdir $INSTALL_DIR/utils/ 2>/dev/null || true
-- cp ${ROOT}/utils/firstinstall $INSTALL_DIR/utils/ 2>/dev/null || true
-- cp ${ROOT}/utils/settings $INSTALL_DIR/utils/ 2>/dev/null || true
 - cp ${ROOT}/utils/copy $INSTALL_DIR/utils/ 2>/dev/null || true
-- cp ${ROOT}/utils/sendMsg_helloworld $INSTALL_DIR/utils/ 2>/dev/null || true
-# amd64: les binaires C (mkdir, firstinstall) sont compilés aarch64 sur ce host
+# amd64: le binaire C (mkdir) est compile aarch64 sur ce host
 # (pas de cross-compiler x86_64) — remplacer utils/mkdir par un script shell
 - cp $ROOT/amd64-root/utils/mkdir $INSTALL_DIR/utils/mkdir
 - chmod +x $INSTALL_DIR/utils/mkdir
-- rm -f $INSTALL_DIR/utils/firstinstall
 
 
 

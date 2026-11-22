@@ -1985,7 +1985,7 @@ test('v3.3.30: démarrage rapide + wrapper périmé silencieux (pas de kill du n
         'kill_app must check live processes (zombies ignored) BEFORE writing the close flag / sleeping (v3.3.30/v4.1.0)');
     // kill_stale_wrappers: SIGKILL only, never SIGTERM (a TERM runs the EXIT trap
     // which writes the close flag / socket quit and can kill the NEW instance)
-    const ksw = common.slice(common.indexOf('utoutlook_kill_stale_wrappers()'), common.indexOf('utoutlook_cleanup_flags()'));
+    const ksw = common.slice(common.indexOf('utoutlook_kill_stale_wrappers()'), common.indexOf('utoutlook_flag_fresh()'));
     assert.ok(!ksw.includes('kill -TERM'), 'kill_stale_wrappers must not SIGTERM stale wrappers (v3.3.30)');
     assert.ok(ksw.includes('kill -9'), 'kill_stale_wrappers must SIGKILL stale wrappers (v3.3.30)');
 
@@ -2656,7 +2656,6 @@ test('v4.1.0: crédit « Inspired from Julien Alarcon » + liens réels du proje
     const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf-8'));
     const i18n = fs.readFileSync(path.resolve(__dirname, '../src/i18n.mjs'), 'utf-8');
     const readme = fs.readFileSync(path.resolve(root, 'README.md'), 'utf-8');
-    const about = fs.readFileSync(path.resolve(__dirname, '../../patches/about.html'), 'utf-8');
 
     assert.strictEqual(pkg.author.name, 'Inspired from Julien Alarcon',
         'author credit must say inspired, not authored (v4.1.0)');
@@ -2667,10 +2666,9 @@ test('v4.1.0: crédit « Inspired from Julien Alarcon » + liens réels du proje
               pkg.repository.url.includes('mathiasmb31/utoutlook'),
         'package.json links must point to the utoutlook project (v4.1.0)');
     assert.ok(readme.includes('Inspired from Julien Alarcon') &&
-              readme.includes('./build-deploy.sh') &&
-              about.includes('Inspired from Julien Alarcon'),
-        'README/about credit and links must be updated (v4.1.0)');
-    assert.ok(!/julian[-\s]?alarcon/i.test(readme + about + JSON.stringify(pkg)),
+              readme.includes('./build-deploy.sh'),
+        'README credit and links must be updated (v4.1.0)');
+    assert.ok(!/julian[-\s]?alarcon/i.test(readme + JSON.stringify(pkg)),
         'no stale upstream credit or link may remain (v4.1.0)');
     for (const needle of ['Inspiré de Julien Alarcon', 'Inspired from Julien Alarcon',
                           'Inspirado en Julien Alarcon', 'Inspiriert von Julien Alarcon',

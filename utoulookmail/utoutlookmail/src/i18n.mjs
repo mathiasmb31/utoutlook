@@ -1049,4 +1049,3 @@ export function detectLanguage(locale) {
     return LANGUAGES[code] ? code : DEFAULT_LANG;
 }
 
-export default { t, setLanguage, getLanguage, getAvailableLanguages, getAllTranslations, getTranslationCoverage, detectLanguage, LANGUAGES };

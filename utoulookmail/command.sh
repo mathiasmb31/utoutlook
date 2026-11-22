@@ -479,8 +479,6 @@ export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUN
 
 # Alias legacy variable names to common.sh constants (avoids changing every reference)
 export lock="${UTOUTLOOK_LOCK}"
-export lockcook="${UTOUTLOOK_LOCKCOOK}"
-export locksock="${UTOUTLOOK_LOCKSOCK}"
 export exitclient="${UTOUTLOOK_EXITCLIENT}"
 export rotationflag="${UTOUTLOOK_ROTATIONFLAG}"
 RELAUNCH_QML_PID=""
@@ -768,11 +766,6 @@ export QT_FILE_SELECTORS=ubuntu-touch
 
 ## cleanup
 cleanup
-numberold="0"
-if [ -f "${filelifefollow}" ]; then
-	numberold=$("${WD}"/bin/cat "${filelifefollow}" 2>/dev/null | "${WD}"/bin/tr -d '[:space:]')
-fi
-
 echo "------------------------------------------------------------------"
 echo $$ >>${HOME}/.config/utoutlook.mathias/data/__prospect.pid
 

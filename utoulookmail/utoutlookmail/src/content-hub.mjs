@@ -70,8 +70,8 @@ export function validateTransferPath(raw, {
 // Aucun QML visible : pas de risque unknown.qtmir / icône jaune.
 // ============================================================
 
-export const CONTENT_HUB_SERVICE = 'com.lomiri.content.dbus.Service';
-export const TRANSFER_INTERFACE = 'com.lomiri.content.dbus.Transfer';
+const CONTENT_HUB_SERVICE = 'com.lomiri.content.dbus.Service';
+const TRANSFER_INTERFACE = 'com.lomiri.content.dbus.Transfer';
 
 /** Extrait les paires (id, libellé) du `av` retourné par KnownSourcesForType. */
 export function parsePeers(text) {
@@ -105,7 +105,6 @@ function defaultRun(args) {
 
 export class ContentHubBridge {
     constructor({
-        gdbus,                         // conservé pour les tests / surcharge
         run = defaultRun,
         appId,
         typeId = 'documents',
@@ -170,7 +169,4 @@ export class ContentHubBridge {
         }
     }
 
-    async abort(obj) {
-        try { await this.call('Abort', [], obj, TRANSFER_INTERFACE); } catch (_) {}
-    }
 }

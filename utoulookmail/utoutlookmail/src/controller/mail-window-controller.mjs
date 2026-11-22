@@ -3595,7 +3595,6 @@ class MailWindowController {
 
     /**
      * Affiche la fenêtre principale (restore si minimisée).
-     * Extrait également le token fb_dtsg de la page.
      */
     async show() {
         if (!this.alive) return; // v3.3.22
@@ -3606,16 +3605,8 @@ class MailWindowController {
             this.win.show();
         }
         this.win.focus();
-
-        // Extract fb_dtsg token from the page
-        try {
-            const result = await this.win.webContents.executeJavaScript(
-                `(() => { const el = document.querySelector('input[name="fb_dtsg"]'); return el ? el.value : null; })()`
-            );
-            if (result) logger.debug("fb_dtsg token retrieved");
-        } catch (err) {
-            logger.debug("Could not extract fb_dtsg token:", err.message);
-        }
+        // v4.4.2: l'ancien token fb_dtsg du fork Prospect n'etait jamais utilise
+        // — on supprime ce round-trip renderer a chaque show().
     }
 }
 
