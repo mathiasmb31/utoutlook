@@ -19,6 +19,8 @@
     const DIAG_ID = 'utoutlook-diagnostics-btn';
     // v4.3.8: bouton compact « Ⓡ » — bascule rendu logiciel / hardware.
     const RENDER_ID = 'utoutlook-render-btn';
+    // v4.4: bouton « joindre un fichier » via Content Hub (📎).
+    const ATTACH_ID = 'utoutlook-attach-btn';
     // v4.1.5: VRAIE cocarde Ubuntu Touch officielle (fond orange #E95420 +
     // les 3 pastilles/arcs blancs), extraite du logo Wikimedia "Ubuntu touch
     // logo 2025 dark.svg" — pas une approximation. Cadrée sur le carré 73x73.
@@ -307,6 +309,37 @@
                 window.alert(tr('relaunchNotice', 'Please relaunch UToutlook Mail'));
             });
             bar.appendChild(renderBtn);
+        }
+
+        // v4.4: joindre un fichier depuis ubuntu touch (Content Hub). Le
+        // transfert est fait cote main ; on n'attend que le resultat.
+        let attachBtn = document.getElementById(ATTACH_ID);
+        if (!attachBtn) {
+            attachBtn = document.createElement('button');
+            attachBtn.id = ATTACH_ID;
+            attachBtn.type = 'button';
+            attachBtn.textContent = '📎';
+            const label = tr('attachFile', 'Attach a file');
+            attachBtn.title = label;
+            attachBtn.setAttribute('aria-label', label);
+            attachBtn.style.cssText = BTN_STYLE +
+                'background:rgba(15,15,26,0.92);color:#E95420;border:1px solid #E95420;' +
+                'padding:7px 9px;min-width:34px;';
+            attachBtn.addEventListener('click', async (e) => {
+                e.preventDefault(); e.stopPropagation();
+                if (!window.electronAPI ||
+                    typeof window.electronAPI.attachFromHub !== 'function') return;
+                attachBtn.disabled = true;
+                try {
+                    const added = await window.electronAPI.attachFromHub();
+                    if (!added) window.alert(tr('contentHubFailed', 'Could not attach the file'));
+                } catch (_) {
+                    window.alert(tr('contentHubFailed', 'Could not attach the file'));
+                } finally {
+                    attachBtn.disabled = false;
+                }
+            });
+            bar.appendChild(attachBtn);
         }
 
         // v4.1.3: badge UBtouch — décoratif, aucune action, inséré avant les

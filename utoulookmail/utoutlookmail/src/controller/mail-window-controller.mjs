@@ -22,12 +22,68 @@ import {
 import {logger} from '../logger.mjs';
 import {buildDiagnostics} from '../diagnostics.mjs';
 import {shouldShowOfflineScreen} from '../network-check.mjs';
+import {ContentHubBridge} from '../content-hub.mjs';
 
 const __filenameNew = fileURLToPath(import.meta.url);
 const __dirnameNew = path.dirname(__filenameNew);
 
 // Zoom levels for mobile (step through with zoomIn/zoomOut)
 const ZOOM_LEVELS = [0.75, 0.85, 1.0, 1.15, 1.3, 1.5];
+
+// v4.4: injection d'un fichier validé par Content Hub dans le <input type=file>
+// de la webapp Outlook. Le rendu est isolé : on passe les octets en base64, on
+// reconstruit un File côté page et on déclenche 'change'. On ne touche qu'UN
+// input (le 1er, ou le 1er 'multiple') pour ne pas joindre deux fois le fichier.
+function guessMime(file) {
+    const ext = path.extname(file).toLowerCase();
+    const map = {
+        '.pdf': 'application/pdf', '.txt': 'text/plain', '.csv': 'text/csv',
+        '.doc': 'application/msword',
+        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        '.xls': 'application/vnd.ms-excel',
+        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif', '.webp': 'image/webp', '.zip': 'application/zip',
+    };
+    return map[ext] || 'application/octet-stream';
+}
+
+async function attachFilesToComposer(win, filePaths) {
+    const payload = [];
+    for (const file of filePaths) {
+        try {
+            payload.push({
+                name: path.basename(file),
+                type: guessMime(file),
+                data: fs.readFileSync(file).toString('base64'),
+            });
+        } catch (e) {
+            logger.warn(`v4.4: impossible de lire ${file}: ${e.message}`);
+        }
+    }
+    if (!payload.length || !win || win.isDestroyed()) return 0;
+    const encoded = JSON.stringify(payload);
+    const script = `(async () => {
+      const items = ${encoded};
+      const inputs = Array.from(document.querySelectorAll('input[type=file]'));
+      if (!inputs.length) return 0;
+      const input = inputs.find(i => i.multiple) || inputs[0];
+      const dt = new DataTransfer();
+      for (const item of items) {
+        const blob = await (await fetch('data:application/octet-stream;base64,' + item.data)).blob();
+        dt.items.add(new File([blob], item.name, {type: item.type}));
+      }
+      input.files = dt.files;
+      input.dispatchEvent(new Event('change', {bubbles: true}));
+      return 1;
+    })()`;
+    try {
+        return Number(await win.webContents.executeJavaScript(script, true)) || 0;
+    } catch (e) {
+        logger.warn(`v4.4: injection fichier impossible: ${e.message}`);
+        return 0;
+    }
+}
 
 /**
  * MailWindowController — Orchestre la fenêtre principale Electron affichant Outlook Web.
@@ -2063,6 +2119,27 @@ class MailWindowController {
                 return false;
             }
         });
+        // v4.4: joindre un fichier via le Content Hub (Ubuntu Touch).
+        ipcMain.removeHandler("attach-from-hub");
+        ipcMain.handle("attach-from-hub", async (event) => {
+            if (!MailWindowController.byWebContents.has(event.sender)) return 0;
+            const owner = MailWindowController.byWebContents.get(event.sender);
+            const win = (owner && owner.win) || this.win;
+            const appId = `utoutlook.mathias_utoutlook_${app.getVersion()}`;
+            const bridge = new ContentHubBridge({appId});
+            try {
+                const result = await bridge.importFiles();
+                if (!result.paths.length) {
+                    logger.warn(`v4.4: Content Hub sans fichier (${result.error || 'empty'})`);
+                    return 0;
+                }
+                logger.info(`v4.4: ${result.paths.length} fichier(s) recu(s) du Content Hub`);
+                return await attachFilesToComposer(win, result.paths);
+            } catch (e) {
+                logger.warn(`v4.4: echec Content Hub: ${e.message}`);
+                return 0;
+            }
+        });
         // v3.3.66: first-install — wipe ALL session data from the main process.
         // The in-page clear (document.cookie/localStorage) only reaches the current
         // origin, and syncCookiesToLiveCom() would re-copy surviving cookies to the
@@ -3347,6 +3424,9 @@ class MailWindowController {
             renderSoftwareEnable: tr['render.enable'],
             renderSoftwareDisable: tr['render.disable'],
             relaunchNotice: tr['splash.relaunch'],
+            // v4.4: bouton « joindre un fichier » via Content Hub
+            attachFile: tr['action.attachFile'],
+            contentHubFailed: tr['contentHub.failed'],
         });
         this.win.webContents.executeJavaScript(
             `window.__utoutlookI18n = Object.assign(window.__utoutlookI18n||{}, ${i18nJson});\n` + script

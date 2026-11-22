@@ -3232,6 +3232,50 @@ test('v4.3.7: content hub hook is declared but not wired to a visible QML window
 });
 
 // ============================================================
+// v4.4 — pont D-Bus Content Hub (import de pieces jointes)
+// ============================================================
+
+test('v4.4: Content Hub D-Bus replies are parsed without a QML picker', async () => {
+    const {parsePeers, parseObjectPath, parseCollectedUrls, DEFAULT_ALLOWED_ROOTS} =
+        await import('../src/content-hub.mjs');
+    const peers = parsePeers("('filemanager.ubports_filemanager_1.1.4', 'Fichiers', @ay [...], '', false)");
+    assert.deepStrictEqual(peers, [{id: 'filemanager.ubports_filemanager_1.1.4', name: 'Fichiers'}]);
+    assert.strictEqual(parseObjectPath("(objectpath '/transfers/utoutlook/import/1',)"),
+        '/transfers/utoutlook/import/1');
+    assert.deepStrictEqual(parseCollectedUrls("([<('file:///home/phablet/Downloads/a%20b.pdf')>])"),
+        ['file:///home/phablet/Downloads/a%20b.pdf']);
+    assert.ok(DEFAULT_ALLOWED_ROOTS.includes('/home/phablet/.cache/utoutlook.mathias/HubIncoming'),
+        'files really received via Content Hub land in the app cache (v4.4)');
+});
+
+test('v4.4: importFiles drives Start/Collect/Finalize and validates the path', async () => {
+    const {ContentHubBridge} = await import('../src/content-hub.mjs');
+    const calls = [];
+    const run = async (args) => {
+        const method = args[args.indexOf('--method') + 1];
+        calls.push(method);
+        if (method.endsWith('KnownSourcesForType')) {
+            return "([<('filemanager.ubports_filemanager_1.1.4', 'Fichiers')>], '')";
+        }
+        if (method.endsWith('CreateImportFromPeer')) return "(objectpath '/transfers/x/import/1',)";
+        if (method.endsWith('Collect')) return "([<('file:///home/phablet/.cache/utoutlook.mathias/HubIncoming/1/plan.pdf')>])";
+        return '()';
+    };
+    const bridge = new ContentHubBridge({
+        run,
+        appId: 'utoutlook.mathias_utoutlook_4.4.0',
+        sleep: async () => {},
+        now: (() => { let n = 0; return () => (n += 100); })(),
+        validate: (raw) => ({ok: true, path: raw}),
+    });
+    const result = await bridge.importFiles();
+    assert.deepStrictEqual(result,
+        {paths: ['/home/phablet/.cache/utoutlook.mathias/HubIncoming/1/plan.pdf']});
+    assert.ok(calls.some(c => c.endsWith('.Start')) && calls.some(c => c.endsWith('.Finalize')),
+        'the transfer must be started and finalized');
+});
+
+// ============================================================
 // v4.3.7 — ecran hors-ligne natif (pas de QML separe)
 // ============================================================
 

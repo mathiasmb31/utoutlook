@@ -165,6 +165,20 @@ const T = {
         zh: '禁用软件渲染', ar: 'تعطيل العرض البرمجي',
         ca: 'Desactiva el renderitzat de programari', eu: 'Desgaitu software bidezko errendatzea',
     },
+    // v4.4: transfert de pièces jointes via Content Hub (10 langues)
+    'action.attachFile': {
+        fr: 'Joindre un fichier', en: 'Attach a file', es: 'Adjuntar un archivo',
+        de: 'Datei anhängen', it: 'Allega un file', pt: 'Anexar um arquivo',
+        zh: '附加文件', ar: 'إرفاق ملف',
+        ca: 'Adjuntar un fitxer', eu: 'Erantsi fitxategia',
+    },
+    'contentHub.failed': {
+        fr: 'Impossible de joindre le fichier', en: 'Could not attach the file',
+        es: 'No se pudo adjuntar el archivo', de: 'Datei konnte nicht angehängt werden',
+        it: 'Impossibile allegare il file', pt: 'Não foi possível anexar o arquivo',
+        zh: '无法附加文件', ar: 'تعذر إرفاق الملف',
+        ca: 'No s’ha pogut adjuntar el fitxer', eu: 'Ezin izan da fitxategia erantsi',
+    },
     'common.reload': {
         fr: 'Recharger', en: 'Reload', es: 'Recargar', de: 'Neu laden',
         it: 'Ricarica', pt: 'Recarregar', zh: '重新加载', ar: 'إعادة تحميل',

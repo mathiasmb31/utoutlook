@@ -73,6 +73,7 @@ build:
 - cp /usr/bin/id $INSTALL_DIR/bin
 - cp /usr/bin/tr $INSTALL_DIR/bin
 - cp /usr/bin/cut $INSTALL_DIR/bin
+- cp /usr/bin/gdbus $INSTALL_DIR/bin
 # Custom notify binary (D-Bus Postal + Launcher badge)
 - cp $ROOT/notify /$INSTALL_DIR/bin
 

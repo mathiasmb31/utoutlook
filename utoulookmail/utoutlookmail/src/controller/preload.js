@@ -29,6 +29,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     // v4.0.127: override du mode de rendu (auto|software|hardware)
     getRenderMode: () => ipcRenderer.invoke("get-render-mode"),
     setRenderMode: (mode) => ipcRenderer.invoke("set-render-mode", mode),
+    // v4.4: joindre un fichier depuis le Content Hub d'Ubuntu Touch
+    attachFromHub: () => ipcRenderer.invoke("attach-from-hub"),
     // Dark mode toggle
     toggleDarkMode: () => ipcRenderer.send("toggle-dark-mode"),
 });

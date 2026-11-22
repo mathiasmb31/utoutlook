@@ -12,6 +12,7 @@
          "keep-display-on",
          "push-notification-client"
     ],
-    "policy_version": 2404.1
-
+    "policy_version": 2404.1,
+    "dbus (send) bus=session path=/ interface=com.lomiri.content.dbus.Service",
+    "dbus (send) bus=session path=/transfers/** interface=com.lomiri.content.dbus.Transfer"
 }
