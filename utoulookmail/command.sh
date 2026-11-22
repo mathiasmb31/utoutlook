@@ -842,16 +842,22 @@ gpuoptions="--in-process-gpu --disable-features=VaapiVideoDecoder,AcceleratedVid
 # avant de lancer Electron. Sinon, appliquer directement (mode auto silencieux).
 GPU_CRASH_NEW=0
 CUR_RENDER_MODE=""
+# v4.3.8: lecture avec le BUILTIN read (cat/tr externes pouvaient renvoyer vide)
 if [ -f "${UTOUTLOOK_RENDER_MODE_FILE}" ]; then
-	CUR_RENDER_MODE=$("${UTOUTLOOK_BIN}/cat" "${UTOUTLOOK_RENDER_MODE_FILE}" 2>/dev/null | "${UTOUTLOOK_BIN}/tr" -d '[:space:]')
+	read -r CUR_RENDER_MODE < "${UTOUTLOOK_RENDER_MODE_FILE}" 2>/dev/null || true
 fi
-if [ -z "${CUR_RENDER_MODE}" ] || [ "${CUR_RENDER_MODE}" = "auto" ]; then
-	if utoutlook_gpu_crash_is_new; then GPU_CRASH_NEW=1; fi
-fi
+CUR_RENDER_MODE="${CUR_RENDER_MODE//[[:space:]]/}"
+HAS_RENDER_OVERRIDE=0
+case "${CUR_RENDER_MODE}" in
+	software|on|1|hardware|off|0) HAS_RENDER_OVERRIDE=1 ;;
+esac
+# On detecte le crash FRAIS meme avec un override (utile pour la notification),
+# mais l'ecran de secours reste reserve aux cas sans choix manuel.
+if utoutlook_gpu_crash_is_new; then GPU_CRASH_NEW=1; fi
 
 RENDER_MODE=$(utoutlook_resolve_render_mode)
 
-if [ ${GPU_CRASH_NEW} -eq 1 ]; then
+if [ "${GPU_CRASH_NEW}" -eq 1 ] && [ "${HAS_RENDER_OVERRIDE}" -eq 0 ]; then
 	# fermer la barre de progression pour que l'écran de secours soit seul
 	if [ -n "${STARTUP_QML_PID}" ]; then
 		kill "${STARTUP_QML_PID}" 2>/dev/null || true
@@ -866,7 +872,16 @@ fi
 compute_gpu_options "${RENDER_MODE}"
 if [ "${RENDER_MODE}" = "software" ]; then
 	echo "software rendering enabled (render-mode=${RENDER_MODE})"
-	utoutlook_notify "$(utoutlook_t 'shell.softwareMode')"
+	# v4.3.8: le message "apres un crash graphique" ne doit apparaitre QUE
+	# lors du basculement reel. render-mode=software persistant (choisi par
+	# l'utilisateur ou suite a un ancien crash) ne notifie plus a chaque
+	# lancement.
+	if [ "${GPU_CRASH_NEW}" -eq 1 ]; then
+		case "${CUR_RENDER_MODE}" in
+			software|on|1) : ;; # deja logiciel : aucun message
+			*) utoutlook_notify "$(utoutlook_t 'shell.softwareMode')" ;;
+		esac
+	fi
 else
 	echo "hardware rendering (render-mode=${RENDER_MODE})"
 fi

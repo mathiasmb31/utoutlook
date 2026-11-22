@@ -10,9 +10,6 @@
     const BAR_ID = 'utoutlook-app-actions';
     const RELOAD_ID = 'utoutlook-reload-btn';
     const QUIT_ID = 'utoutlook-quit-btn';
-    // v4.3.7: classe posée sur <html> UNE SEULE FOIS quand la liste passe
-    // de « pas prête » à « prête ». Le CSS (main.css) fait le reste.
-    const READY_CLASS = 'utoutlook-list-ready';
     // v4.1.3: deux boutons supplémentaires dans la barre de la liste :
     //   - UBTOUCH_ID : logo Ubuntu Touch ROND, purement décoratif (aucune action).
     //   - FIRST_ID   : « Première installation » — wipe complet + notif + relance.
@@ -20,6 +17,8 @@
     const FIRST_ID = 'utoutlook-first-install-btn';
     // v4.3.7: bouton compact « ⓘ » — rapport de diagnostic whiteliste.
     const DIAG_ID = 'utoutlook-diagnostics-btn';
+    // v4.3.8: bouton compact « Ⓡ » — bascule rendu logiciel / hardware.
+    const RENDER_ID = 'utoutlook-render-btn';
     // v4.1.5: VRAIE cocarde Ubuntu Touch officielle (fond orange #E95420 +
     // les 3 pastilles/arcs blancs), extraite du logo Wikimedia "Ubuntu touch
     // logo 2025 dark.svg" — pas une approximation. Cadrée sur le carré 73x73.
@@ -85,19 +84,6 @@
         if (ml.getBoundingClientRect().height < 100) return false;
         const rows = ml.querySelectorAll('[role="option"], [role="listitem"], [class*="listItem"]');
         return Array.from(rows).some((r) => r.getBoundingClientRect().height > 0);
-    };
-
-    // v4.3.7: effet « liste prête » — on ne joue l'animation qu'au passage
-    // false -> true, jamais a chaque re-render du SPA (anti-clignotement).
-    let lastListReady = false;
-    let listReadyFxTimer = null;
-    const signalListReady = () => {
-        const root = document.documentElement;
-        if (!root || !root.classList) return;
-        root.classList.remove(READY_CLASS);
-        root.classList.add(READY_CLASS);
-        clearTimeout(listReadyFxTimer);
-        listReadyFxTimer = setTimeout(() => root.classList.remove(READY_CLASS), 600);
     };
 
     const fire = (kind) => {
@@ -280,6 +266,49 @@
             bar.appendChild(diag);
         }
 
+        // v4.3.8: bascule du mode de rendu accessible DEPUIS LA PAGE MAIL.
+        // Le bouton historique de gestures.js n'existe que sur la page de
+        // login : une fois la session restoring, l'utilisateur n'avait plus
+        // aucun moyen de revenir en mode hardware. Change effectif au prochain
+        // lancement (le wrapper lit render-mode au demarrage).
+        let renderBtn = document.getElementById(RENDER_ID);
+        if (!renderBtn) {
+            renderBtn = document.createElement('button');
+            renderBtn.id = RENDER_ID;
+            renderBtn.type = 'button';
+            renderBtn.textContent = 'Ⓡ';
+            renderBtn.style.cssText = BTN_STYLE +
+                'background:rgba(15,15,26,0.92);color:#E95420;border:1px solid #E95420;' +
+                'padding:7px 9px;min-width:34px;';
+            const readMode = async () => {
+                let mode = 'auto';
+                try { mode = await window.electronAPI.getRenderMode(); } catch (_) {}
+                return mode;
+            };
+            const refreshRenderLabel = async () => {
+                const mode = await readMode();
+                const label = mode === 'software'
+                    ? tr('renderSoftwareDisable', 'Disable software rendering')
+                    : tr('renderSoftwareEnable', 'Enable software rendering');
+                renderBtn.title = label;
+                renderBtn.setAttribute('aria-label', label);
+            };
+            refreshRenderLabel();
+            renderBtn.addEventListener('click', async (e) => {
+                e.preventDefault(); e.stopPropagation();
+                const mode = await readMode();
+                const next = (mode === 'software') ? 'hardware' : 'software';
+                try {
+                    if (!window.electronAPI ||
+                        typeof window.electronAPI.setRenderMode !== 'function') return;
+                    await window.electronAPI.setRenderMode(next);
+                } catch (_) { return; }
+                await refreshRenderLabel();
+                window.alert(tr('relaunchNotice', 'Please relaunch UToutlook Mail'));
+            });
+            bar.appendChild(renderBtn);
+        }
+
         // v4.1.3: badge UBtouch — décoratif, aucune action, inséré avant les
         // autres boutons (logo à gauche, puis Première installation).
         let ubtouch = document.getElementById(UBTOUCH_ID);
@@ -351,10 +380,9 @@
         // quand la liste est cassée (0×0) — c'est le cas à secourir. On ne
         // masque que le bouton Recharger pendant le chargement initial.
         bar.style.display = onMailPage() ? 'flex' : 'none';
-        const ready = listReady();
-        if (ready && !lastListReady) signalListReady();
-        lastListReady = ready;
-        reload.style.display = ready ? '' : 'none';
+        // v4.3.8: plus d'effet glass (blur sur toutes les lignes) — il faisait
+        // bloquer le renderer en mode logiciel et declenchait des relances.
+        reload.style.display = listReady() ? '' : 'none';
         unhideList(); // v4.0.98: garder la liste visible après les re-render SPA
         syncNavState(); // v4.0.118: mémoriser un masquage automatique (paysage)
     };

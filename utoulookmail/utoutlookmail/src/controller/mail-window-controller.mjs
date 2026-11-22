@@ -3340,6 +3340,13 @@ class MailWindowController {
             actionFirstInstall: tr['action.firstInstall'],
             actionFirstInstallConfirm: tr['action.firstInstallConfirm'],
             actionFirstInstallNotify: tr['action.firstInstallNotify'],
+            // v4.3.7: libellés du bouton diagnostics (avant: anglais hardcodé)
+            actionDiagnostics: tr['action.diagnostics'],
+            diagnosticsSaved: tr['diagnostics.saved'],
+            // v4.3.8: bascule de rendu accessible depuis la page mail
+            renderSoftwareEnable: tr['render.enable'],
+            renderSoftwareDisable: tr['render.disable'],
+            relaunchNotice: tr['splash.relaunch'],
         });
         this.win.webContents.executeJavaScript(
             `window.__utoutlookI18n = Object.assign(window.__utoutlookI18n||{}, ${i18nJson});\n` + script

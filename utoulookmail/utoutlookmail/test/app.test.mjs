@@ -171,7 +171,8 @@ test('v4.3.7: a SIGKILLed wrapper is detected as dead (orphaned Electron)', asyn
         pidFilePath: 'wrapper.pid',
         expectedPid: '4242',
         readFileSync: () => '4242\n',                          // pidfile encore l'ancien wrapper
-        readProc: () => { throw new Error('ENOENT'); },         // tue par Lomiri
+        readProc: () => { throw new Error('ENOENT'); },         // /proc illisible
+        probe: () => 'dead',                                    // ESRCH = vraiment disparu
     });
     assert.strictEqual(state, false,
         'an orphaned Electron must be seen as wrapper-dead, not merely unknown');
@@ -2917,7 +2918,7 @@ test('v4.1.0 (analyse approfondie): correctifs applicatifs et outillage', async 
         'IPC handlers must dispatch to the controller owning the sender (M4)');
 
     // reload button visible when the list is broken
-    assert.ok(reload.includes("reload.style.display = ready ? '' : 'none'") &&
+    assert.ok(reload.includes("reload.style.display = listReady() ? '' : 'none'") &&
               !reload.includes("a.style.setProperty('overflow', 'visible'"),
         'reload button must be available on broken lists without breaking scroll (renderer #4/#5)');
     assert.ok(ctl.includes('render-process-gone') && ctl.includes('this.win.reload()'),
@@ -2939,10 +2940,10 @@ test('v4.1.0 (analyse approfondie): correctifs applicatifs et outillage', async 
 });
 
 // ============================================================
-// v4.3.7 — transition « liste prête » (glass discret, une seule fois)
+// v4.3.8 — stabilite : plus de glass, bascule de rendu accessible
 // ============================================================
 
-test('v4.3.7: list-ready glass effect is one-shot and respects reduced motion', async () => {
+test('v4.3.8: no blur animation on the message list (software mode hangs)', async () => {
     const fs = await import('node:fs');
     const path = await import('node:path');
     const {fileURLToPath} = await import('node:url');
@@ -2950,17 +2951,47 @@ test('v4.3.7: list-ready glass effect is one-shot and respects reduced motion', 
     const btn = fs.readFileSync(path.join(here, '../public/reload-button.js'), 'utf-8');
     const css = fs.readFileSync(path.join(here, '../public/main.css'), 'utf-8');
 
-    assert.ok(btn.includes("const READY_CLASS = 'utoutlook-list-ready'"),
-        'list-ready class name must be defined (v4.3.7)');
-    assert.ok(btn.includes('if (ready && !lastListReady) signalListReady()'),
-        'glass effect must play only on the false -> true transition (v4.3.7)');
-    assert.ok(btn.includes('clearTimeout(listReadyFxTimer)'),
-        'repeated ensure() calls must not restart the animation (v4.3.7)');
-    assert.ok(css.includes('@keyframes utoutlook-list-glass-in'),
-        'glass keyframes must exist in the injected CSS (v4.3.7)');
-    assert.ok(css.includes('prefers-reduced-motion: reduce') &&
-              css.includes('animation: none !important'),
-        'reduced-motion users must get no animation (v4.3.7)');
+    assert.ok(!css.includes('utoutlook-list-glass-in') &&
+              !css.includes('filter: blur('),
+        'no blur keyframes/filter may remain in the injected CSS (v4.3.8)');
+    assert.ok(!btn.includes('READY_CLASS') && !btn.includes('signalListReady'),
+        'the list-ready glass trigger must be gone (v4.3.8)');
+});
+
+test('v4.3.8: render-mode toggle is reachable from the mail page', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const btn = fs.readFileSync(path.join(here, '../public/reload-button.js'), 'utf-8');
+    const ctrl = fs.readFileSync(path.join(here, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+
+    assert.ok(btn.includes("const RENDER_ID = 'utoutlook-render-btn'") &&
+              btn.includes("document.getElementById(RENDER_ID)") &&
+              btn.includes('setRenderMode(next)'),
+        'action bar must expose a render toggle on the mail page (v4.3.8)');
+    const inject = ctrl.slice(ctrl.indexOf('injectReloadButton()'));
+    assert.ok(inject.includes('renderSoftwareEnable: tr[\'render.enable\']') &&
+              inject.includes('renderSoftwareDisable: tr[\'render.disable\']') &&
+              inject.includes('relaunchNotice: tr[\'splash.relaunch\']'),
+        'render toggle labels must be injected in 10 languages (v4.3.8)');
+});
+
+test('v4.3.8: "software rendering after a crash" is only announced on a real switch', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const cmd = fs.readFileSync(path.join(here, '../../command.sh'), 'utf-8');
+
+    const block = cmd.slice(cmd.indexOf('if [ "${RENDER_MODE}" = "software" ]; then'),
+                            cmd.indexOf('echo "launch utoutlookmail"'));
+    assert.ok(block.includes('if [ "${GPU_CRASH_NEW}" -eq 1 ]'),
+        'softwareMode notification must be gated on a fresh GPU crash (v4.3.8)');
+    assert.ok(block.includes('software|on|1) : ;;'),
+        'already-software mode must never announce a crash (v4.3.8)');
+    assert.ok(cmd.includes('read -r CUR_RENDER_MODE < "${UTOUTLOOK_RENDER_MODE_FILE}"'),
+        'current mode must be read with the bash builtin (v4.3.8)');
 });
 
 // ============================================================
@@ -3023,20 +3054,39 @@ test('v4.3.7: wrapper monitor never quits on an unknown or newer wrapper', async
         expectedPid: expected,
         readFileSync: () => pidfile,
         readProc: () => proc,
+        probe: () => 'unknown', // on force le repli /proc pour ces cas
     });
     assert.strictEqual(checkWrapperAlive({...base('4242\n', '4242 (bash) S 1 1'), expectedPid: ''}), 'unknown');
     assert.strictEqual(checkWrapperAlive({pidFilePath: 'wrapper.pid', expectedPid: '', readFileSync: () => '4242'}), 'unknown');
     assert.strictEqual(checkWrapperAlive(base('9999\n', '9999 (bash) S 1 1')), 'unknown',
         'a newer wrapper PID must not trigger a quit');
     assert.strictEqual(checkWrapperAlive(base('garbage', '4242 (bash) S 1 1')), 'unknown');
-    assert.strictEqual(checkWrapperAlive(base('4242\n', '4242 (bash) S 1 1')), true);
+    // v4.3.8: le probe (signal 0) est la source de verite. Sans lui, on
+    // replie sur /proc, et une lecture impossible n'est PAS une mort.
+    const withProbe = (proc, probeState) => ({
+        pidFilePath: 'wrapper.pid', expectedPid: '4242',
+        readFileSync: () => '4242\n',
+        readProc: () => proc,
+        probe: () => probeState,
+    });
+    assert.strictEqual(checkWrapperAlive(withProbe('4242 (bash) S 1 1', 'alive')), true);
+    assert.strictEqual(checkWrapperAlive(withProbe('4242 (bash) S 1 1', 'dead')), false);
+    assert.strictEqual(checkWrapperAlive(withProbe('4242 (bash) S 1 1', 'unknown')), true,
+        '/proc dit S => vivant quand le probe est indecis');
     assert.strictEqual(checkWrapperAlive(base('4242\n', '4242 (bash) Z 1 1')), false,
         'a zombie wrapper counts as dead');
     assert.strictEqual(checkWrapperAlive({
         pidFilePath: 'wrapper.pid', expectedPid: '4242',
         readFileSync: () => { throw new Error('ENOENT'); },
         readProc: () => 'unused',
-    }), false);
+    }), 'unknown',
+        'an unreadable pidfile must NEVER quit Electron (v4.3.8 false positives)');
+    assert.strictEqual(checkWrapperAlive({
+        pidFilePath: 'wrapper.pid', expectedPid: '4242',
+        readFileSync: () => '4242\n',
+        readProc: () => { throw new Error('EACCES'); },
+    }), 'unknown',
+        'an unreadable /proc must NEVER quit Electron (v4.3.8 false positives)');
 });
 
 test('v4.3.7: reverse supervision uses cleanupAndExit with quit/rotation guards', async () => {
@@ -3055,7 +3105,7 @@ test('v4.3.7: reverse supervision uses cleanupAndExit with quit/rotation guards'
               block.includes('!global.restartRequested') &&
               block.includes('!global.skipCleanExitFlag'),
         'quit, restart and rotation guards must all be present (v4.1.0/v4.3.1)');
-    assert.ok(block.includes('wrapperMisses >= 3') && block.includes('heartbeatTicks % 5 === 0'),
+    assert.ok(block.includes('wrapperMisses >= 4') && block.includes('heartbeatTicks % 5 === 0'),
         'must require 3 consecutive misses spaced by 10 s (anti false positive)');
     assert.ok(block.includes("state === 'unknown'") || block.includes("// 'unknown'"),
         'unknown state must be explicitly ignored');

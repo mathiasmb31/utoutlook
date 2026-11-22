@@ -188,7 +188,8 @@ const heartbeatInterval = setInterval(() => {
     // (swipe-close, crash). Sans ca, Electron restait vivant avec un heartbeat
     // actif → "app vivante mais invisible" et notifications orphelines.
     // Toutes les 5 ticks (10 s), apres 15 ticks de grace (30 s) : il faut
-    // 3 echecs consecutifs (30 s) avant de quitter. On ne quitte QUE par
+    // 4 echecs consecutifs (40 s) avant de quitter (v4.3.8, plus conservateur).
+    // On ne quitte QUE par
     // cleanupAndExit() (jamais app.exit direct : zombies + goodbye), et
     // jamais pendant un quit/une rotation/une relance en cours.
     heartbeatTicks++;
@@ -202,7 +203,7 @@ const heartbeatInterval = setInterval(() => {
             wrapperMisses = 0;
         } else if (state === false) {
             wrapperMisses++;
-            if (wrapperMisses >= 3 && !global.utoutlookQuitting &&
+            if (wrapperMisses >= 4 && !global.utoutlookQuitting &&
                 !global.restartRequested && !global.skipCleanExitFlag) {
                 logger.warn(`Wrapper ${process.env.UTOUTLOOK_WRAPPER_PID} disappeared after ${wrapperChecks} checks — silent exit (no goodbye)`);
                 appInstance.cleanupAndExit();
