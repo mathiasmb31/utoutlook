@@ -1,10 +1,10 @@
 #!/bin/bash
-# Build + install utoutlook sur le téléphone (adb XXXX)
+# Build + install utoutlook sur le téléphone (serial via DEVICE/ADB_DEVICE)
 set -e
 
 if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
   echo "Usage: ./build-deploy.sh [version]"
-  echo "  Build l'app Electron (arm64) + clickable build + install sur le device adb XXXX"
+  echo "  Build l'app Electron (arm64) + clickable build + install sur le device (DEVICE/ADB_DEVICE)"
   echo "  Sans argument, lit la version dans package.json"
   echo "  Exemple: ./build-deploy.sh 4.0.51"
   exit 0
@@ -12,6 +12,7 @@ fi
 
 VERSION="${1:-$(grep '"version"' utoulookmail/utoutlookmail/package.json | head -1 | sed 's/.*"version": "//;s/".*//')}"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
+DEV="${DEVICE:-${ADB_DEVICE:-}}"
 cd "$ROOT"
 
 # v4.3.7 (debug device 2026-11-21): electron-builder NE suit PAS un
@@ -52,5 +53,6 @@ echo "=== Install sur device ==="
 clickable install
 
 echo "=== Vérification ==="
-adb -s XXXX shell 'click info utoutlook.mathias | grep version'
+[ -n "$DEV" ] || { echo "ERREUR: définir DEVICE=<serial> (ou ADB_DEVICE)"; exit 1; }
+adb -s "$DEV" shell 'click info utoutlook.mathias | grep version'
 echo "=== Fait : $VERSION ==="

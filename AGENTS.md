@@ -95,7 +95,7 @@ Uniquement pour déboguer **utoutlook** (adb ciblé, logs de l'app, état du she
 
 ## Publication OpenStore (OBLIGATOIRE — règle Mathias, 2026-11-17)
 
-**L'agent IA ne lance JAMAIS `openstore-prepare.sh --upload` ni aucun upload OpenStore : c'est Mathias qui exécute la commande à la main** (`OPENSTORE_APIKEY=... ./openstore-prepare.sh <version> --upload "OK"`, apikey en env var uniquement). L'agent peut seulement lire/préparer les fichiers du kit `publishstore/` et afficher les récap. Préalables : test device concluant (adb `XXXX`, 0 crash) + « OK » explicite de Mathias après revue du contenu complet.
+**L'agent IA ne lance JAMAIS `openstore-prepare.sh --upload` ni aucun upload OpenStore : c'est Mathias qui exécute la commande à la main** (`OPENSTORE_APIKEY=... ./openstore-prepare.sh <version> --upload "OK"`, apikey en env var uniquement). L'agent peut seulement lire/préparer les fichiers du kit `publishstore/` et afficher les récap. Préalables : test device concluant (serial via `DEVICE`/`ADB_DEVICE`, 0 crash) + « OK » explicite de Mathias après revue du contenu complet.
 
 ## Pied de commit (OBLIGATOIRE)
 
@@ -159,7 +159,7 @@ ESLINT_USE_FLAT_CONFIG=false npm run lint                     # obligatoire : ES
 
 `command.sh` lance `bin/App/prospect-mail`, surveille le heartbeat `~/.config/utoutlook.mathias/follow`, tue/relance, et affiche les QML (`relaunch.qml` après rotation, `nonetwork.qml`, `exit.qml`). Flags de vie = fichiers dans `~/.config/utoutlook.mathias/` : `exitclient` (`quitclient:<wrapper-pid>`), `rotation-relaunch`, `close`, `init`, `killedmail`.
 
-Debug device sans rebuild (device adb `XXXX`) :
+Debug device sans rebuild (serial via `DEVICE`/`ADB_DEVICE`) :
 
 ```bash
 printf '{"cmd":"eval","code":"window.location.href"}\n' | nc -U /home/phablet/.config/utoutlook.mathias/utoutlook.sock

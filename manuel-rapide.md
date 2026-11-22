@@ -2,33 +2,37 @@
 
 ## Build + install (le plus long, ~8 min)
 ```bash
-cd /home/mathias/vibeworkspace/utoutlook
+cd /home/mathias/vibeworkspace/utoutlook-next
 ./build-deploy.sh
 ```
 
-## Test rapide sur le téléphone (adb XXXX)
+## Test rapide sur le téléphone (définir `DEVICE=<serial>`)
+
+```bash
+DEVICE="${DEVICE:-<serial>}"
+```
 ```bash
 # Tuer les vieux process (évite les zombies qui bloquent)
-adb -s XXXX shell 'ps aux | grep -E "prospect-mail|command.sh" | grep -v grep | awk "{print \$2}" | while read p; do kill -9 $p 2>/dev/null; done'
+adb -s "$DEVICE" shell 'ps aux | grep -E "prospect-mail|command.sh" | grep -v grep | awk "{print \$2}" | while read p; do kill -9 $p 2>/dev/null; done'
 
 # Lancer l'app
-V=$(adb -s XXXX shell 'click info utoutlook.mathias | grep version' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
-adb -s XXXX shell "cd /opt/click.ubuntu.com/utoutlook.mathias/$V && setsid ./bin/command.sh > /dev/null 2>&1 &"
+V=$(adb -s "$DEVICE" shell 'click info utoutlook.mathias | grep version' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+adb -s "$DEVICE" shell "cd /opt/click.ubuntu.com/utoutlook.mathias/$V && setsid ./bin/command.sh > /dev/null 2>&1 &"
 
 # Vérifier qu'elle tourne
-adb -s XXXX shell 'ps aux | grep "prospect-mail --" | grep -v grep | wc -l'
+adb -s "$DEVICE" shell 'ps aux | grep "prospect-mail --" | grep -v grep | wc -l'
 
 # URL courante (via socket)
-adb -s XXXX shell 'printf "%s\n" "{\"cmd\":\"eval\",\"code\":\"window.location.href\"}" | nc -U /home/phablet/.config/utoutlook.mathias/utoutlook.sock'
+adb -s "$DEVICE" shell 'printf "%s\n" "{\"cmd\":\"eval\",\"code\":\"window.location.href\"}" | nc -U /home/phablet/.config/utoutlook.mathias/utoutlook.sock'
 
 # Logs (filtrer le bruit FOLLOW)
-adb -s XXXX shell 'grep -v FOLLOW /home/phablet/.config/utoutlook.mathias/wrapper.log | tail -30'
+adb -s "$DEVICE" shell 'grep -v FOLLOW /home/phablet/.config/utoutlook.mathias/wrapper.log | tail -30'
 
 # Voir les cookies auth dans la DB
-adb -s XXXX shell 'sqlite3 /home/phablet/.config/utoutlook.mathias/prospect-mail/Partitions/utoutlook-default/Cookies "SELECT host_key, name FROM cookies WHERE name LIKE \"%MSAAUTH%\";"'
+adb -s "$DEVICE" shell 'sqlite3 /home/phablet/.config/utoutlook.mathias/prospect-mail/Partitions/utoutlook-default/Cookies "SELECT host_key, name FROM cookies WHERE name LIKE \"%MSAAUTH%\";"'
 
 # Voir le token sauvegardé
-adb -s XXXX shell 'cat /home/phablet/.config/utoutlook.mathias/data/auth-token.json | python3 -m json.tool | head -20'
+adb -s "$DEVICE" shell 'cat /home/phablet/.config/utoutlook.mathias/data/auth-token.json | python3 -m json.tool | head -20'
 ```
 
 ## Publication OpenStore (après test device OK + contenu montré à Mathias)

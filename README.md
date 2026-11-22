@@ -48,7 +48,7 @@ with `git config core.hooksPath githooks`).
 
 ## Device debugging
 
-The test device is `adb XXXX`.
+Set `DEVICE` (or `ADB_DEVICE`) to your device serial before running the helper scripts.
 
 ```bash
 ./watch-log.sh error      # live wrapper log filtered (error|loop|page|cookie)

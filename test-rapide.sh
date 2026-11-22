@@ -1,5 +1,5 @@
 #!/bin/bash
-# Test rapide utoutlook sur le téléphone (adb XXXX)
+# Test rapide utoutlook sur le téléphone (serial via DEVICE/ADB_DEVICE)
 # v4.1.10: PAS de `set -e` — c'est un outil de diagnostic : chaque section doit
 # s'afficher même si la précédente échoue (ex. `head -1` ferme le pipe → SIGPIPE
 # côté grep/device → adb retourne non-zéro → avec set -e le script s'arrêtait
@@ -15,7 +15,7 @@ if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
   exit 0
 fi
 
-DEV="${DEVICE:-${ADB_SERIAL:-XXXX}}"
+DEV="${DEVICE:-${ADB_SERIAL:-}}"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 

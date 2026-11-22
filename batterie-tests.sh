@@ -3,7 +3,7 @@
 # Usage : ./batterie-tests.sh 4.3.0
 #         ./batterie-tests.sh          (lit la version dans package.json)
 #
-# Prérequis : téléphone branché (adb XXXX), app installée.
+# Prérequis : téléphone branché (serial via ADB_DEVICE/DEVICE), app installée.
 # NE touche qu'à utoutlook — aucune autre application.
 # Écrit le rapport dans ~/.config/utoutlook.mathias/batterie.log sur le device.
 #
@@ -15,7 +15,7 @@
 
 set -u
 VERSION="${1:-$(grep '"version"' "$(dirname "$0")/utoulookmail/utoutlookmail/package.json" | head -1 | sed 's/.*"version": "\(.*\)".*/\1/')}"
-DEVICE="${ADB_DEVICE:-XXXX}"
+DEVICE="${ADB_DEVICE:-${DEVICE:-}}"
 ADB="adb -s $DEVICE"
 
 APPID="utoutlook.mathias_utoutlook_${VERSION}"
