@@ -202,6 +202,11 @@ fi
 # Un fichier absent n'est PAS une erreur (les anciennes releases n'en ont pas),
 # mais le recap le signale clairement a Mathias.
 DESC="$KIT/description.txt"
+CANON="$ROOT/publishstore/description.txt"
+if [ ! -f "$DESC" ] && [ -f "$CANON" ]; then
+  cp -f "$CANON" "$DESC"
+  echo "description.txt initialise depuis le catalogue commun (version-independent)"
+fi
 if [ -f "$DESC" ]; then
   echo "description.txt present — sera publie avec $VERSION"
 else

@@ -1,0 +1,27 @@
+UToutlook Mail opens your Outlook / Microsoft 365 mailbox in a dedicated full-screen window on Ubuntu Touch, with new-message notifications and an unread badge on the launcher icon.
+
+Tips:
+- Enable "Prevent app suspension" in UT Tweak Tools for reliable background delivery.
+- If the app ever seems frozen, just relaunch it: the next start cleans up leftover processes automatically.
+
+Privacy and data
+- Your mail stays with Microsoft: UToutlook keeps no local copy of your messages.
+- UToutlook stores no password, no encryption key and no OAuth client secret. Sign-in happens on Microsoft's own page in the embedded browser. Only the browser session (cookies) is kept locally, in the app private profile.
+- No analytics, no telemetry, no third-party tracking.
+- The optional diagnostics report is whitelisted: app version, language, render mode, heartbeat and log sizes only. It never contains message subjects, senders, login URLs or cookies.
+- The sign-in session can be wiped at any time with the "First install" button.
+
+Recent:
+- New: attach a file from other Ubuntu Touch apps with the Content Hub (paperclip button).
+- Privacy: fewer app permissions and no message content in diagnostic logs.
+
+Recent fixes (version 4.3.6):
+The transparent window / frozen app bug reported on this store has been fixed. Finding the real cause was unusually hard: the phone shell had quietly lost track of the app window while the app was still running. The app icon, rotation, start-up, sign-in cookies, quit/relaunch and USB unplug behaviour are all fixed. Catalan and Basque were added, so the interface is now available in 10 languages.
+
+Tested on Fairphone 5 with Ubuntu Touch framework 24.04. This is the configuration I use every day and can confirm works. Other phones and other Ubuntu Touch releases may behave differently.
+
+Sign-in uses Microsoft's own page (email, password, Authenticator 2FA). The app performs a real network check and shows a clear "Server not responding" screen when the mail server is unavailable, with automatic retry. The message list stays full height. A "First install" button on the start screen lets you wipe sign-in data and start fresh.
+
+Made by a human up to version 3.0; AI-assisted from version 3.x onward. Made for my personal use, hoping it will be useful to you.
+
+Built and tested by Mathias - code written by Vibe, reviewed and controlled by Mathias.
