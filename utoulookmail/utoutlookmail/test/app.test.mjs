@@ -1943,7 +1943,7 @@ test('v3.3.28: clean quit writes exitclient synchronously so the wrapper does NO
     // swipe-close (Mir session stop can kill the process before 'closed') —
     // it must write the flag synchronously while letting the window close
     const ctrl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
-    const closeHandler = ctrl.slice(ctrl.indexOf('"close", (e)'), ctrl.indexOf('"close", (e)') + 1600);
+    const closeHandler = ctrl.slice(ctrl.indexOf('"close", (e)'), ctrl.indexOf('"close", (e)') + 2600);
     assert.ok(closeHandler.includes('markCleanExit()') && closeHandler.includes('letting it close'),
         'window close handler must call markCleanExit before letting it close (v3.3.28)');
     // the 'closed' handler (app.exit there fires before window-all-closed) must mark too
@@ -2818,6 +2818,8 @@ test('v4.0.125: bouton Quitter — cleanupAndExit plus court-circuité (app viva
         'hideOnClose must still apply outside a quit (v4.0.125)');
     assert.ok(close.includes('!global.utoutlookQuitting'),
         'close handler must skip hideOnClose during a real quit (v4.0.125)');
+    assert.ok(close.includes('this.appStartedAt') && close.includes('10000'),
+        'a spurious close right after startup must be ignored, not hide the window (v4.4.3)');
 });
 
 test('v4.1.0 (revue): outillage release et garde-fous', async () => {

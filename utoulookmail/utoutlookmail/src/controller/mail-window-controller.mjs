@@ -2565,6 +2565,16 @@ class MailWindowController {
 
         // Hide instead of quit on close
         this.win.on("close", (e) => {
+            // v4.4.3: Lomiri envoie un 'close' parasite ~200 ms apres que la
+            // fenetre soit devenue visible au demarrage. Le masquer a cet instant
+            // fait couper la session Mir par le shell → splash bloque alors que
+            // l'app tourne. On ignore donc TOUTE fermeture pendant la periode
+            // de grace du demarrage (sans quitter, sans masquer).
+            if (Date.now() - (this.appStartedAt || 0) < 10000) {
+                logger.info('Window event: close ignored (startup grace, no hide)');
+                e.preventDefault();
+                return;
+            }
             // v4.0.125: pendant un VRAI quit (bouton Quitter / socket quit /
             // swipe), ne PAS intercepter la fermeture — hideOnClose masquerait
             // la fenêtre, annulerait app.quit() et laisserait l'app vivante mais
