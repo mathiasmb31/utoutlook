@@ -223,9 +223,9 @@ test('settings: default URL is Outlook', {skip: !settingsAvailable && 'requires 
     assert.strictEqual(settings.get('urlMainWindow'), 'https://outlook.office.com/mail');
 });
 
-test('settings: hideOnClose defaults to true', {skip: !settingsAvailable && 'requires Electron runtime'}, async () => {
+test('settings: hideOnClose defaults to false (v4.4.4)', {skip: !settingsAvailable && 'requires Electron runtime'}, async () => {
     const {settings} = await import('../src/settings.mjs');
-    assert.strictEqual(settings.get('hideOnClose'), true);
+    assert.strictEqual(settings.get('hideOnClose'), false);
 });
 
 test('settings: startMinimized forced to false at load (v4.0.10, stale pre-3.0 settings.json)', {skip: !settingsAvailable && 'requires Electron runtime'}, async () => {
@@ -1201,13 +1201,13 @@ test('settings: window behaves like a native UT app — no X11 frame, close quit
     const sPath = path.resolve(__dirname, '../src/settings.mjs');
     const content = fs.readFileSync(sPath, 'utf-8');
 
-    // With showWindowFrame+hideOnClose=true, closing via the X11 cross only hid
+    // v4.4.4: on force un vrai quit a la fermeture (plus de masquage)
     // the window while the process kept running; the next launcher tap raised a
     // hidden window = nothing appeared ("app does not start", 1 in 2-3 launches).
     assert.ok(/showWindowFrame:\s*false/.test(content),
         'showWindowFrame default must be false on UT (v3.3.4)');
-    assert.ok(/hideOnClose:\s*true/.test(content),
-        'hideOnClose default must be true on UT so swipe-close only hides (v4.0.23)');
+    assert.ok(/hideOnClose:\s*false/.test(content),
+        'hideOnClose default must be false so Lomiri can relaunch (v4.4.4)');
     assert.ok(/hideOnMinimize:\s*true/.test(content),
         'hideOnMinimize default must be true on UT (v4.0.23)');
 });
@@ -1265,10 +1265,10 @@ test('settings: persisted window flags forced to native UT behavior (v4.0.23)', 
     const content = fs.readFileSync(sPath, 'utf-8');
 
     // v4.0.23: showWindowFrame=false + startMinimized=false are still forced, but
-    // hideOnClose/hideOnMinimize now default true so a swipe-close only hides the
+    // v4.4.4: hideOnClose force false, hideOnMinimize reste true
     // window (process stays alive for notifications; relaunch is instant).
-    assert.ok(content.includes("'showWindowFrame', false") && content.includes("'hideOnClose', true") && content.includes("'startMinimized', false"),
-        'settings.mjs must force showWindowFrame=false, hideOnClose=true, startMinimized=false (v4.0.24)');
+    assert.ok(content.includes("'showWindowFrame', false") && content.includes("'hideOnClose', false") && content.includes("'startMinimized', false"),
+        'settings.mjs must force showWindowFrame=false, hideOnClose=false, startMinimized=false (v4.4.4)');
     assert.ok(!/for \(const key of \['showWindowFrame', 'hideOnClose', 'hideOnMinimize'\]\)/.test(content),
         'settings.mjs must NOT force hideOnClose/hideOnMinimize=false anymore (v4.0.23)');
 });
@@ -2810,7 +2810,7 @@ test('v4.0.125: bouton Quitter — cleanupAndExit plus court-circuité (app viva
     assert.ok(cae.includes('global.utoutlookQuitting = true'),
         'cleanupAndExit must flag a real quit for the window controller (v4.0.125)');
 
-    // Avec hideOnClose=true (forcé sur UT), intercepter 'close' pendant le
+    // v4.4.4: le handler reste tolerant, mais hideOnClose est force a false
     // quit masque la fenêtre et annule app.quit() → app invisible.
     const closeStart = controller.indexOf('this.win.on("close", (e) => {');
     const close = controller.slice(closeStart, controller.indexOf('});', closeStart));
