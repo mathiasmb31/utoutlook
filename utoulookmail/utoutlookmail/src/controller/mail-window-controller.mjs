@@ -109,8 +109,12 @@ async function attachFilesToComposer(win, filePaths) {
       const input = free || inputs[0];
       const dt = new DataTransfer();
       for (const item of items) {
-        const blob = await (await fetch('data:application/octet-stream;base64,' + item.data)).blob();
-        dt.items.add(new File([blob], item.name, {type: item.type}));
+        // v4.6.4: fetch('data:...') est bloque par la CSP d'Outlook Web —
+        // atob() + Uint8Array reste dans le contexte page sans requete reseau.
+        const bin = atob(item.data);
+        const bytes = new Uint8Array(bin.length);
+        for (let j = 0; j < bin.length; j++) bytes[j] = bin.charCodeAt(j);
+        dt.items.add(new File([bytes], item.name, {type: item.type}));
       }
       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'files').set;
       setter.call(input, dt.files);
