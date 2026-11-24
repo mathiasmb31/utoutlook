@@ -74,6 +74,33 @@
     // Le marqueur fiable d'une composition est le conteneur de l'editeur.
     const composeFileInput = () => !!document.querySelector(COMPOSE_SEL);
 
+    // v4.6.6: docking dans le ruban Outlook, a cote de l'onglet « Aide ».
+    // On deplace la barre existante (pas de duplication) et on la remet en bas
+    // si Outlook recrée son DOM ou si l'onglet n'existe plus.
+    const FLOATING_STYLE =
+        'position:fixed;bottom:12px;left:50%;transform:translateX(-50%);' +
+        'display:flex;flex-wrap:wrap;justify-content:center;gap:8px;' +
+        'max-width:calc(100vw - 24px);z-index:2147483647;pointer-events:auto;';
+    const tryDock = () => {
+        const bar = document.getElementById(BAR_ID);
+        if (!bar) return;
+        const tabs = Array.from(document.querySelectorAll('button[role="tab"]'));
+        const help = tabs.find((t) => /^(Aide|Help)$/i.test((t.textContent || '').trim()));
+        if (help && help.parentElement) {
+            if (bar.parentElement !== help.parentElement || bar.dataset.docked !== '1') {
+                help.parentElement.appendChild(bar);
+                bar.dataset.docked = '1';
+                bar.style.top = '';
+                bar.style.bottom = '';
+                bar.style.cssText = 'display:inline-flex;align-items:center;gap:8px;margin-left:auto;pointer-events:auto;';
+            }
+        } else if (bar.dataset.docked === '1') {
+            delete bar.dataset.docked;
+            document.body.appendChild(bar);
+            bar.style.cssText = FLOATING_STYLE;
+        }
+    };
+
     // v4.4.7: avec le clavier virtuel ouvert, un element fixed en bas du layout
     // viewport passe SOUS le clavier. On decale la barre de la hauteur reellement
     // masquee (visualViewport) — sans toucher au reste de la page.
@@ -86,7 +113,7 @@
         window.__utoutlookBarViewportBound = true;
         const repositionBar = () => {
             const bar = document.getElementById(BAR_ID);
-            if (!bar || bar.style.top !== '') return; // deja en haut (composition active)
+            if (!bar || bar.style.top !== '' || bar.dataset.docked === '1') return;
             bar.style.bottom = (12 + keyboardOverlap()) + 'px';
         };
         window.visualViewport?.addEventListener('resize', repositionBar);
@@ -114,6 +141,7 @@
                 bar.style.bottom = (12 + keyboardOverlap()) + 'px';
                 barTop = false;
             }
+            tryDock();
         }, 300);
 
     // v4.6.3: ne pas conditionner la consommation au marqueur de composition —
@@ -210,10 +238,7 @@
         if (!bar) {
             bar = document.createElement('div');
             bar.id = BAR_ID;
-            bar.style.cssText =
-                'position:fixed;bottom:12px;left:50%;transform:translateX(-50%);' +
-                'display:flex;flex-wrap:wrap;justify-content:center;gap:8px;' +
-                'max-width:calc(100vw - 24px);z-index:2147483647;pointer-events:auto;';
+            bar.style.cssText = FLOATING_STYLE;
             document.body.appendChild(bar);
         }
 
@@ -333,6 +358,7 @@
         // v4.1.0 (revue renderer #4): la barre doit rester visible SURTOUT
         // quand la liste est cassée (0×0) — c'est le cas à secourir. On ne
         // masque que le bouton Recharger pendant le chargement initial.
+        tryDock();
         bar.style.display = onMailPage() ? 'flex' : 'none';
         // v4.3.8: plus d'effet glass (blur sur toutes les lignes) — il faisait
         // bloquer le renderer en mode logiciel et declenchait des relances.
