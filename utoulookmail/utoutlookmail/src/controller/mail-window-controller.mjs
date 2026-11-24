@@ -116,10 +116,16 @@ async function attachFilesToComposer(win, filePaths) {
         for (let j = 0; j < bin.length; j++) bytes[j] = bin.charCodeAt(j);
         dt.items.add(new File([bytes], item.name, {type: item.type}));
       }
+      // v4.6.5: Outlook expose 4 inputs 'local-computer-filein' sans qu'on
+      // sache lequel appartient a la composition courante. On pose le fichier
+      // sur chacun et on declenche change : le bon gestionnaire React le
+      // reconnaîtra, les autres ignoront l'evenement.
       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'files').set;
-      setter.call(input, dt.files);
-      input.dispatchEvent(new Event('change', {bubbles: true}));
-      return 1;
+      for (const target of inputs) {
+        setter.call(target, dt.files);
+        target.dispatchEvent(new Event('change', {bubbles: true}));
+      }
+      return inputs.length;
     })()`;
     try {
         return Number(await win.webContents.executeJavaScript(script, true)) || 0;
