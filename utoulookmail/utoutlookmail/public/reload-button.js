@@ -87,11 +87,37 @@
         window.__utoutlookBarViewportBound = true;
         const repositionBar = () => {
             const bar = document.getElementById(BAR_ID);
-            if (bar) bar.style.bottom = (12 + keyboardOverlap()) + 'px';
+            if (!bar || bar.style.top !== '') return; // deja en haut (composition active)
+            bar.style.bottom = (12 + keyboardOverlap()) + 'px';
         };
         window.visualViewport?.addEventListener('resize', repositionBar);
         window.visualViewport?.addEventListener('scroll', repositionBar);
     }
+
+    // v4.4.9: sous Lomiri, le clavier peut recouvrir la barre sans que
+    // visualViewport bouge. Des qu'un champ de composition prend le focus, on
+    // passe la barre EN HAUT (hors d'atteinte du clavier) ; retour en bas au blur.
+    const isComposeField = (el) => !!el && (
+        /^(INPUT|TEXTAREA)$/.test(el.tagName) || el.isContentEditable ||
+        !!el.closest?.('[contenteditable="true"]')
+    );
+    document.addEventListener('focusin', (e) => {
+        if (!isComposeField(e.target)) return;
+        const bar = document.getElementById(BAR_ID);
+        if (!bar) return;
+        bar.style.top = '12px';
+        bar.style.bottom = 'auto';
+    }, true);
+    document.addEventListener('focusout', (e) => {
+        if (!isComposeField(e.target)) return;
+        setTimeout(() => {
+            if (isComposeField(document.activeElement)) return;
+            const bar = document.getElementById(BAR_ID);
+            if (!bar) return;
+            bar.style.top = '';
+            bar.style.bottom = (12 + keyboardOverlap()) + 'px';
+        }, 150);
+    }, true);
 
     const fire = (kind) => {
         const now = Date.now();
