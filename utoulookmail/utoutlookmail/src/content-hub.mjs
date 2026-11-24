@@ -77,9 +77,13 @@ const TRANSFER_INTERFACE = 'com.lomiri.content.dbus.Transfer';
 export function parsePeers(text) {
     if (typeof text !== 'string') return [];
     const out = [];
-    for (const m of text.matchAll(/\('([^']+)',\s*'([^']*)'/g)) {
-        if (m[1] && !out.some(p => p.id === m[1])) out.push({id: m[1], name: m[2] || ''});
-    }
+    const add = (id, name) => {
+        if (id && !out.some(p => p.id === id)) out.push({id, name: name || ''});
+    };
+    // Format gdbus : ('id', 'name', ...)
+    for (const m of text.matchAll(/\('([^']+)',\s*'([^']*)'/g)) add(m[1], m[2]);
+    // Format dbus-send --print-reply : string "id" / string "name"
+    for (const m of text.matchAll(/string\s+"([^"]+)"\s+string\s+"([^"]*)"/g)) add(m[1], m[2]);
     return out;
 }
 
@@ -91,13 +95,16 @@ export function parseCollectedUrls(text) {
 
 /** Extrait le chemin d'objet retourné par CreateImportFromPeer. */
 export function parseObjectPath(text) {
-    const m = typeof text === 'string' && text.match(/objectpath\s+'([^']+)'/);
+    const m = typeof text === 'string' && text.match(/objectpath\s+["']([^"']+)["']/);
     return m ? m[1] : null;
 }
 
+// v4.5.5: gdbus appelle org.freedesktop.DBus.Introspectable sur l'objet avant
+// d'envoyer la méthode — AppArmor le refuse sur /transfers/** sous le click,
+// ce qui faisait timeout le Collect(). dbus-send n'introspecte pas.
 function defaultRun(args) {
     return new Promise((resolve, reject) => {
-        const bin = path.join(process.env.WD || '', 'bin', 'gdbus');
+        const bin = path.join(process.env.WD || '', 'bin', 'dbus-send');
         execFile(bin, args, {timeout: 8000, maxBuffer: 8 * 1024 * 1024},
             (err, stdout) => err ? reject(err) : resolve(String(stdout)));
     });
@@ -124,11 +131,13 @@ export class ContentHubBridge {
 
     call(method, args = [], objectPath = '/', iface = CONTENT_HUB_SERVICE) {
         return this.run([
-            'call', '--session',
+            '--session',
             '--dest', CONTENT_HUB_SERVICE,
-            '--object-path', objectPath,
-            '--method', `${iface}.${method}`,
-            ...args.map(String),
+            '--type', 'method_call',
+            '--print-reply',
+            objectPath,
+            `${iface}.${method}`,
+            ...args.map((a) => `string:${a}`),
         ]);
     }
 

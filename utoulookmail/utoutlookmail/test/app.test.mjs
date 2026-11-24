@@ -3262,6 +3262,13 @@ test('v4.4: Content Hub D-Bus replies are parsed without a QML picker', async ()
         '/transfers/utoutlook/import/1');
     assert.deepStrictEqual(parseCollectedUrls("([<('file:///home/phablet/Downloads/a%20b.pdf')>])"),
         ['file:///home/phablet/Downloads/a%20b.pdf']);
+    // v4.5.5: dbus-send --print-reply (pas d'Introspect, autorise par AppArmor)
+    const dbusSendPeers = parsePeers('   variant struct {\n      string "filemanager.ubports_filemanager_1.1.4"\n      string "Fichiers"\n');
+    assert.deepStrictEqual(dbusSendPeers, [{id: 'filemanager.ubports_filemanager_1.1.4', name: 'Fichiers'}]);
+    assert.strictEqual(parseObjectPath('   objectpath "/transfers/utoutlook/import/1"\n'),
+        '/transfers/utoutlook/import/1');
+    assert.deepStrictEqual(parseCollectedUrls('      string "file:///home/phablet/Downloads/a.pdf"\n'),
+        ['file:///home/phablet/Downloads/a.pdf']);
     assert.ok(DEFAULT_ALLOWED_ROOTS.some(r => r.endsWith('/.cache/utoutlook.mathias/HubIncoming')),
         'files really received via Content Hub land in the app cache (v4.4.2, path from config.mjs)');
     assert.ok(!DEFAULT_ALLOWED_ROOTS.some(r => r.startsWith('/home/phablet/')) ||
@@ -3273,7 +3280,8 @@ test('v4.4: importFiles drives Start/Collect/Finalize and validates the path', a
     const {ContentHubBridge} = await import('../src/content-hub.mjs');
     const calls = [];
     const run = async (args) => {
-        const method = args[args.indexOf('--method') + 1];
+        // v4.5.5: dbus-send place la methode apres le chemin d'objet
+        const method = args[args.indexOf('--print-reply') + 2];
         calls.push(method);
         if (method.endsWith('KnownSourcesForType')) {
             return "([<('filemanager.ubports_filemanager_1.1.4', 'Fichiers')>], '')";
