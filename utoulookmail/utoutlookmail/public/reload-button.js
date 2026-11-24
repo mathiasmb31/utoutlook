@@ -249,8 +249,10 @@
                 if (!window.electronAPI ||
                     typeof window.electronAPI.attachFromHub !== 'function') return;
                 attachBtn.disabled = true;
+                console.error('Error: UT_DBG attach click');
                 try {
                     const added = await window.electronAPI.attachFromHub();
+                    console.error('Error: UT_DBG attach result=' + added);
                     if (!added && window.__utoutlookToast) {
                         window.__utoutlookToast(tr('contentHubFailed', 'Could not attach the file'));
                     }

@@ -122,10 +122,12 @@ export class ContentHubBridge {
         now = () => Date.now(),
         validate = validateTransferPath,
         debug = null,
+        stage = null,
     } = {}) {
         this.run = run;
         this.validate = validate;
         this.debug = debug;
+        this.stage = stage;
         this.appId = appId;
         this.typeId = typeId;
         this.timeout = timeout;
@@ -153,14 +155,19 @@ export class ContentHubBridge {
     }
 
     async importFiles() {
+        const mark = (s) => { if (this.stage) this.stage(s); };
+        mark('pick-source');
         const peer = await this.pickSource();
-        if (!peer) return {paths: [], error: 'no-source'};
+        if (!peer) { mark('no-source'); return {paths: [], error: 'no-source'}; }
+        mark(`source=${peer.id}`);
         const obj = parseObjectPath(await this.call('CreateImportFromPeer',
             [peer.id, this.appId, this.typeId]));
-        if (!obj) return {paths: [], error: 'no-transfer'};
+        if (!obj) { mark('no-transfer'); return {paths: [], error: 'no-transfer'}; }
+        mark('transfer-created');
 
         try {
             await this.call('Start', [], obj, TRANSFER_INTERFACE);
+            mark('started');
             const deadline = this.now() + this.timeout;
             let lastError = '';
             let lastRaw = '';
@@ -176,6 +183,7 @@ export class ContentHubBridge {
                 } catch (e) { lastError = e.message || 'state-failed'; }
                 const sm = stateRaw.match(/int32\s+(\d+)/);
                 const state = sm ? Number(sm[1]) : -1;
+                if (state !== this._lastState) { mark(`state=${state}`); this._lastState = state; }
                 const ready = [3, 4, 7, 8].includes(state); // charged/collected/downloading/downloaded
                 if (!ready) continue;
                 let collected = '';
@@ -188,11 +196,12 @@ export class ContentHubBridge {
                     .map(this.validate)
                     .filter(r => r.ok)
                     .map(r => r.path);
-                if (paths.length) return {paths};
+                if (paths.length) { mark(`collected=${paths.length}`); return {paths}; }
             }
             if (this.debug) {
                 this.debug(`Collect brut (masqué) : ${lastRaw.replace(/file:\/\/[^\s"')]+/g, 'file://…').slice(0, 260)}`);
             }
+            mark(`timeout(${lastError || 'no-items'})`);
             return {paths: [], error: lastError || 'timeout'};
         } finally {
             try { await this.call('Finalize', [], obj, TRANSFER_INTERFACE); } catch (_) {}

@@ -2181,9 +2181,11 @@ class MailWindowController {
             const owner = MailWindowController.byWebContents.get(event.sender);
             const win = (owner && owner.win) || this.win;
             const appId = `utoutlook.mathias_utoutlook_${app.getVersion()}`;
+            logger.info('v4.6.0: attach-from-hub entré');
             const bridge = new ContentHubBridge({
                 appId,
-                debug: (msg) => logger.warn(`v4.5.8: ${msg}`),
+                debug: (msg) => logger.warn(`v4.6.0: ${msg}`),
+                stage: (s) => logger.warn(`v4.6.0: étape ${s}`),
             });
             try {
                 const result = await bridge.importFiles();
@@ -2192,7 +2194,9 @@ class MailWindowController {
                     return 0;
                 }
                 logger.info(`v4.4: ${result.paths.length} fichier(s) recu(s) du Content Hub`);
-                return await attachFilesToComposer(win, result.paths);
+                const added = await attachFilesToComposer(win, result.paths);
+                logger.warn(`v4.6.0: injection terminée (${added})`);
+                return added;
             } catch (e) {
                 logger.warn(`v4.4: echec Content Hub: ${e.message}`);
                 return 0;
