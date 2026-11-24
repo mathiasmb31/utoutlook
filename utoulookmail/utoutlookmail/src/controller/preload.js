@@ -31,6 +31,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     setRenderMode: (mode) => ipcRenderer.invoke("set-render-mode", mode),
     // v4.4: joindre un fichier depuis le Content Hub d'Ubuntu Touch
     attachFromHub: () => ipcRenderer.invoke("attach-from-hub"),
+    // v4.5.4: PJ livree par le Content Hub au lancement du click
+    consumePendingAttachment: () => ipcRenderer.invoke("consume-pending-attachment"),
     // Dark mode toggle
     toggleDarkMode: () => ipcRenderer.send("toggle-dark-mode"),
 });

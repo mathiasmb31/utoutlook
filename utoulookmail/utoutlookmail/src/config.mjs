@@ -38,6 +38,9 @@ export const NOTIF_FLAG_FILE = path.join(CONFIG_DIR, 'notif');
 // v4.0.127: override manuel du mode de rendu (auto|software|hardware), lu par
 // le wrapper command.sh et modifiable depuis le bouton de la page de login.
 export const RENDER_MODE_FILE = path.join(CONFIG_DIR, 'render-mode');
+// v4.5.4: fichier ecrit par command.sh quand le Content Hub relance le click
+// avec une PJ recue en argument.
+export const PENDING_ATTACH_FILE = path.join(CONFIG_DIR, 'pending-attach');
 // v4.1.0: marqueur « swipe-close » — l'app reste vivante en arrière-plan,
 // mais sa fenêtre ne doit pas être ré-affichée par le watchdog de surface.
 export const SWIPE_HIDDEN_FILE = path.join(CONFIG_DIR, 'swipe-hidden');

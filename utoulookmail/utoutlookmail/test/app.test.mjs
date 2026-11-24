@@ -3336,6 +3336,23 @@ test('v4.3.7: offline screen is native Electron and survives a hidden window', a
 // v4.4.9 — barre hors du clavier pendant la composition
 // ============================================================
 
+test('v4.5.4: a file passed by Content Hub is consumed into the composer', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const ctl = fs.readFileSync(path.join(here, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    const preload = fs.readFileSync(path.join(here, '../src/controller/preload.js'), 'utf-8');
+    const btn = fs.readFileSync(path.join(here, '../public/reload-button.js'), 'utf-8');
+
+    assert.ok(ctl.includes('"consume-pending-attachment"') && ctl.includes('PENDING_ATTACH_FILE'),
+        'main must consume the pending attachment file (v4.5.4)');
+    assert.ok(preload.includes('consumePendingAttachment'),
+        'preload must expose the pending attachment bridge (v4.5.4)');
+    assert.ok(btn.includes('consumePendingAttachment()'),
+        'renderer must request it when a compose window opens (v4.5.4)');
+});
+
 test('v4.5.3: the click declares both source and destination to Content Hub', async () => {
     const fs = await import('node:fs');
     const path = await import('node:path');

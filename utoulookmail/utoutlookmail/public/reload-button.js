@@ -114,6 +114,12 @@
                 bar.style.bottom = (12 + keyboardOverlap()) + 'px';
                 barTop = false;
             }
+            // v4.5.4: des qu'une composition est ouverte, consommer une PJ
+            // eventuellement livree par le Content Hub au lancement du click.
+            if (composing && window.electronAPI &&
+                typeof window.electronAPI.consumePendingAttachment === 'function') {
+                window.electronAPI.consumePendingAttachment().catch(() => {});
+            }
         }, 300);
     }
 

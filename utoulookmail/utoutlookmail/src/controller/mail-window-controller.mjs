@@ -17,12 +17,13 @@ import {
     markCleanExit,
     ROTATION_RELAUNCH_FILE,
     RENDER_MODE_FILE,
+    PENDING_ATTACH_FILE,
     SWIPE_HIDDEN_FILE,
 } from '../config.mjs';
 import {logger} from '../logger.mjs';
 import {buildDiagnostics} from '../diagnostics.mjs';
 import {shouldShowOfflineScreen} from '../network-check.mjs';
-import {ContentHubBridge} from '../content-hub.mjs';
+import {ContentHubBridge, normalizeContentUrl, validateTransferPath} from '../content-hub.mjs';
 
 const __filenameNew = fileURLToPath(import.meta.url);
 const __dirnameNew = path.dirname(__filenameNew);
@@ -2193,6 +2194,28 @@ class MailWindowController {
                 logger.warn(`v4.4: echec Content Hub: ${e.message}`);
                 return 0;
             }
+        });
+        // v4.5.4: le wrapper a recu une PJ du Content Hub en argument au
+        // lancement. On la consomme une seule fois et on l'injecte dans la
+        // composition courante (ou on la garde jusqu'a ce qu'elle soit ouverte).
+        ipcMain.removeHandler("consume-pending-attachment");
+        ipcMain.handle("consume-pending-attachment", async () => {
+            let raw = '';
+            try { raw = fs.readFileSync(PENDING_ATTACH_FILE, 'utf-8').split(/\r?\n/)[0] || ''; }
+            catch (e) { return 0; }
+            if (!raw) return 0;
+            const resolved = validateTransferPath(normalizeContentUrl(raw));
+            if (!resolved.ok) {
+                logger.warn(`v4.5.4: PJ recue refusee (${resolved.reason})`);
+                try { fs.unlinkSync(PENDING_ATTACH_FILE); } catch (e) {}
+                return 0;
+            }
+            const added = await attachFilesToComposer(this.win, [resolved.path]);
+            if (added > 0) {
+                logger.info('v4.5.4: PJ du Content Hub ajoutee a la composition');
+                try { fs.unlinkSync(PENDING_ATTACH_FILE); } catch (e) {}
+            }
+            return added;
         });
         // v3.3.66: first-install — wipe ALL session data from the main process.
         // The in-page clear (document.cookie/localStorage) only reaches the current
