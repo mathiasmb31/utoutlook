@@ -2765,7 +2765,7 @@ test('v4.1.0: icône — WM_CLASS alignée sur le click + démarrage en 6 étape
 
     // Fenêtre "visible" pour Electron mais surface Mir perdue après unlock.
     const ctl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
-    assert.ok(ctl.includes('resurfaceWindow(stealFocus = false)') &&
+    assert.ok(ctl.includes('resurfaceWindow(stealFocus = false, nudge = false)') &&
               ctl.includes('setAlwaysOnTop(true)') && ctl.includes('webContents.invalidate()'),
         'controller must re-surface the Mir window without hide() (v4.1.0)');
     assert.ok(ctl.includes("this._on(powerMonitor, 'unlock-screen'") &&
@@ -3321,6 +3321,24 @@ test('v4.7.0: Charge uses a GVariant array of variants, not a plain string array
     assert.strictEqual(
         gvariantStringArray(['file:///tmp/a b.pdf', 'file:///tmp/c.pdf']),
         '[<"file:///tmp/a b.pdf">, <"file:///tmp/c.pdf">]');
+});
+
+test('v4.7.3: the 40px window nudge cannot run on focus/health-poll anymore', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const ctrl = fs.readFileSync(
+        path.join(here, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+
+    assert.ok(ctrl.includes('resurfaceWindow(stealFocus = false, nudge = false)'),
+        'the bounds nudge must be opt-in (v4.7.3)');
+    assert.ok(ctrl.includes('if (nudge && !this._resurfaceNudgePending)'),
+        'the 40px shift must be guarded (v4.7.3)');
+    assert.ok(!ctrl.includes('this.resurfaceWindow(false, true)'),
+        'no normal focus/health-poll call may ask for a nudge (v4.7.3)');
+    assert.ok((ctrl.match(/resurfaceWindow\(true, true\)/g) || []).length === 2,
+        'only power resume/unlock may keep the recovery nudge (v4.7.3)');
 });
 
 test('v4.7.2: a completed download triggers Content Hub sharing automatically', async () => {

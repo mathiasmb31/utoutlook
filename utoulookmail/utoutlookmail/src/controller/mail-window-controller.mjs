@@ -2695,14 +2695,14 @@ class MailWindowController {
         // full redraw of the webContents and re-assert visibility/focus.
         this._on(powerMonitor, 'resume', () => {
             logger.info('powerMonitor resume — re-surfacing window (v4.1.0)');
-            this.resurfaceWindow(true);
+            this.resurfaceWindow(true, true);
         });
         // v4.1.0: sur le device le event 'resume' de logind n'est pas Always
         // reçu au déverrouillage (journal : aucun "powerMonitor resume" après
         // "gkr-pam: unlocked login keyring") — 'unlock-screen' couvre ce cas.
         this._on(powerMonitor, 'unlock-screen', () => {
             logger.info('powerMonitor unlock-screen — re-surfacing window (v4.1.0)');
-            this.resurfaceWindow(true);
+            this.resurfaceWindow(true, true);
         });
         this._on(powerMonitor, 'suspend', () => logger.info('powerMonitor suspend (v3.3.32)'));
     }
@@ -3738,7 +3738,7 @@ class MailWindowController {
      * alwaysOnTop puis invalidate() oblige Mir à réintégrer la surface, sans
      * win.hide() (interdit : crash GPU FATAL sur UT, voir v4.0.39).
      */
-    resurfaceWindow(stealFocus = false) {
+    resurfaceWindow(stealFocus = false, nudge = false) {
         if (!this.alive || global.utoutlookQuitting) return;
         try { if (fs.existsSync(SWIPE_HIDDEN_FILE)) return; } catch (e) { /* ignore */ }
         if (!this.win.isVisible()) {
@@ -3761,7 +3761,11 @@ class MailWindowController {
         // pas ignorer. PAS de hide() (crash GPU FATAL, v4.0.39) ni de minimize()
         // (intercepts hideOnMinimize → hide). Le déplacement est restauré après
         // 250 ms ; garde `_resurfaceNudgePending` pour éviter les chevauchements.
-        if (!this._resurfaceNudgePending) {
+        // v4.7.3: le nudge déplace l'UI de 40 px pendant 250 ms — appelé à
+        // chaque focus et toutes les 30 s, il décalait les clics au hasard
+        // dans TOUTE l'app. Il est désormais Optionnel et réservé aux seuls
+        // réveils/déverrouillages (où l'utilisateur n'interagit pas).
+        if (nudge && !this._resurfaceNudgePending) {
             this._resurfaceNudgePending = true;
             try {
                 const b = this.win.getBounds();
