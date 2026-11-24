@@ -166,6 +166,18 @@ export class ContentHubBridge {
             let lastRaw = '';
             while (this.now() < deadline) {
                 await this.sleep(200);
+                // v4.5.9: NE PAS appeler Collect() avant l'etat charged —
+                // Collect() fait passer le transfert a 'collected' des la
+                // premiere appel et empeche le gestionnaire de fichiers de
+                // charger la PJ.
+                let stateRaw = '';
+                try {
+                    stateRaw = String(await this.call('State', [], obj, TRANSFER_INTERFACE));
+                } catch (e) { lastError = e.message || 'state-failed'; }
+                const sm = stateRaw.match(/int32\s+(\d+)/);
+                const state = sm ? Number(sm[1]) : -1;
+                const ready = [3, 4, 7, 8].includes(state); // charged/collected/downloading/downloaded
+                if (!ready) continue;
                 let collected = '';
                 try {
                     collected = await this.call('Collect', [], obj, TRANSFER_INTERFACE);

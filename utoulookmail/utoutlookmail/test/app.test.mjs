@@ -3293,6 +3293,7 @@ test('v4.4: importFiles drives Start/Collect/Finalize and validates the path', a
             return "([<('filemanager.ubports_filemanager_1.1.4', 'Fichiers')>], '')";
         }
         if (method.endsWith('CreateImportFromPeer')) return "(objectpath '/transfers/x/import/1',)";
+        if (method.endsWith('.State')) return '   int32 3\n'; // charged
         if (method.endsWith('Collect')) return "([<('file:///home/phablet/.cache/utoutlook.mathias/HubIncoming/1/plan.pdf')>])";
         return '()';
     };
