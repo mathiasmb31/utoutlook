@@ -52,6 +52,13 @@ clickable build --arch arm64
 echo "=== Install sur device ==="
 clickable install
 
+# v4.4.4: apres plusieurs installs de versions differentes, le launcher Lomiri
+# garde en cache l'ancien app_id versionne et ne cree plus le service au tap
+# sur l'icone (splash bloque). On force le shell a relire la liste des apps.
+if [ -n "$DEV" ]; then
+  adb -s "$DEV" shell 'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/32011/bus XDG_RUNTIME_DIR=/run/user/32011 gdbus call --session --dest com.lomiri.Shell --object-path /com/lomiri/Shell/Launcher --method com.lomiri.Shell.Launcher.Refresh 2>/dev/null || true'
+fi
+
 echo "=== Vérification ==="
 [ -n "$DEV" ] || { echo "ERREUR: définir DEVICE=<serial> (ou ADB_DEVICE)"; exit 1; }
 adb -s "$DEV" shell 'click info utoutlook.mathias | grep version'
