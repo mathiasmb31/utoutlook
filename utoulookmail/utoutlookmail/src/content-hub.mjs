@@ -209,11 +209,14 @@ export class ContentHubBridge {
         if (!obj) return {ok: false, error: 'no-transfer'};
         mark('transfer-created');
         try {
+            // v4.7.4: ordre correct — Start() first (état 0→2), puis Charge()
+            // (état 2→3). Charge avant Start faisait rétrograder l'état 3→2 et
+            // le picker se comportait comme un import (choix d'un fichier).
+            await this.call('Start', [], obj, TRANSFER_INTERFACE);
+            mark('started');
             const url = 'file://' + encodeURI(filePath);
             await this.callGv('Charge', [gvariantStringArray([url])], obj, TRANSFER_INTERFACE);
             mark('charged');
-            await this.call('Start', [], obj, TRANSFER_INTERFACE);
-            mark('started');
             return {ok: true};
         } catch (e) {
             mark(`export-failed:${e.code || e.message}`);

@@ -3362,9 +3362,11 @@ test('v4.7.2: a completed download triggers Content Hub sharing automatically', 
 test('v4.7.0: exportFile drives destination/Charge/Start and leaves the transfer alive', async () => {
     const {ContentHubBridge, gvariantStringArray} = await import('../src/content-hub.mjs');
     const calls = [];
+    const order = [];
     const run = async (args) => {
         const method = args[args.indexOf('--print-reply') + 2];
         calls.push(method);
+        order.push(method);
         if (method.endsWith('KnownDestinationsForType')) {
             return "([<('filemanager.ubports_filemanager_1.1.4', 'Fichiers')>], '')";
         }
@@ -3374,6 +3376,7 @@ test('v4.7.0: exportFile drives destination/Charge/Start and leaves the transfer
     const gvCalls = [];
     const gvRun = async (args) => {
         gvCalls.push(args);
+        order.push('Charge');
         return '()';
     };
     const bridge = new ContentHubBridge({
@@ -3383,7 +3386,9 @@ test('v4.7.0: exportFile drives destination/Charge/Start and leaves the transfer
     const result = await bridge.exportFile('/home/phablet/.config/utoutlook.mathias/outgoing/a.pdf');
     assert.deepStrictEqual(result, {ok: true});
     assert.ok(calls.some(c => c.endsWith('.CreateExportToPeer')), 'an export transfer must be created');
-    assert.ok(calls.some(c => c.endsWith('.Start')), 'the export must be started');
+    assert.ok(order.indexOf('com.lomiri.content.dbus.Transfer.Start') !== -1 &&
+              order.indexOf('com.lomiri.content.dbus.Transfer.Start') < order.indexOf('Charge'),
+        'Start must precede Charge so the transfer state goes 0→2→3 (v4.7.4)');
     assert.ok(!calls.some(c => c.endsWith('.Finalize')),
         'do not finalize before the user picked a destination');
     assert.strictEqual(gvCalls.length, 1, 'Charge must go through gdbus');
