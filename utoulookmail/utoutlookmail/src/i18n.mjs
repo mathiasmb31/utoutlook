@@ -150,6 +150,37 @@ const T = {
         it: 'Mostra', pt: 'Mostrar', zh: '显示', ar: 'إظهار',
         ca: 'Mostra', eu: 'Erakutsi',
     },
+    // v4.4.5: feuille Parametres (reglages retires de la barre d'actions)
+    'settings.title': {
+        fr: 'Paramètres', en: 'Settings', es: 'Ajustes', de: 'Einstellungen',
+        it: 'Impostazioni', pt: 'Configurações', zh: '设置', ar: 'الإعدادات',
+        ca: 'Paràmetres', eu: 'Ezpennak',
+    },
+    'settings.display': {
+        fr: 'Affichage', en: 'Display', es: 'Pantalla', de: 'Anzeige',
+        it: 'Visualizzazione', pt: 'Exibição', zh: '显示', ar: 'العرض',
+        ca: 'Pantalla', eu: 'Bistaratzea',
+    },
+    'settings.renderAuto': {
+        fr: 'Automatique', en: 'Automatic', es: 'Automático', de: 'Automatisch',
+        it: 'Automatico', pt: 'Automático', zh: '自动', ar: 'تلقائي',
+        ca: 'Automàtic', eu: 'Automatikoa',
+    },
+    'settings.renderSoftware': {
+        fr: 'Logiciel', en: 'Software', es: 'Software', de: 'Software',
+        it: 'Software', pt: 'Software', zh: '软件', ar: 'برمجي',
+        ca: 'Programari', eu: 'Software',
+    },
+    'settings.renderHardware': {
+        fr: 'Matériel', en: 'Hardware', es: 'Hardware', de: 'Hardware',
+        it: 'Hardware', pt: 'Hardware', zh: '硬件', ar: 'عتادي',
+        ca: 'Maquinari', eu: 'Hardwarea',
+    },
+    'common.close': {
+        fr: 'Fermer', en: 'Close', es: 'Cerrar', de: 'Schließen',
+        it: 'Chiudi', pt: 'Fechar', zh: '关闭', ar: 'إغلاق',
+        ca: 'Tanca', eu: 'Itxi',
+    },
     // v4.0.127: override du rendu logiciel (bouton page de login)
     'render.enable': {
         fr: 'Activer le rendu logiciel', en: 'Enable software rendering',

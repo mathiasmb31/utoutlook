@@ -1636,9 +1636,10 @@ test('v4.1.2: cookie auth sauvegardé par batch (anti-tempête login invisible)'
         'periodic flush must remain as persistence fallback (v4.1.2)');
 });
 
-test('v4.1.3: barre liste — badge UBtouch décoratif + bouton first-install (i18n 8 langues)', async () => {
+test('v4.4.5: barre liste — badge UBtouch décoratif + accès Paramètres', async () => {
     const fs = await import('node:fs');
     const btn = fs.readFileSync(path.resolve(__dirname, '../public/reload-button.js'), 'utf-8');
+    const sheet = fs.readFileSync(path.resolve(__dirname, '../public/settings-sheet.js'), 'utf-8');
     const i18n = fs.readFileSync(path.resolve(__dirname, '../src/i18n.mjs'), 'utf-8');
     const ctrl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
     const preload = fs.readFileSync(path.resolve(__dirname, '../src/controller/preload.js'), 'utf-8');
@@ -1649,9 +1650,9 @@ test('v4.1.3: barre liste — badge UBtouch décoratif + bouton first-install (i
     assert.ok(btn.includes("UBTOUCH_ID = 'utoutlook-ubtouch-badge'"), 'UBtouch decorative badge id (v4.1.3)');
     assert.ok(btn.includes('aria-hidden'), 'UBtouch badge hidden from assistive tech (v4.1.3)');
     assert.ok(btn.includes('UBTOUCH_SVG'), 'UBtouch round SVG logo (v4.1.3)');
-    assert.ok(btn.includes("FIRST_ID = 'utoutlook-first-install-btn'"), 'first-install button id (v4.1.3)');
-    assert.ok(btn.includes("fire('first')"), 'first-install wired to fire(first) (v4.1.3)');
-    assert.ok(btn.includes("window.electronAPI.firstInstall"), 'first-install uses IPC (v4.1.3)');
+    assert.ok(btn.includes("SETTINGS_ID = 'utoutlook-settings-btn'"), 'settings access id (v4.4.5)');
+    assert.ok(btn.includes('window.__utoutlookOpenSettings'), 'bar opens the settings sheet (v4.4.5)');
+    assert.ok(sheet.includes('window.electronAPI.firstInstall'), 'first-install moved to settings sheet (v4.4.5)');
     // Connectique : preload → IPC → handler principal
     assert.ok(preload.includes('firstInstall: () => ipcRenderer.invoke("first-install")'),
         'preload exposes firstInstall IPC (v4.1.3)');
@@ -1673,7 +1674,9 @@ test('v4.1.5: cocarde UBtouch officielle + icône deux doigts sur les boutons', 
     const gestures = fs.readFileSync(path.resolve(__dirname, '../public/gestures.js'), 'utf-8');
     const btn = fs.readFileSync(path.resolve(__dirname, '../public/reload-button.js'), 'utf-8');
     // Nouveau dessin double-tap : DEUX DOIGTS (rects) + pastilles + chiffre 2.
-    for (const [name, src] of [['login', gestures], ['liste', btn]]) {
+    // v4.4.5: l'icone double-tap reste sur la page login ; la barre de liste
+    // n'a plus qu'un acces Parametres (icone gear).
+    for (const [name, src] of [['login', gestures]]) {
         assert.ok(src.includes('DOUBLE_TAP_ICON'), `${name}: icône double-tap définie (v4.1.5)`);
         assert.ok((src.match(/<rect x="5"/g) || []).length >= 1 &&
                   (src.match(/<rect x="17"/g) || []).length >= 1,
@@ -1692,11 +1695,11 @@ test('v4.1.5: cocarde UBtouch officielle + icône deux doigts sur les boutons', 
     // Le texte vit dans un span dédié pour ne pas écraser l'icône.
     assert.ok(gestures.includes("label.className = 'ut-first-label'"),
         'login: span de texte dédié (v4.1.4)');
-    assert.ok(btn.includes("span.className = 'ut-first-label'"),
-        'liste: span de texte dédié (v4.1.4)');
-    assert.ok(btn.includes('setFirstLabel'), 'liste: setFirstLabel cible le span (v4.1.4)');
-    assert.ok(!/first\.textContent = tr/.test(btn),
-        'liste: plus de textContent direct sur le bouton first (v4.1.4)');
+    const sheet = fs.readFileSync(path.resolve(__dirname, '../public/settings-sheet.js'), 'utf-8');
+    assert.ok(sheet.includes('const reset = row(') && sheet.includes('reset.textContent ='),
+        'liste: reset vit dans la feuille Parametres, sans icone a preserver (v4.4.5)');
+    assert.ok(!btn.includes('ut-first-label'),
+        'liste: plus de bouton first dans la barre (v4.4.5)');
 });
 
 test('v4.1.11: WD dérivé du vrai cwd (pwd -P), pas de la variable PWD périmée', async () => {
@@ -2211,10 +2214,11 @@ test('v4.0.95: bouton « Recharger les messages » injecté, câblé IPC et i18n
         'reload-button.js must catch clicks in capture phase (v4.0.95)');
     assert.ok(button.includes("tr('reloading'") && button.includes('setTimeout(() => { location.reload(); }, 2000)'),
         'reload button must give immediate feedback and force a renderer-side reload fallback (v4.0.95)');
-    assert.ok(button.includes('window.electronAPI.quitApp') && button.includes('QUIT_ID'),
-        'reload-button.js must expose a Quitter button calling quitApp (v4.0.95)');
-    assert.ok(button.includes("fire('quit')") && button.includes('window.close()'),
-        'reload-button.js must quit via IPC with a window.close fallback (v4.0.95)');
+    const sheet = fs.readFileSync(path.join(publicDir, 'settings-sheet.js'), 'utf-8');
+    assert.ok(sheet.includes('window.electronAPI.quitApp') && sheet.includes("tr('commonQuit'"),
+        'Quit moved to the settings sheet (v4.4.5)');
+    assert.ok(button.includes('window.__utoutlookOpenSettings') && button.includes('SETTINGS_ID'),
+        'the bar only exposes the settings entry (v4.4.5)');
     assert.ok(button.includes('unhideList') && button.includes("h + 'px'"),
         'action bar must keep list unhidden after SPA re-renders (v4.0.98)');
     assert.ok(button.includes('a !== ml && a !== document.body') &&
@@ -2958,18 +2962,19 @@ test('v4.3.8: no blur animation on the message list (software mode hangs)', asyn
         'the list-ready glass trigger must be gone (v4.3.8)');
 });
 
-test('v4.3.8: render-mode toggle is reachable from the mail page', async () => {
+test('v4.4.5: render-mode choices live in the settings sheet', async () => {
     const fs = await import('node:fs');
     const path = await import('node:path');
     const {fileURLToPath} = await import('node:url');
     const here = path.dirname(fileURLToPath(import.meta.url));
-    const btn = fs.readFileSync(path.join(here, '../public/reload-button.js'), 'utf-8');
+    const sheet = fs.readFileSync(path.join(here, '../public/settings-sheet.js'), 'utf-8');
     const ctrl = fs.readFileSync(path.join(here, '../src/controller/mail-window-controller.mjs'), 'utf-8');
 
-    assert.ok(btn.includes("const RENDER_ID = 'utoutlook-render-btn'") &&
-              btn.includes("document.getElementById(RENDER_ID)") &&
-              btn.includes('setRenderMode(next)'),
-        'action bar must expose a render toggle on the mail page (v4.3.8)');
+    assert.ok(sheet.includes("['auto', 'settingsRenderAuto', 'Automatic']") &&
+              sheet.includes("['software', 'settingsRenderSoftware', 'Software']") &&
+              sheet.includes("['hardware', 'settingsRenderHardware', 'Hardware']") &&
+              sheet.includes('setRenderMode(mode)'),
+        'settings sheet must expose the three render modes (v4.4.5)');
     const inject = ctrl.slice(ctrl.indexOf('injectReloadButton()'));
     assert.ok(inject.includes('renderSoftwareEnable: tr[\'render.enable\']') &&
               inject.includes('renderSoftwareDisable: tr[\'render.disable\']') &&
@@ -3164,13 +3169,14 @@ test('v4.3.7: diagnostics IPC is guarded and the button uses i18n labels', async
         'raw wrapper.log must never be exported');
     assert.ok(preload.includes('getDiagnostics: () => ipcRenderer.invoke("get-diagnostics")'),
         'preload must expose the diagnostics bridge');
-    assert.ok(btn.includes('utoutlook-diagnostics-btn') &&
-              btn.includes("tr('actionDiagnostics'") &&
-              btn.includes("tr('diagnosticsSaved'"),
-        'diagnostics button labels must use the keys injected by the controller (v4.4.2)');
+    const sheet = fs.readFileSync(path.join(here, '../public/settings-sheet.js'), 'utf-8');
+    assert.ok(sheet.includes("tr('actionDiagnostics'") &&
+              sheet.includes("tr('diagnosticsSaved'") &&
+              sheet.includes('getDiagnostics()'),
+        'diagnostics now lives in the settings sheet (v4.4.5)');
     assert.ok(ctl.includes('actionDiagnostics: tr[\'action.diagnostics\']') &&
               ctl.includes('diagnosticsSaved: tr[\'diagnostics.saved\']'),
-        'controller must inject the flat keys used by reload-button.js');
+        'controller must inject the flat keys used by settings-sheet.js');
     assert.ok(i18n.includes("'action.diagnostics':") && i18n.includes("'diagnostics.saved':"),
         'new i18n keys must exist');
 });

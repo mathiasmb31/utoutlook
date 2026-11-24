@@ -3457,11 +3457,15 @@ class MailWindowController {
     injectReloadButton() {
         if (!this.win || this.win.isDestroyed()) return;
         let script;
+        let settingsScript = '';
         try {
+            // v4.4.5: la feuille Parametres doit etre chargee AVANT la barre —
+            // celle-ci utilise window.__utoutlookOpenSettings / Icon / Toast.
+            settingsScript = getClientFile("settings-sheet.js") + '\n';
             script = getClientFile("reload-button.js");
         } catch (err) {
             // Fichier absent d'un asar plus ancien : ne pas casser le dom-ready.
-            logger.warn('v4.0.95: reload-button.js introuvable — bouton non injecté', err.message);
+            logger.warn('v4.0.95: scripts UI introuvables — boutons non injectés', err.message);
             return;
         }
         const tr = getAllTranslations();
@@ -3483,9 +3487,17 @@ class MailWindowController {
             // v4.4: bouton « joindre un fichier » via Content Hub
             attachFile: tr['action.attachFile'],
             contentHubFailed: tr['contentHub.failed'],
+            // v4.4.5: feuille Parametres
+            settingsTitle: tr['settings.title'],
+            settingsDisplay: tr['settings.display'],
+            settingsRenderAuto: tr['settings.renderAuto'],
+            settingsRenderSoftware: tr['settings.renderSoftware'],
+            settingsRenderHardware: tr['settings.renderHardware'],
+            commonClose: tr['common.close'],
         });
         this.win.webContents.executeJavaScript(
-            `window.__utoutlookI18n = Object.assign(window.__utoutlookI18n||{}, ${i18nJson});\n` + script
+            `window.__utoutlookI18n = Object.assign(window.__utoutlookI18n||{}, ${i18nJson});\n` +
+            settingsScript + script
         ).catch(() => {
             // page not ready — sera réinjecté au prochain dom-ready / navigation
         });

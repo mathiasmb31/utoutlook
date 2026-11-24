@@ -1,26 +1,23 @@
 // app-actions.js — Barre d'actions flottante en bas de l'écran (v4.0.95)
 // Injectée par mail-window-controller (injectReloadButton) dans la page Outlook.
-// Deux boutons, au même endroit dans les deux orientations :
-//   - « Recharger les messages » : visible sur les pages mail (secours liste 0x0).
-//   - « Quitter » : TOUJOURS visible, vrai quit propre (flag exitclient) pour
-//     que le wrapper command.sh s'arrête aussi — sans gesture de swipe.
+// v4.4.5: actions de lecture uniquement — Recharger, Joindre, Parametres.
+// Les reglages, diagnostics, la reinitialisation et le quit sont dans la
+// feuille Parametres injectee par settings-sheet.js.
 // Clic en phase capture (le SPA Outlook peut stopper la propagation), avec
 // replis si le preload n'est pas disponible.
 (() => {
     const BAR_ID = 'utoutlook-app-actions';
     const RELOAD_ID = 'utoutlook-reload-btn';
-    const QUIT_ID = 'utoutlook-quit-btn';
-    // v4.1.3: deux boutons supplémentaires dans la barre de la liste :
-    //   - UBTOUCH_ID : logo Ubuntu Touch ROND, purement décoratif (aucune action).
-    //   - FIRST_ID   : « Première installation » — wipe complet + notif + relance.
+    // v4.4.5: barre reduite aux actions de lecture — Recharger, Joindre,
+    // et l'acces aux Parametres (reglages, diagnostics, reset, quit).
     const UBTOUCH_ID = 'utoutlook-ubtouch-badge';
-    const FIRST_ID = 'utoutlook-first-install-btn';
-    // v4.3.7: bouton compact « ⓘ » — rapport de diagnostic whiteliste.
-    const DIAG_ID = 'utoutlook-diagnostics-btn';
-    // v4.3.8: bouton compact « Ⓡ » — bascule rendu logiciel / hardware.
-    const RENDER_ID = 'utoutlook-render-btn';
-    // v4.4: bouton « joindre un fichier » via Content Hub (📎).
     const ATTACH_ID = 'utoutlook-attach-btn';
+    const SETTINGS_ID = 'utoutlook-settings-btn';
+    const ATTACH_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#E95420" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M21.4 11.6 12.3 20.7a5 5 0 0 1-7.1-7.1l9.2-9.2a3.3 3.3 0 0 1 4.7 4.7l-9.2 9.2a1.7 1.7 0 0 1-2.4-2.4l8.5-8.5"/>' +
+        '</svg>'
+    );
     // v4.1.5: VRAIE cocarde Ubuntu Touch officielle (fond orange #E95420 +
     // les 3 pastilles/arcs blancs), extraite du logo Wikimedia "Ubuntu touch
     // logo 2025 dark.svg" — pas une approximation. Cadrée sur le carré 73x73.
@@ -42,28 +39,12 @@
     // sans couper les libellés (retour device 19/11 : « Reload messa » tronqué).
     // white-space:normal + line-height permet un retour à la ligne propre.
     const BTN_STYLE =
-        'padding:7px 10px;border-radius:12px;font:13px/1.15 sans-serif;cursor:pointer;' +
+        'min-height:44px;padding:8px 12px;border-radius:12px;font:13px/1.15 sans-serif;cursor:pointer;' +
+        'display:inline-flex;align-items:center;justify-content:center;gap:4px;' +
         'white-space:normal;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.5);';
     const BTN_RELOAD_STYLE = BTN_STYLE +
         'background:rgba(15,15,26,0.92);color:#E95420;border:1px solid #E95420;';
-    const BTN_QUIT_STYLE = BTN_STYLE +
-        'background:#E95420;color:#fff;border:1px solid #E95420;';
-    // Bouton First install : même gabarit que Recharger (fond sombre, texte orange)
-    const BTN_FIRST_STYLE = BTN_STYLE +
-        'background:rgba(15,15,26,0.92);color:#E95420;border:1px solid #E95420;';
-    // v4.1.5: icône « double tap » = DEUX DOIGTS stylisés qui tapent (avec
-    // pastille de contact sous chaque doigt) + chiffre 2. Plus explicite que
-    // les flèches d'avant, qui ressemblaient à une flamme. Même dessin que le
-    // bouton de la page de login.
-    const DOUBLE_TAP_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent(
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28">' +
-        '<rect x="5" y="1" width="6" height="12" rx="3" fill="#E95420"/>' +
-        '<rect x="17" y="1" width="6" height="12" rx="3" fill="#E95420"/>' +
-        '<circle cx="8" cy="15" r="2" fill="#E95420"/>' +
-        '<circle cx="20" cy="15" r="2" fill="#E95420"/>' +
-        '<text x="14" y="27" font-family="Arial,sans-serif" font-size="12" font-weight="bold" fill="#E95420" text-anchor="middle">2</text>' +
-        '</svg>'
-    );
+
     // v4.1.8: badge UBtouch — align-self:stretch le force à prendre EXACTEMENT
     // la même hauteur que les boutons voisins (au lieu d'un height fixe qui
     // pouvait décaler). Carré, purement décoratif, pas de curseur pointer.
@@ -118,52 +99,12 @@
             setTimeout(() => { location.reload(); }, 2000);
             return;
         }
-        if (kind === 'first') {
-            // v4.1.3: wipe complet (cookies + réglages) + notification + relance,
-            // côté principal via le handler IPC 'first-install' (déjà robuste).
-            // Feedback immédiat dans la page en attendant la relance.
-            const btn = document.getElementById(FIRST_ID);
-            if (btn) {
-                btn.disabled = true;
-                setFirstLabel(btn, tr('actionFirstInstallNotify', 'Data cleared — restarting…'));
-            }
-            try {
-                if (window.electronAPI && typeof window.electronAPI.firstInstall === 'function') {
-                    window.electronAPI.firstInstall();
-                    return;
-                }
-            } catch (e) { console.warn('[utoutlook] firstInstall IPC failed:', e); }
-            // Repli sans preload : effacement page + reload (le handler principal
-            // n'est pas joignable, on ne peut pas garantir le wipe des réglages).
-            try { localStorage.clear(); sessionStorage.clear(); } catch (_) {}
-            try { location.reload(); } catch (_) {}
-            return;
-        }
-        // Quit : le process principal doit écrire exitclient puis app.quit() —
-        // c'est ce flag qui fait aussi sortir le wrapper command.sh.
-        try {
-            if (window.electronAPI && typeof window.electronAPI.quitApp === 'function') {
-                window.electronAPI.quitApp();
-                return;
-            }
-        } catch { /* fallback ci-dessous */ }
-        // Sans preload, fermer la fenêtre déclenche le handler 'close' d'Electron
-        // qui écrit lui-même exitclient (sauf si hideOnClose l'intercepte).
-        try { window.close(); } catch { /* rien de plus possible */ }
+        // v4.4.5: 'first' et 'quit' ont ete deplaces dans la feuille Parametres.
     };
 
     const setLabel = (btn, text) => {
         if (btn.textContent !== text) btn.textContent = text;
         if (btn.getAttribute('aria-label') !== text) btn.setAttribute('aria-label', text);
-    };
-
-    // v4.1.4: le bouton First install contient une icône + un span de texte.
-    // On ne modifie QUE le span, pour ne jamais écraser l'icône (contrairement
-    // à setLabel qui joue sur textContent). Les autres boutons gardent setLabel.
-    const setFirstLabel = (btn, text) => {
-        const span = btn && btn.querySelector('.ut-first-label');
-        if (span && span.textContent !== text) span.textContent = text;
-        if (btn && btn.getAttribute('aria-label') !== text) btn.setAttribute('aria-label', text);
     };
 
     // v4.0.98: Outlook ré-applique display:none / visibility:hidden sur les
@@ -209,8 +150,9 @@
             bar = document.createElement('div');
             bar.id = BAR_ID;
             bar.style.cssText =
-                'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);' +
-                'display:flex;gap:10px;z-index:2147483647;pointer-events:auto;';
+                'position:fixed;bottom:12px;left:50%;transform:translateX(-50%);' +
+                'display:flex;flex-wrap:wrap;justify-content:center;gap:8px;' +
+                'max-width:calc(100vw - 24px);z-index:2147483647;pointer-events:auto;';
             document.body.appendChild(bar);
         }
 
@@ -226,91 +168,6 @@
             bar.appendChild(reload);
         }
 
-        let quit = document.getElementById(QUIT_ID);
-        if (!quit) {
-            quit = document.createElement('button');
-            quit.id = QUIT_ID;
-            quit.type = 'button';
-            quit.style.cssText = BTN_QUIT_STYLE;
-            quit.addEventListener('click', (e) => {
-                e.preventDefault(); e.stopPropagation(); fire('quit');
-            });
-            bar.appendChild(quit);
-        }
-
-        // v4.3.7: bouton diagnostics — icône seule pour ne pas élargir la
-        // barre (4 boutons déjà calibrés pour 612 px logiques). Le libellé
-        // accessible et le message passent par le catalogue i18n 10 langues.
-        let diag = document.getElementById(DIAG_ID);
-        if (!diag) {
-            diag = document.createElement('button');
-            diag.id = DIAG_ID;
-            diag.type = 'button';
-            diag.textContent = 'ⓘ';
-            const label = tr('actionDiagnostics', 'Diagnostics');
-            diag.title = label;
-            diag.setAttribute('aria-label', label);
-            diag.style.cssText = BTN_STYLE +
-                'background:rgba(15,15,26,0.92);color:#E95420;border:1px solid #E95420;' +
-                'padding:7px 9px;min-width:34px;';
-            diag.addEventListener('click', async (e) => {
-                e.preventDefault(); e.stopPropagation();
-                try {
-                    if (!window.electronAPI ||
-                        typeof window.electronAPI.getDiagnostics !== 'function') return;
-                    const out = await window.electronAPI.getDiagnostics();
-                    if (out) {
-                        window.alert(tr('diagnosticsSaved', 'Report saved to: {path}')
-                            .replace('{path}', out));
-                    }
-                } catch (err) { /* diagnostic ne doit jamais casser l'UI */ }
-            });
-            bar.appendChild(diag);
-        }
-
-        // v4.3.8: bascule du mode de rendu accessible DEPUIS LA PAGE MAIL.
-        // Le bouton historique de gestures.js n'existe que sur la page de
-        // login : une fois la session restoring, l'utilisateur n'avait plus
-        // aucun moyen de revenir en mode hardware. Change effectif au prochain
-        // lancement (le wrapper lit render-mode au demarrage).
-        let renderBtn = document.getElementById(RENDER_ID);
-        if (!renderBtn) {
-            renderBtn = document.createElement('button');
-            renderBtn.id = RENDER_ID;
-            renderBtn.type = 'button';
-            renderBtn.textContent = 'Ⓡ';
-            renderBtn.style.cssText = BTN_STYLE +
-                'background:rgba(15,15,26,0.92);color:#E95420;border:1px solid #E95420;' +
-                'padding:7px 9px;min-width:34px;';
-            const readMode = async () => {
-                let mode = 'auto';
-                try { mode = await window.electronAPI.getRenderMode(); } catch (_) {}
-                return mode;
-            };
-            const refreshRenderLabel = async () => {
-                const mode = await readMode();
-                const label = mode === 'software'
-                    ? tr('renderSoftwareDisable', 'Disable software rendering')
-                    : tr('renderSoftwareEnable', 'Enable software rendering');
-                renderBtn.title = label;
-                renderBtn.setAttribute('aria-label', label);
-            };
-            refreshRenderLabel();
-            renderBtn.addEventListener('click', async (e) => {
-                e.preventDefault(); e.stopPropagation();
-                const mode = await readMode();
-                const next = (mode === 'software') ? 'hardware' : 'software';
-                try {
-                    if (!window.electronAPI ||
-                        typeof window.electronAPI.setRenderMode !== 'function') return;
-                    await window.electronAPI.setRenderMode(next);
-                } catch (_) { return; }
-                await refreshRenderLabel();
-                window.alert(tr('relaunchNotice', 'Please relaunch UToutlook Mail'));
-            });
-            bar.appendChild(renderBtn);
-        }
-
         // v4.4: joindre un fichier depuis ubuntu touch (Content Hub). Le
         // transfert est fait cote main ; on n'attend que le resultat.
         let attachBtn = document.getElementById(ATTACH_ID);
@@ -318,13 +175,21 @@
             attachBtn = document.createElement('button');
             attachBtn.id = ATTACH_ID;
             attachBtn.type = 'button';
-            attachBtn.textContent = '📎';
+            const attachImg = document.createElement('img');
+            attachImg.src = ATTACH_ICON;
+            attachImg.alt = '';
+            attachImg.width = 22;
+            attachImg.height = 22;
+            attachImg.style.cssText = 'display:inline-block;width:22px;height:22px;vertical-align:middle;';
+            const attachLabel = document.createElement('span');
+            attachBtn.appendChild(attachImg);
+            attachBtn.appendChild(attachLabel);
             const label = tr('attachFile', 'Attach a file');
+            attachLabel.textContent = label;
             attachBtn.title = label;
             attachBtn.setAttribute('aria-label', label);
             attachBtn.style.cssText = BTN_STYLE +
-                'background:rgba(15,15,26,0.92);color:#E95420;border:1px solid #E95420;' +
-                'padding:7px 9px;min-width:34px;';
+                'background:rgba(15,15,26,0.92);color:#E95420;border:1px solid #E95420;';
             attachBtn.addEventListener('click', async (e) => {
                 e.preventDefault(); e.stopPropagation();
                 if (!window.electronAPI ||
@@ -332,9 +197,13 @@
                 attachBtn.disabled = true;
                 try {
                     const added = await window.electronAPI.attachFromHub();
-                    if (!added) window.alert(tr('contentHubFailed', 'Could not attach the file'));
+                    if (!added && window.__utoutlookToast) {
+                        window.__utoutlookToast(tr('contentHubFailed', 'Could not attach the file'));
+                    }
                 } catch (_) {
-                    window.alert(tr('contentHubFailed', 'Could not attach the file'));
+                    if (window.__utoutlookToast) {
+                        window.__utoutlookToast(tr('contentHubFailed', 'Could not attach the file'));
+                    }
                 } finally {
                     attachBtn.disabled = false;
                 }
@@ -358,57 +227,38 @@
             bar.insertBefore(ubtouch, reload);
         }
 
-        // v4.1.3: bouton « Première installation » — double-tap 3 s pour
-        // confirmer (même modèle que le bouton de la page de login), puis
-        // appel IPC firstInstall côté principal (wipe + notif + relance).
-        let first = document.getElementById(FIRST_ID);
-        if (!first) {
-            first = document.createElement('button');
-            first.id = FIRST_ID;
-            first.type = 'button';
-            first.style.cssText = BTN_FIRST_STYLE;
-            // v4.1.4: icône « 2 » + span de texte (l'icône reste visible quand
-            // le texte change pendant la confirmation).
+        // v4.4.5: acces aux reglages — icone SVG, libelle i18n.
+        let settingsBtn = document.getElementById(SETTINGS_ID);
+        if (!settingsBtn) {
+            settingsBtn = document.createElement('button');
+            settingsBtn.id = SETTINGS_ID;
+            settingsBtn.type = 'button';
             const icon = document.createElement('img');
-            icon.src = DOUBLE_TAP_ICON;
+            icon.src = window.__utoutlookSettingsIcon || '';
             icon.alt = '';
-            icon.width = 24; icon.height = 24;
-            icon.style.cssText = 'display:inline-block;width:24px;height:24px;vertical-align:middle;margin-right:5px;';
-            const span = document.createElement('span');
-            span.className = 'ut-first-label';
-            first.appendChild(icon);
-            first.appendChild(span);
-            let armed = false, armTimer = null;
-            first.addEventListener('click', (e) => {
+            icon.width = 22;
+            icon.height = 22;
+            icon.style.cssText = 'display:inline-block;width:22px;height:22px;vertical-align:middle;margin-right:4px;';
+            settingsBtn.appendChild(icon);
+            const sLabel = document.createElement('span');
+            settingsBtn.appendChild(sLabel);
+            settingsBtn.style.cssText = BTN_STYLE +
+                'background:rgba(15,15,26,0.92);color:#E95420;border:1px solid #E95420;' +
+                'min-width:44px;';
+            const sText = tr('settingsTitle', 'Settings');
+            sLabel.textContent = sText;
+            settingsBtn.title = sText;
+            settingsBtn.setAttribute('aria-label', sText);
+            settingsBtn.addEventListener('click', (e) => {
                 e.preventDefault(); e.stopPropagation();
-                if (!armed) {
-                    armed = true;
-                    const orig = span.textContent;
-                    span.textContent = tr('actionFirstInstallConfirm', 'Wipe everything?');
-                    first.setAttribute('aria-label', span.textContent);
-                    first.style.background = '#E95420';
-                    first.style.color = '#fff';
-                    icon.style.filter = 'brightness(0) invert(1)';
-                    armTimer = setTimeout(() => {
-                        armed = false;
-                        span.textContent = orig;
-                        first.setAttribute('aria-label', orig);
-                        first.style.background = 'rgba(15,15,26,0.92)';
-                        first.style.color = '#E95420';
-                        icon.style.filter = '';
-                    }, 3000);
-                    return;
+                if (typeof window.__utoutlookOpenSettings === 'function') {
+                    window.__utoutlookOpenSettings();
                 }
-                clearTimeout(armTimer);
-                armed = false;
-                fire('first');
             });
-            bar.insertBefore(first, quit);
+            bar.appendChild(settingsBtn);
         }
 
         setLabel(reload, tr('reloadMessages', 'Reload messages'));
-        setLabel(quit, tr('quitApp', 'Quit'));
-        setFirstLabel(first, tr('actionFirstInstall', 'First install'));
         // v4.1.0 (revue renderer #4): la barre doit rester visible SURTOUT
         // quand la liste est cassée (0×0) — c'est le cas à secourir. On ne
         // masque que le bouton Recharger pendant le chargement initial.
@@ -428,12 +278,8 @@
             if (!t || !t.closest) return;
             if (t.closest('#' + RELOAD_ID)) {
                 e.preventDefault(); e.stopPropagation(); fire('reload');
-            } else if (t.closest('#' + FIRST_ID)) {
-                // v4.1.3: le bouton gère son propre double-tap (confirmation) —
                 // en capture on laisse l'événement atteindre le listener du bouton.
                 return;
-            } else if (t.closest('#' + QUIT_ID)) {
-                e.preventDefault(); e.stopPropagation(); fire('quit');
             }
         }, true);
     }
