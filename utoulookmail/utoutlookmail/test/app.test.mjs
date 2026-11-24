@@ -3334,20 +3334,20 @@ test('v4.3.7: offline screen is native Electron and survives a hidden window', a
 // v4.4.9 — barre hors du clavier pendant la composition
 // ============================================================
 
-test('v4.4.9: action bar moves to the top while composing', async () => {
+test('v4.5.0: the bar stays at the top for the whole compose window', async () => {
     const fs = await import('node:fs');
     const path = await import('node:path');
     const {fileURLToPath} = await import('node:url');
     const here = path.dirname(fileURLToPath(import.meta.url));
     const btn = fs.readFileSync(path.join(here, '../public/reload-button.js'), 'utf-8');
 
-    assert.ok(btn.includes('const isComposeField') &&
+    assert.ok(btn.includes('const COMPOSE_SEL') &&
               btn.includes("bar.style.top = '12px'") &&
               btn.includes("bar.style.bottom = 'auto'"),
-        'the bar must move to the top on compose focus (v4.4.9)');
-    assert.ok(btn.includes("document.addEventListener('focusout'") &&
-              btn.includes('bar.style.top = \'\''),
-        'the bar must return to the bottom on blur (v4.4.9)');
+        'the bar must move to the top while a compose window exists (v4.5.0)');
+    assert.ok(btn.includes('setInterval') && btn.includes('composing && !barTop') &&
+              !btn.includes("document.addEventListener('focusout'"),
+        'the bar must not drop back on focus loss when tapping attach (v4.5.0)');
 });
 
 // ============================================================

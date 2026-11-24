@@ -13,6 +13,7 @@
     const UBTOUCH_ID = 'utoutlook-ubtouch-badge';
     const ATTACH_ID = 'utoutlook-attach-btn';
     const SETTINGS_ID = 'utoutlook-settings-btn';
+    const COMPOSE_SEL = '[class*="owaMailComposeEditorScrollContainer"], [id^="docking_InitVisiblePart_"]';
     const ATTACH_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent(
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#E95420" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
         '<path d="M21.4 11.6 12.3 20.7a5 5 0 0 1-7.1-7.1l9.2-9.2a3.3 3.3 0 0 1 4.7 4.7l-9.2 9.2a1.7 1.7 0 0 1-2.4-2.4l8.5-8.5"/>' +
@@ -71,9 +72,7 @@
 
     // v4.4.8: les inputs de fichier d'Outlook sont TOUJOURS caches (height 0).
     // Le marqueur fiable d'une composition est le conteneur de l'editeur.
-    const composeFileInput = () => !!document.querySelector(
-        '[class*="owaMailComposeEditorScrollContainer"], [id^="docking_InitVisiblePart_"]'
-    );
+    const composeFileInput = () => !!document.querySelector(COMPOSE_SEL);
 
     // v4.4.7: avec le clavier virtuel ouvert, un element fixed en bas du layout
     // viewport passe SOUS le clavier. On decale la barre de la hauteur reellement
@@ -94,30 +93,29 @@
         window.visualViewport?.addEventListener('scroll', repositionBar);
     }
 
-    // v4.4.9: sous Lomiri, le clavier peut recouvrir la barre sans que
-    // visualViewport bouge. Des qu'un champ de composition prend le focus, on
-    // passe la barre EN HAUT (hors d'atteinte du clavier) ; retour en bas au blur.
-    const isComposeField = (el) => !!el && (
-        /^(INPUT|TEXTAREA)$/.test(el.tagName) || el.isContentEditable ||
-        !!el.closest?.('[contenteditable="true"]')
-    );
-    document.addEventListener('focusin', (e) => {
-        if (!isComposeField(e.target)) return;
-        const bar = document.getElementById(BAR_ID);
-        if (!bar) return;
-        bar.style.top = '12px';
-        bar.style.bottom = 'auto';
-    }, true);
-    document.addEventListener('focusout', (e) => {
-        if (!isComposeField(e.target)) return;
-        setTimeout(() => {
-            if (isComposeField(document.activeElement)) return;
+    // v4.5.0: on reste EN HAUT tant que la composition existe, et non pas
+    // seulement tant qu'un champ a le focus — sinon la barre redescendait au
+    // moment precis ou on touchait « Joindre » et le bouton repassait sous le
+    // clavier. Le clavier peut en effet recouvrir le bas sans que
+    // visualViewport bouge sous Lomiri.
+    if (!window.__utoutlookComposeBarPoll) {
+        window.__utoutlookComposeBarPoll = true;
+        let barTop = false;
+        setInterval(() => {
             const bar = document.getElementById(BAR_ID);
             if (!bar) return;
-            bar.style.top = '';
-            bar.style.bottom = (12 + keyboardOverlap()) + 'px';
-        }, 150);
-    }, true);
+            const composing = !!document.querySelector(COMPOSE_SEL);
+            if (composing && !barTop) {
+                bar.style.top = '12px';
+                bar.style.bottom = 'auto';
+                barTop = true;
+            } else if (!composing && barTop) {
+                bar.style.top = '';
+                bar.style.bottom = (12 + keyboardOverlap()) + 'px';
+                barTop = false;
+            }
+        }, 300);
+    }
 
     const fire = (kind) => {
         const now = Date.now();
