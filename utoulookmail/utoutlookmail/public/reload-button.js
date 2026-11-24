@@ -13,6 +13,7 @@
     const UBTOUCH_ID = 'utoutlook-ubtouch-badge';
     const ATTACH_ID = 'utoutlook-attach-btn';
     const SETTINGS_ID = 'utoutlook-settings-btn';
+    const SHARE_ID = 'utoutlook-share-btn';
     const COMPOSE_SEL = '[class*="owaMailComposeEditorScrollContainer"], [id^="docking_InitVisiblePart_"]';
     const ATTACH_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent(
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#E95420" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
@@ -23,6 +24,12 @@
     // les 3 pastilles/arcs blancs), extraite du logo Wikimedia "Ubuntu touch
     // logo 2025 dark.svg" — pas une approximation. Cadrée sur le carré 73x73.
     // En data-URI : pas de fichier aggiuntif, marche sous AppArmor.
+    // v4.7.0: icone « partager » (fleche vers le haut hors d'une boite).
+    const SHARE_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#E95420" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M12 16V4m0 0L7 9m5-5 5 5"/><path d="M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/>' +
+        '</svg>'
+    );
     const UBTOUCH_SVG = 'data:image/svg+xml;utf8,' + encodeURIComponent(
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 30 73 73">' +
         '<path fill="#E95420" d="M72.712 0H0v114.48h72.712z"/>' +
@@ -74,36 +81,42 @@
     // Le marqueur fiable d'une composition est le conteneur de l'editeur.
     const composeFileInput = () => !!document.querySelector(COMPOSE_SEL);
 
-    // v4.6.6: docking dans le ruban Outlook, a cote de l'onglet « Aide ».
-    // On deplace la barre existante (pas de duplication) et on la remet en bas
-    // si Outlook recrée son DOM ou si l'onglet n'existe plus.
-    const FLOATING_STYLE =
-        'position:fixed;bottom:12px;left:50%;transform:translateX(-50%);' +
-        'display:flex;flex-wrap:wrap;justify-content:center;gap:8px;' +
-        'max-width:calc(100vw - 24px);z-index:2147483647;pointer-events:auto;';
-    const tryDock = () => {
-        const bar = document.getElementById(BAR_ID);
-        if (!bar) return;
-        const tabs = Array.from(document.querySelectorAll('button[role="tab"]'));
-        const help = tabs.find((t) => /^(Aide|Help)$/i.test((t.textContent || '').trim()));
-        if (help && help.parentElement) {
-            if (bar.parentElement !== help.parentElement || bar.dataset.docked !== '1') {
-                help.parentElement.appendChild(bar);
-                bar.dataset.docked = '1';
-                bar.style.top = '';
-                bar.style.bottom = '';
-                bar.style.cssText = 'display:inline-flex;align-items:center;gap:8px;margin-left:auto;pointer-events:auto;';
-            }
-        } else if (bar.dataset.docked === '1') {
-            delete bar.dataset.docked;
-            document.body.appendChild(bar);
-            bar.style.cssText = FLOATING_STYLE;
-        }
+    // v4.7.0: une seule pastille flottante en bas a droite. Les actions sont
+    // dans un mini-menu qui ne s'ouvre qu'au toucher — plus rien ne recouvre
+    // le ruban ni les menus d'Outlook (retour du docking 4.6.6, jugé moche).
+    const FAB_ID = 'utoutlook-menu-btn';
+    const PANEL_ID = 'utoutlook-menu-panel';
+    const BAR_STYLE =
+        'position:fixed;right:12px;bottom:12px;display:flex;flex-direction:column;' +
+        'align-items:flex-end;gap:8px;z-index:2147483647;pointer-events:auto;';
+    const PANEL_STYLE =
+        'display:none;flex-direction:column;align-items:stretch;gap:6px;' +
+        'padding:8px;border-radius:16px;background:rgba(15,15,26,0.96);' +
+        'border:1px solid #E95420;box-shadow:0 4px 18px rgba(0,0,0,.6);' +
+        'max-width:calc(100vw - 24px);pointer-events:auto;';
+    const FAB_STYLE =
+        'width:54px;height:54px;min-height:54px;padding:0;border-radius:50%;' +
+        'background:#E95420;color:#fff;border:2px solid rgba(255,255,255,.75);' +
+        'display:flex;align-items:center;justify-content:center;cursor:pointer;' +
+        'box-shadow:0 3px 14px rgba(0,0,0,.55);pointer-events:auto;';
+    const FAB_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#fff">' +
+        '<circle cx="6" cy="12" r="2"/><circle cx="12" cy="12" r="2"/>' +
+        '<circle cx="18" cy="12" r="2"/></svg>'
+    );
+    const closeMenu = () => {
+        const p = document.getElementById(PANEL_ID);
+        if (p) p.style.setProperty('display', 'none', 'important');
+    };
+    const toggleMenu = () => {
+        const p = document.getElementById(PANEL_ID);
+        if (!p) return;
+        const open = p.style.display === 'flex';
+        p.style.setProperty('display', open ? 'none' : 'flex', 'important');
     };
 
-    // v4.4.7: avec le clavier virtuel ouvert, un element fixed en bas du layout
-    // viewport passe SOUS le clavier. On decale la barre de la hauteur reellement
-    // masquee (visualViewport) — sans toucher au reste de la page.
+    // v4.4.7: avec le clavier virtuel ouvert, un element fixed en bas passe
+    // SOUS le clavier — on decale la pastille de la hauteur reellement masquee.
     const keyboardOverlap = () => {
         const vv = window.visualViewport;
         if (!vv) return 0;
@@ -113,40 +126,14 @@
         window.__utoutlookBarViewportBound = true;
         const repositionBar = () => {
             const bar = document.getElementById(BAR_ID);
-            if (!bar || bar.style.top !== '' || bar.dataset.docked === '1') return;
-            bar.style.bottom = (12 + keyboardOverlap()) + 'px';
+            if (bar) bar.style.bottom = (12 + keyboardOverlap()) + 'px';
         };
         window.visualViewport?.addEventListener('resize', repositionBar);
         window.visualViewport?.addEventListener('scroll', repositionBar);
     }
 
-    // v4.5.0: on reste EN HAUT tant que la composition existe, et non pas
-    // seulement tant qu'un champ a le focus — sinon la barre redescendait au
-    // moment precis ou on touchait « Joindre » et le bouton repassait sous le
-    // clavier. Le clavier peut en effet recouvrir le bas sans que
-    // visualViewport bouge sous Lomiri.
-    if (!window.__utoutlookComposeBarPoll) {
-        window.__utoutlookComposeBarPoll = true;
-        let barTop = false;
-        setInterval(() => {
-            const bar = document.getElementById(BAR_ID);
-            if (!bar) return;
-            const composing = !!document.querySelector(COMPOSE_SEL);
-            if (composing && !barTop) {
-                bar.style.top = '12px';
-                bar.style.bottom = 'auto';
-                barTop = true;
-            } else if (!composing && barTop) {
-                bar.style.top = '';
-                bar.style.bottom = (12 + keyboardOverlap()) + 'px';
-                barTop = false;
-            }
-            tryDock();
-        }, 300);
-
-    // v4.6.3: ne pas conditionner la consommation au marqueur de composition —
-    // Outlook peut creer la fenetre plus tard ou avec un autre DOM. Le handler
-    // main garde le fichier tant que l'injection echoue, donc cet appel est sur.
+    // v4.6.3: consommer une PJ en attente sans condition de composition —
+    // le handler main garde le fichier tant que l'injection echoue.
     if (!window.__utoutlookPendingPoll) {
         window.__utoutlookPendingPoll = true;
         setInterval(() => {
@@ -156,13 +143,13 @@
             }
         }, 1000);
     }
-    }
 
     const fire = (kind) => {
         const now = Date.now();
         if (now - lastTrigger[kind] < 800) return; // anti-double (capture + bouton)
         lastTrigger[kind] = now;
         if (kind === 'reload') {
+            closeMenu();
             // Feedback IMMÉDIAT dans la page : même si l'IPC ne part pas,
             // l'utilisateur voit que le clic a été pris en compte.
             const btn = document.getElementById(RELOAD_ID);
@@ -238,8 +225,36 @@
         if (!bar) {
             bar = document.createElement('div');
             bar.id = BAR_ID;
-            bar.style.cssText = FLOATING_STYLE;
+            bar.style.cssText = BAR_STYLE;
+            bar.style.bottom = (12 + keyboardOverlap()) + 'px';
             document.body.appendChild(bar);
+        }
+        let panel = document.getElementById(PANEL_ID);
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.id = PANEL_ID;
+            panel.style.cssText = PANEL_STYLE;
+            bar.appendChild(panel);
+        }
+        let fab = document.getElementById(FAB_ID);
+        if (!fab) {
+            fab = document.createElement('button');
+            fab.id = FAB_ID;
+            fab.type = 'button';
+            fab.setAttribute('aria-label', tr('settingsTitle', 'Actions'));
+            const fabImg = document.createElement('img');
+            fabImg.src = FAB_ICON;
+            fabImg.alt = '';
+            fabImg.width = 26;
+            fabImg.height = 26;
+            fabImg.style.cssText = 'display:block;width:26px;height:26px;';
+            fab.appendChild(fabImg);
+            fab.style.cssText = FAB_STYLE;
+            fab.addEventListener('click', (e) => {
+                e.preventDefault(); e.stopPropagation();
+                toggleMenu();
+            });
+            bar.appendChild(fab);
         }
 
         let reload = document.getElementById(RELOAD_ID);
@@ -251,7 +266,7 @@
             reload.addEventListener('click', (e) => {
                 e.preventDefault(); e.stopPropagation(); fire('reload');
             });
-            bar.appendChild(reload);
+            panel.appendChild(reload);
         }
 
         // v4.4: joindre un fichier depuis ubuntu touch (Content Hub). Le
@@ -277,7 +292,7 @@
             attachBtn.style.cssText = BTN_STYLE +
                 'background:rgba(15,15,26,0.92);color:#E95420;border:1px solid #E95420;';
             attachBtn.addEventListener('click', async (e) => {
-                e.preventDefault(); e.stopPropagation();
+                e.preventDefault(); e.stopPropagation(); closeMenu();
                 if (!window.electronAPI ||
                     typeof window.electronAPI.attachFromHub !== 'function') return;
                 attachBtn.disabled = true;
@@ -296,8 +311,65 @@
                     attachBtn.disabled = false;
                 }
             });
-            bar.appendChild(attachBtn);
+            panel.appendChild(attachBtn);
         }
+        // v4.7.0: « Partager » n'apparait que si une PJ a ete telechargee
+        // depuis Outlook Web. Le transfert Content Hub est cote main.
+        let shareBtn = document.getElementById(SHARE_ID);
+        if (!shareBtn) {
+            shareBtn = document.createElement('button');
+            shareBtn.id = SHARE_ID;
+            shareBtn.type = 'button';
+            const shareImg = document.createElement('img');
+            shareImg.src = SHARE_ICON;
+            shareImg.alt = '';
+            shareImg.width = 22;
+            shareImg.height = 22;
+            shareImg.style.cssText = 'display:inline-block;width:22px;height:22px;vertical-align:middle;margin-right:4px;';
+            const shareLabel = document.createElement('span');
+            shareBtn.appendChild(shareImg);
+            shareBtn.appendChild(shareLabel);
+            const shareText = tr('shareAttachment', 'Share attachment');
+            shareLabel.textContent = shareText;
+            shareBtn.title = shareText;
+            shareBtn.setAttribute('aria-label', shareText);
+            shareBtn.style.cssText = BTN_STYLE +
+                'background:rgba(15,15,26,0.92);color:#E95420;border:1px solid #E95420;';
+            shareBtn.addEventListener('click', async (e) => {
+                e.preventDefault(); e.stopPropagation(); closeMenu();
+                if (!window.electronAPI ||
+                    typeof window.electronAPI.shareLastDownload !== 'function') return;
+                shareBtn.disabled = true;
+                try {
+                    const res = await window.electronAPI.shareLastDownload();
+                    if (window.__utoutlookToast) {
+                        window.__utoutlookToast(res && res.ok
+                            ? tr('shareStarted', 'Sharing…')
+                            : tr('shareFailed', 'Could not share the file'));
+                    }
+                } catch (_) {
+                    if (window.__utoutlookToast) {
+                        window.__utoutlookToast(tr('shareFailed', 'Could not share the file'));
+                    }
+                } finally {
+                    shareBtn.disabled = false;
+                }
+            });
+            panel.appendChild(shareBtn);
+        }
+        shareBtn.style.display = 'none';
+        if (!window.__utoutlookSharePoll) {
+            window.__utoutlookSharePoll = setInterval(async () => {
+                const b = document.getElementById(SHARE_ID);
+                if (!b || !window.electronAPI ||
+                    typeof window.electronAPI.getLastDownload !== 'function') return;
+                try {
+                    const info = await window.electronAPI.getLastDownload();
+                    b.style.display = info ? '' : 'none';
+                } catch (_) { /* page en navigation */ }
+            }, 2000);
+        }
+
         const attachEl = document.getElementById(ATTACH_ID);
         if (attachEl) attachEl.style.display = composeFileInput() ? '' : 'none';
         if (!window.__utoutlookAttachPoll) {
@@ -320,7 +392,7 @@
             img.alt = '';
             img.style.cssText = 'display:block;width:100%;height:100%;border-radius:9px;object-fit:contain;';
             ubtouch.appendChild(img);
-            bar.insertBefore(ubtouch, reload);
+            panel.insertBefore(ubtouch, reload);
         }
 
         // v4.4.5: acces aux reglages — icone SVG, libelle i18n.
@@ -346,26 +418,34 @@
             settingsBtn.title = sText;
             settingsBtn.setAttribute('aria-label', sText);
             settingsBtn.addEventListener('click', (e) => {
-                e.preventDefault(); e.stopPropagation();
+                e.preventDefault(); e.stopPropagation(); closeMenu();
                 if (typeof window.__utoutlookOpenSettings === 'function') {
                     window.__utoutlookOpenSettings();
                 }
             });
-            bar.appendChild(settingsBtn);
+            panel.appendChild(settingsBtn);
         }
 
         setLabel(reload, tr('reloadMessages', 'Reload messages'));
-        // v4.1.0 (revue renderer #4): la barre doit rester visible SURTOUT
-        // quand la liste est cassée (0×0) — c'est le cas à secourir. On ne
-        // masque que le bouton Recharger pendant le chargement initial.
-        tryDock();
-        bar.style.display = onMailPage() ? 'flex' : 'none';
+        // v4.7.0: la pastille reste visible SURTOUT quand la liste est
+        // cassee (0x0) — c'est le cas a secourir. Le mini-menu ne s'ouvre
+        // qu'au toucher et ne masque aucun menu Outlook.
+        bar.style.setProperty('display', onMailPage() ? 'flex' : 'none', 'important');
         // v4.3.8: plus d'effet glass (blur sur toutes les lignes) — il faisait
         // bloquer le renderer en mode logiciel et declenchait des relances.
         reload.style.display = listReady() ? '' : 'none';
         unhideList(); // v4.0.98: garder la liste visible après les re-render SPA
         syncNavState(); // v4.0.118: mémoriser un masquage automatique (paysage)
     };
+
+    // v4.7.0: fermer le mini-menu au toucher hors de la pastille.
+    if (!window.__utoutlookMenuOutsideBound) {
+        window.__utoutlookMenuOutsideBound = true;
+        document.addEventListener('click', (e) => {
+            const bar = document.getElementById(BAR_ID);
+            if (bar && e.target && !bar.contains(e.target)) closeMenu();
+        }, true);
+    }
 
     // Filet de sécurité : attraper les clics en capture, avant le SPA Outlook.
     if (!window.__utoutlookAppActionsCapture) {

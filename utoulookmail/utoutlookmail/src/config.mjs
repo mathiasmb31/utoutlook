@@ -44,6 +44,10 @@ export const PENDING_ATTACH_FILE = path.join(CONFIG_DIR, 'pending-attach');
 // v4.6.2: copie durable des PJ recues — le cache du Content Hub est purge par
 // Finalize(), donc on doit sauvegarder avant de finaliser le transfert.
 export const INCOMING_DIR = path.join(CONFIG_DIR, 'incoming');
+// v4.7.0: PJ telechargees depuis Outlook Web, en attente d'etre partagees via
+// le Content Hub. OUTGOING_DIR doit rester sous CONFIG_DIR (profil AppArmor).
+export const OUTGOING_DIR = path.join(CONFIG_DIR, 'outgoing');
+export const LAST_DOWNLOAD_FILE = path.join(CONFIG_DIR, 'last-download');
 // v4.1.0: marqueur « swipe-close » — l'app reste vivante en arrière-plan,
 // mais sa fenêtre ne doit pas être ré-affichée par le watchdog de surface.
 export const SWIPE_HIDDEN_FILE = path.join(CONFIG_DIR, 'swipe-hidden');

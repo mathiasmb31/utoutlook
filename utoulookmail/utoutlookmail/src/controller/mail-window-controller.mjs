@@ -18,6 +18,8 @@ import {
     ROTATION_RELAUNCH_FILE,
     RENDER_MODE_FILE,
     PENDING_ATTACH_FILE,
+    OUTGOING_DIR,
+    LAST_DOWNLOAD_FILE,
     SWIPE_HIDDEN_FILE,
 } from '../config.mjs';
 import {logger} from '../logger.mjs';
@@ -419,6 +421,42 @@ class MailWindowController {
     // --- Session persistence: periodic cookie flush ---
 
     /**
+     * v4.7.0: intercepter les telechargements declenches par Outlook Web
+     * (bouton « Telecharger » d'une PJ recue) et les garder dans OUTGOING_DIR.
+     * On n'automatise pas le DOM d'Outlook : l'utilisateur télécharge comme
+     * d'habitude, l'app se contente de recuperer le fichier.
+     */
+    installDownloadCapture(ses) {
+        if (!ses || ses.__utoutlookDownloadHook) return;
+        ses.__utoutlookDownloadHook = true;
+        ses.on('will-download', (event, item) => {
+            try {
+                fs.mkdirSync(OUTGOING_DIR, {recursive: true});
+                let name = path.basename(item.getFilename() || 'attachment')
+                    .replace(/[^a-zA-Z0-9._()\-]+/g, '_').slice(0, 120) || 'attachment';
+                let dest = path.join(OUTGOING_DIR, name);
+                let n = 1;
+                while (fs.existsSync(dest)) {
+                    const ext = path.extname(name);
+                    dest = path.join(OUTGOING_DIR,
+                        `${path.basename(name, ext)}-${n++}${ext || '.bin'}`);
+                }
+                item.setSavePath(dest);
+                item.once('done', (doneEvent, state) => {
+                    if (state === 'completed') {
+                        try { fs.writeFileSync(LAST_DOWNLOAD_FILE, dest); } catch (e) {}
+                        logger.info('v4.7.0: PJ telechargee, prete a partager');
+                    } else {
+                        logger.warn(`v4.7.0: telechargement termine (${state})`);
+                    }
+                });
+            } catch (e) {
+                logger.warn(`v4.7.0: capture telechargement impossible (${e.message})`);
+            }
+        });
+    }
+
+    /**
      * Flush cookies to disk periodically so session survives SIGKILL / OOM.
      * Chromium flushes every ~30s by default, but on Ubuntu Touch the app is
      * frequently killed without a clean shutdown. We flush every 15s to be safe.
@@ -434,6 +472,7 @@ class MailWindowController {
         // si Chromium l'a perdu (cookie de session non persisté). Le fichier est
         // local au téléphone (AppArmor confine l'app à son CONFIG_DIR).
         const ses = session.fromPartition(this.sessionPartition);
+        this.installDownloadCapture(ses);
         const AUTH_TOKEN_FILE = path.join(DATA_DIR, 'auth-token.json');
         const AUTH_COOKIE_NAMES = /^(__Host-)?MSAAUTH(P)?$|ESTSAUTH(PERSIST)?$/i;
         try { fs.mkdirSync(DATA_DIR, {recursive: true}); } catch (e) { /* ignore */ }
@@ -2252,6 +2291,42 @@ class MailWindowController {
             }
             return added;
         });
+        // v4.7.0: derniere PJ telechargee — le renderer l'utilise pour afficher
+        // le bouton « Partager » uniquement quand il y a quelque chose a envoyer.
+        ipcMain.removeHandler("get-last-download");
+        ipcMain.handle("get-last-download", async () => {
+            try {
+                const p = fs.readFileSync(LAST_DOWNLOAD_FILE, 'utf-8').trim();
+                if (!p.startsWith(OUTGOING_DIR + path.sep)) return null;
+                if (!fs.statSync(p).isFile()) return null;
+                return {name: path.basename(p)};
+            } catch (e) { return null; }
+        });
+        // v4.7.0: partager cette PJ via le Content Hub (sens inverse de Joindre).
+        ipcMain.removeHandler("share-last-download");
+        ipcMain.handle("share-last-download", async (event) => {
+            const senderUrl = event.sender.getURL ? event.sender.getURL() : '';
+            const trusted = /^https?:\/\/(?:[^/]+\.)?(?:outlook\.(?:live|office|office365)\.com|outlook\.cloud\.microsoft\.com|live\.com|microsoftonline\.com)/i.test(senderUrl)
+                || /^file:/i.test(senderUrl);
+            if (!trusted) {
+                logger.warn('v4.7.0: share-last-download refuse une origine non approuvee');
+                return {ok: false, error: 'untrusted'};
+            }
+            let p = '';
+            try { p = fs.readFileSync(LAST_DOWNLOAD_FILE, 'utf-8').trim(); } catch (e) {}
+            if (!p || !p.startsWith(OUTGOING_DIR + path.sep)) return {ok: false, error: 'no-file'};
+            try { if (!fs.statSync(p).isFile()) return {ok: false, error: 'no-file'}; }
+            catch (e) { return {ok: false, error: 'no-file'}; }
+            const appId = `utoutlook.mathias_utoutlook_${app.getVersion()}`;
+            const bridge = new ContentHubBridge({
+                appId,
+                stage: (s) => logger.warn(`v4.7.0: ${s}`),
+                debug: (m) => logger.warn(`v4.7.0: ${m}`),
+            });
+            const res = await bridge.exportFile(p);
+            logger.info(`v4.7.0: partage ${res.ok ? 'lance' : 'echoue (' + res.error + ')'}`);
+            return res;
+        });
         // v3.3.66: first-install — wipe ALL session data from the main process.
         // The in-page clear (document.cookie/localStorage) only reaches the current
         // origin, and syncCookiesToLiveCom() would re-copy surviving cookies to the
@@ -3563,6 +3638,10 @@ class MailWindowController {
             // v4.4: bouton « joindre un fichier » via Content Hub
             attachFile: tr['action.attachFile'],
             contentHubFailed: tr['contentHub.failed'],
+            // v4.7.0: export de la derniere PJ telechargee
+            shareAttachment: tr['action.shareAttachment'],
+            shareStarted: tr['contentHub.shareStarted'],
+            shareFailed: tr['contentHub.shareFailed'],
             // v4.4.5: feuille Parametres
             settingsTitle: tr['settings.title'],
             settingsDisplay: tr['settings.display'],

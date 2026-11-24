@@ -2226,8 +2226,8 @@ test('v4.0.95: bouton « Recharger les messages » injecté, câblé IPC et i18n
         'MessageList itself must never get a frozen px height (v4.0.101)');
     assert.ok(!controller.includes("msgList.style.width = '40%'"),
         'landscape must not shrink the message list to 40% width (v4.0.102)');
-    assert.ok(button.includes('listReady') && button.includes('bar.style.display'),
-        'action buttons must show only when the message list is loaded (v4.0.103)');
+    assert.ok(button.includes('listReady') && button.includes("bar.style.setProperty('display'"),
+        'the floating action button must gate visibility on the Outlook mail URL (v4.0.103, v4.7.0)');
     assert.ok(button.includes("'pointer-events', 'auto'") && controller.includes("'pointer-events', 'auto'"),
         'message rows must accept clicks again (v4.0.104)');
 
@@ -3314,6 +3314,47 @@ test('v4.4: importFiles drives Start/Collect/Finalize and validates the path', a
         'the transfer must be started and finalized');
 });
 
+// v4.7.0 — export d'une PJ recue vers une autre app (Content Hub)
+test('v4.7.0: Charge uses a GVariant array of variants, not a plain string array', async () => {
+    const {gvariantStringArray} = await import('../src/content-hub.mjs');
+    assert.strictEqual(gvariantStringArray('file:///tmp/a.pdf'), '[<"file:///tmp/a.pdf">]');
+    assert.strictEqual(
+        gvariantStringArray(['file:///tmp/a b.pdf', 'file:///tmp/c.pdf']),
+        '[<"file:///tmp/a b.pdf">, <"file:///tmp/c.pdf">]');
+});
+
+test('v4.7.0: exportFile drives destination/Charge/Start and leaves the transfer alive', async () => {
+    const {ContentHubBridge, gvariantStringArray} = await import('../src/content-hub.mjs');
+    const calls = [];
+    const run = async (args) => {
+        const method = args[args.indexOf('--print-reply') + 2];
+        calls.push(method);
+        if (method.endsWith('KnownDestinationsForType')) {
+            return "([<('filemanager.ubports_filemanager_1.1.4', 'Fichiers')>], '')";
+        }
+        if (method.endsWith('CreateExportToPeer')) return "(objectpath '/transfers/x/export/1',)";
+        return '()';
+    };
+    const gvCalls = [];
+    const gvRun = async (args) => {
+        gvCalls.push(args);
+        return '()';
+    };
+    const bridge = new ContentHubBridge({
+        run, gvRun,
+        appId: 'utoutlook.mathias_utoutlook_4.7.0',
+    });
+    const result = await bridge.exportFile('/home/phablet/.config/utoutlook.mathias/outgoing/a.pdf');
+    assert.deepStrictEqual(result, {ok: true});
+    assert.ok(calls.some(c => c.endsWith('.CreateExportToPeer')), 'an export transfer must be created');
+    assert.ok(calls.some(c => c.endsWith('.Start')), 'the export must be started');
+    assert.ok(!calls.some(c => c.endsWith('.Finalize')),
+        'do not finalize before the user picked a destination');
+    assert.strictEqual(gvCalls.length, 1, 'Charge must go through gdbus');
+    assert.ok(gvCalls[0].includes(gvariantStringArray(
+        ['file:///home/phablet/.config/utoutlook.mathias/outgoing/a.pdf'])));
+});
+
 // ============================================================
 // v4.3.7 — ecran hors-ligne natif (pas de QML separe)
 // ============================================================
@@ -3412,20 +3453,23 @@ test('v4.5.1: attach/get-diagnostics are not removed by another controller destr
         'global removeHandler must not kill the active controller handler (v4.5.1)');
 });
 
-test('v4.5.0: the bar stays at the top for the whole compose window', async () => {
+test('v4.7.0: a single floating button opens a menu instead of covering Outlook menus', async () => {
     const fs = await import('node:fs');
     const path = await import('node:path');
     const {fileURLToPath} = await import('node:url');
     const here = path.dirname(fileURLToPath(import.meta.url));
     const btn = fs.readFileSync(path.join(here, '../public/reload-button.js'), 'utf-8');
 
-    assert.ok(btn.includes('const COMPOSE_SEL') &&
-              btn.includes("bar.style.top = '12px'") &&
-              btn.includes("bar.style.bottom = 'auto'"),
-        'the bar must move to the top while a compose window exists (v4.5.0)');
-    assert.ok(btn.includes('setInterval') && btn.includes('composing && !barTop') &&
-              !btn.includes("document.addEventListener('focusout'"),
-        'the bar must not drop back on focus loss when tapping attach (v4.5.0)');
+    assert.ok(btn.includes('const COMPOSE_SEL') && btn.includes('composeFileInput()'),
+        'the compose marker must still drive attach-button visibility (v4.4.8)');
+    assert.ok(btn.includes('FAB_ID') && btn.includes('PANEL_ID') &&
+              btn.includes('toggleMenu') && btn.includes('closeMenu'),
+        'one compact button must toggle a mini-menu of actions (v4.7.0)');
+    assert.ok(!btn.includes("bar.style.top = '12px'") &&
+              !btn.includes('tryDock') && !btn.includes('fui-TabList'),
+        'the action UI must no longer dock into the Outlook ribbon (v4.7.0)');
+    assert.ok(btn.includes('keyboardOverlap()') && btn.includes('bar.style.bottom'),
+        'the floating button must stay above the virtual keyboard (v4.4.7)');
 });
 
 // ============================================================

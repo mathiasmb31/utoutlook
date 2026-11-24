@@ -94,6 +94,17 @@ export function parseCollectedUrls(text) {
     return [...text.matchAll(/file:\/\/[^\s'"\),]+/g)].map(m => m[0]);
 }
 
+/**
+ * v4.7.0: argument `av` de Charge() en notation GVariant.
+ * Chaque URL est un variant entourant une chaine — `[<"file://…">]`.
+ * JSON.stringify fournit les echappements (", \, Unicode) attendus par
+ * GVariant pour une chaine entre guillemets doubles.
+ */
+export function gvariantStringArray(items) {
+    const list = (Array.isArray(items) ? items : [items]).filter(Boolean);
+    return '[' + list.map((u) => `<${JSON.stringify(String(u))}>`).join(', ') + ']';
+}
+
 /** Extrait le chemin d'objet retourné par CreateImportFromPeer. */
 export function parseObjectPath(text) {
     // dbus-send : `object path "/..."` ; gdbus : `objectpath '/...'`
@@ -113,9 +124,21 @@ function defaultRun(args) {
     });
 }
 
+// v4.7.0: Charge() prend un `av` que dbus-send sait passer en argument
+// mais pas construire — gdbus, lui, comprend la notation GVariant. Verifie
+// sous le profil AppArmor du click (gdbus embarque dans bin/).
+function defaultGvRun(args) {
+    return new Promise((resolve, reject) => {
+        const bin = path.join(process.env.WD || '', 'bin', 'gdbus');
+        execFile(bin, args, {timeout: 8000, maxBuffer: 8 * 1024 * 1024},
+            (err, stdout) => err ? reject(err) : resolve(String(stdout)));
+    });
+}
+
 export class ContentHubBridge {
     constructor({
         run = defaultRun,
+        gvRun = defaultGvRun,
         appId,
         typeId = 'documents',
         timeout = TRANSFER_TIMEOUT_MS,
@@ -128,6 +151,7 @@ export class ContentHubBridge {
         incomingDir = INCOMING_DIR,
     } = {}) {
         this.run = run;
+        this.gvRun = gvRun;
         this.validate = validate;
         this.debug = debug;
         this.stage = stage;
@@ -150,6 +174,52 @@ export class ContentHubBridge {
             `${iface}.${method}`,
             ...args.map((a) => `string:${a}`),
         ]);
+    }
+
+    /** v4.7.0: appel de methode avec des arguments GVariant (gdbus). */
+    callGv(method, gvArgs = [], objectPath = '/', iface = CONTENT_HUB_SERVICE) {
+        return this.gvRun([
+            'call', '--session',
+            `--dest=${CONTENT_HUB_SERVICE}`,
+            `--object-path=${objectPath}`,
+            `--method=${iface}.${method}`,
+            ...gvArgs,
+        ]);
+    }
+
+    /** v4.7.0: destination d'export : le gestionnaire de fichiers si present. */
+    async pickDestination() {
+        const peers = parsePeers(await this.call('KnownDestinationsForType', [this.typeId]));
+        if (!peers.length) return null;
+        return peers.find((p) => /filemanager/i.test(p.id)) || peers[0];
+    }
+
+    /**
+     * v4.7.0: partager un fichier local vers une autre app via Content Hub.
+     * On ne finalize pas : le transfert doit rester vivant le temps que
+     * l'utilisateur choisisse la destination dans le selecteur du service.
+     */
+    async exportFile(filePath) {
+        const mark = (s) => { if (this.stage) this.stage(s); };
+        const peer = await this.pickDestination();
+        if (!peer) return {ok: false, error: 'no-destination'};
+        mark(`destination=${peer.id}`);
+        const obj = parseObjectPath(await this.call('CreateExportToPeer',
+            [peer.id, this.appId, this.typeId]));
+        if (!obj) return {ok: false, error: 'no-transfer'};
+        mark('transfer-created');
+        try {
+            const url = 'file://' + encodeURI(filePath);
+            await this.callGv('Charge', [gvariantStringArray([url])], obj, TRANSFER_INTERFACE);
+            mark('charged');
+            await this.call('Start', [], obj, TRANSFER_INTERFACE);
+            mark('started');
+            return {ok: true};
+        } catch (e) {
+            mark(`export-failed:${e.code || e.message}`);
+            try { await this.call('Abort', [], obj, TRANSFER_INTERFACE); } catch (_) {}
+            return {ok: false, error: e.code || e.message};
+        }
     }
 
     /** Choisit une source : le gestionnaire de fichiers si présent, sinon la 1re. */
