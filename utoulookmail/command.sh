@@ -468,6 +468,17 @@ source "${WD}/utils/common.sh"
 # externes (date, tee, process substitution /dev/fd) sont bloqués par AppArmor.
 _WRAPPER_LOG="${UTOUTLOOK_CONFIG_DIR}/wrapper.log"
 mkdir -p "${UTOUTLOOK_CONFIG_DIR}" 2>/dev/null || true
+
+# v4.5.3: le Content Hub peut relancer le click avec le fichier recu en
+# argument. On le conserve dans un fichier local (jamais loggue : chemin =
+# donnee personnelle) pour que le renderer puisse le recuperer via IPC.
+if [ "$#" -gt 0 ]; then
+    printf '%s\n' "Content Hub: $# fichier(s) recu(s) en argument" >> "${_WRAPPER_LOG}"
+    : > "${UTOUTLOOK_CONFIG_DIR}/pending-attach"
+    for _arg in "$@"; do
+        printf '%s\n' "${_arg}" >> "${UTOUTLOOK_CONFIG_DIR}/pending-attach"
+    done
+fi
 printf '=== wrapper start pid=%s sec=%s ===\n' "$$" "${EPOCHSECONDS:-0}" >> "$_WRAPPER_LOG"
 exec >> "$_WRAPPER_LOG" 2>&1
 

@@ -3336,6 +3336,21 @@ test('v4.3.7: offline screen is native Electron and survives a hidden window', a
 // v4.4.9 — barre hors du clavier pendant la composition
 // ============================================================
 
+test('v4.5.3: the click declares both source and destination to Content Hub', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const hub = JSON.parse(fs.readFileSync(path.join(here, '../../content-hub.json'), 'utf-8'));
+    const cmd = fs.readFileSync(path.join(here, '../../command.sh'), 'utf-8');
+
+    assert.ok(Array.isArray(hub.source) && hub.source.length > 0 &&
+              Array.isArray(hub.destination) && hub.destination.length > 0,
+        'UToutlook must be declared as both source and destination (v4.5.3)');
+    assert.ok(cmd.includes('pending-attach'),
+        'arguments passed by Content Hub must be saved for the renderer (v4.5.3)');
+});
+
 test('v4.5.2: attach-from-hub validates the renderer origin, not the controller map', async () => {
     const fs = await import('node:fs');
     const path = await import('node:path');
