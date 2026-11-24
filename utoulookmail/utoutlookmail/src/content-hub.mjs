@@ -132,8 +132,8 @@ export class ContentHubBridge {
     call(method, args = [], objectPath = '/', iface = CONTENT_HUB_SERVICE) {
         return this.run([
             '--session',
-            '--dest', CONTENT_HUB_SERVICE,
-            '--type', 'method_call',
+            `--dest=${CONTENT_HUB_SERVICE}`,
+            '--type=method_call',
             '--print-reply',
             objectPath,
             `${iface}.${method}`,

@@ -3280,7 +3280,10 @@ test('v4.4: importFiles drives Start/Collect/Finalize and validates the path', a
     const {ContentHubBridge} = await import('../src/content-hub.mjs');
     const calls = [];
     const run = async (args) => {
-        // v4.5.5: dbus-send place la methode apres le chemin d'objet
+        // v4.5.6: dbus-send exige --dest=NAME / --type=TYPE (forme avec '=')
+        assert.ok(args.includes(`--dest=com.lomiri.content.dbus.Service`) &&
+                  args.includes('--type=method_call'),
+            'dbus-send arguments must use the --opt=value form (v4.5.6)');
         const method = args[args.indexOf('--print-reply') + 2];
         calls.push(method);
         if (method.endsWith('KnownSourcesForType')) {
