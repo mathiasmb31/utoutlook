@@ -121,9 +121,11 @@ export class ContentHubBridge {
         sleep = (ms) => new Promise(r => setTimeout(r, ms)),
         now = () => Date.now(),
         validate = validateTransferPath,
+        debug = null,
     } = {}) {
         this.run = run;
         this.validate = validate;
+        this.debug = debug;
         this.appId = appId;
         this.typeId = typeId;
         this.timeout = timeout;
@@ -161,11 +163,13 @@ export class ContentHubBridge {
             await this.call('Start', [], obj, TRANSFER_INTERFACE);
             const deadline = this.now() + this.timeout;
             let lastError = '';
+            let lastRaw = '';
             while (this.now() < deadline) {
                 await this.sleep(200);
                 let collected = '';
                 try {
                     collected = await this.call('Collect', [], obj, TRANSFER_INTERFACE);
+                    lastRaw = String(collected);
                 } catch (e) { lastError = e.message || 'collect-failed'; }
                 const paths = parseCollectedUrls(collected)
                     .map(normalizeContentUrl)
@@ -173,6 +177,9 @@ export class ContentHubBridge {
                     .filter(r => r.ok)
                     .map(r => r.path);
                 if (paths.length) return {paths};
+            }
+            if (this.debug) {
+                this.debug(`Collect brut (masqué) : ${lastRaw.replace(/file:\/\/[^\s"')]+/g, 'file://…').slice(0, 260)}`);
             }
             return {paths: [], error: lastError || 'timeout'};
         } finally {

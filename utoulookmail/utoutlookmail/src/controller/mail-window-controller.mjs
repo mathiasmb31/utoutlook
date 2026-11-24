@@ -2181,7 +2181,10 @@ class MailWindowController {
             const owner = MailWindowController.byWebContents.get(event.sender);
             const win = (owner && owner.win) || this.win;
             const appId = `utoutlook.mathias_utoutlook_${app.getVersion()}`;
-            const bridge = new ContentHubBridge({appId});
+            const bridge = new ContentHubBridge({
+                appId,
+                debug: (msg) => logger.warn(`v4.5.8: ${msg}`),
+            });
             try {
                 const result = await bridge.importFiles();
                 if (!result.paths.length) {
