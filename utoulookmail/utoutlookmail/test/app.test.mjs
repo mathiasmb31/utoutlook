@@ -3274,6 +3274,8 @@ test('v4.4: Content Hub D-Bus replies are parsed without a QML picker', async ()
         ['file:///home/phablet/Downloads/a.pdf']);
     assert.ok(DEFAULT_ALLOWED_ROOTS.some(r => r.endsWith('/.cache/utoutlook.mathias/HubIncoming')),
         'files really received via Content Hub land in the app cache (v4.4.2, path from config.mjs)');
+    assert.ok(DEFAULT_ALLOWED_ROOTS.some(r => r.endsWith('/.config/utoutlook.mathias/incoming')),
+        'durable copy of received attachments must be whitelisted (v4.6.2)');
     assert.ok(!DEFAULT_ALLOWED_ROOTS.some(r => r.startsWith('/home/phablet/')) ||
               process.env.HOME === '/home/phablet',
         'no hardcoded /home/phablet outside the device (v4.4.2)');
@@ -3303,10 +3305,11 @@ test('v4.4: importFiles drives Start/Collect/Finalize and validates the path', a
         sleep: async () => {},
         now: (() => { let n = 0; return () => (n += 100); })(),
         validate: (raw) => ({ok: true, path: raw}),
+        fsApi: {mkdirSync: () => {}, copyFileSync: () => {}},
+        incomingDir: '/incoming',
     });
     const result = await bridge.importFiles();
-    assert.deepStrictEqual(result,
-        {paths: ['/home/phablet/.cache/utoutlook.mathias/HubIncoming/1/plan.pdf']});
+    assert.deepStrictEqual(result, {paths: ['/incoming/plan.pdf']});
     assert.ok(calls.some(c => c.endsWith('.Start')) && calls.some(c => c.endsWith('.Finalize')),
         'the transfer must be started and finalized');
 });

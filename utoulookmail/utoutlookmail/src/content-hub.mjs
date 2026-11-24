@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {execFile} from 'node:child_process';
-import {PHABLET_HOME, CACHE_DIR} from './config.mjs';
+import {PHABLET_HOME, CACHE_DIR, CONFIG_DIR, INCOMING_DIR} from './config.mjs';
 
 // v4.4 — pont Content Hub reel : le click declare content-hub.json et on parle
 // au service D-Bus directement (aucun QML visible, regle §2.14). Ce module
@@ -20,6 +20,7 @@ export const DEFAULT_ALLOWED_ROOTS = [
     path.join(PHABLET_HOME, 'Videos'),
     // Store() du service renvoie par defaut ce dossier DANS LE CACHE du click.
     path.join(CACHE_DIR, 'HubIncoming'),
+    INCOMING_DIR,
 ];
 
 export function normalizeContentUrl(raw) {
@@ -123,11 +124,15 @@ export class ContentHubBridge {
         validate = validateTransferPath,
         debug = null,
         stage = null,
+        fsApi = fs,
+        incomingDir = INCOMING_DIR,
     } = {}) {
         this.run = run;
         this.validate = validate;
         this.debug = debug;
         this.stage = stage;
+        this.fsApi = fsApi;
+        this.incomingDir = incomingDir;
         this.appId = appId;
         this.typeId = typeId;
         this.timeout = timeout;
@@ -196,7 +201,24 @@ export class ContentHubBridge {
                     .map(this.validate)
                     .filter(r => r.ok)
                     .map(r => r.path);
-                if (paths.length) { mark(`collected=${paths.length}`); return {paths}; }
+                if (paths.length) {
+                    mark(`collected=${paths.length}`);
+                    // Copier avant Finalize() : le service purge son cache au finalize.
+                    const saved = [];
+                    try {
+                        this.fsApi.mkdirSync(this.incomingDir, {recursive: true});
+                        for (const p of paths) {
+                            const dest = path.join(this.incomingDir, path.basename(p));
+                            this.fsApi.copyFileSync(p, dest);
+                            saved.push(dest);
+                        }
+                        mark(`saved=${saved.length}`);
+                    } catch (e) {
+                        mark(`copy-failed:${e.code || e.message}`);
+                        return {paths: [], error: 'copy-failed'};
+                    }
+                    return {paths: saved};
+                }
             }
             if (this.debug) {
                 this.debug(`Collect brut (masqué) : ${lastRaw.replace(/file:\/\/[^\s"')]+/g, 'file://…').slice(0, 260)}`);
