@@ -3331,6 +3331,26 @@ test('v4.3.7: offline screen is native Electron and survives a hidden window', a
 });
 
 // ============================================================
+// v4.4.7 — barre au-dessus du clavier virtuel
+// ============================================================
+
+test('v4.4.7: action bar and overlays move above the on-screen keyboard', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const btn = fs.readFileSync(path.join(here, '../public/reload-button.js'), 'utf-8');
+    const sheet = fs.readFileSync(path.join(here, '../public/settings-sheet.js'), 'utf-8');
+
+    assert.ok(btn.includes('const keyboardOverlap') &&
+              btn.includes("bar.style.bottom = (12 + keyboardOverlap()) + 'px'") &&
+              btn.includes("visualViewport?.addEventListener('resize'"),
+        'the bar must be repositioned when the OSK resizes the viewport (v4.4.7)');
+    assert.ok(sheet.includes('document.activeElement.blur') && sheet.includes('panel.style.bottom = overlap'),
+        'settings sheet must dismiss the keyboard and stay above it (v4.4.7)');
+});
+
+// ============================================================
 // v4.4.6 — retours UI des reglages
 // ============================================================
 

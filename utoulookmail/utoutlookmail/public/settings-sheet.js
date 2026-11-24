@@ -23,7 +23,8 @@
         const box = document.createElement('div');
         box.id = '__utSettingsToast';
         box.setAttribute('role', 'status');
-        box.style.cssText = 'position:fixed;left:50%;bottom:96px;transform:translateX(-50%);' +
+        const overlap = Math.max(0, window.innerHeight - ((window.visualViewport?.height || window.innerHeight) + (window.visualViewport?.offsetTop || 0)));
+        box.style.cssText = 'position:fixed;left:50%;bottom:' + (96 + overlap) + 'px;transform:translateX(-50%);' +
             'max-width:calc(100vw - 32px);padding:11px 16px;border-radius:12px;' +
             'background:rgba(15,15,26,.95);color:#fff;border:1px solid #E95420;' +
             'font:14px/1.25 sans-serif;text-align:center;z-index:2147483647;' +
@@ -159,6 +160,12 @@
 
     window.__utoutlookOpenSettings = async () => {
         if (!panel) build();
+        // Fermer le clavier avant d'ouvrir la feuille, sinon elle passe dessous.
+        try {
+            if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+        } catch (_) {}
+        const overlap = Math.max(0, window.innerHeight - ((window.visualViewport?.height || window.innerHeight) + (window.visualViewport?.offsetTop || 0)));
+        panel.style.bottom = overlap + 'px';
         panel.style.display = 'flex';
         try {
             markActive(await window.electronAPI.getRenderMode());

@@ -75,6 +75,24 @@
     const composeFileInput = () => Array.from(document.querySelectorAll('input[type=file]'))
         .some((el) => el.getClientRects().length > 0);
 
+    // v4.4.7: avec le clavier virtuel ouvert, un element fixed en bas du layout
+    // viewport passe SOUS le clavier. On decale la barre de la hauteur reellement
+    // masquee (visualViewport) — sans toucher au reste de la page.
+    const keyboardOverlap = () => {
+        const vv = window.visualViewport;
+        if (!vv) return 0;
+        return Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
+    };
+    if (!window.__utoutlookBarViewportBound) {
+        window.__utoutlookBarViewportBound = true;
+        const repositionBar = () => {
+            const bar = document.getElementById(BAR_ID);
+            if (bar) bar.style.bottom = (12 + keyboardOverlap()) + 'px';
+        };
+        window.visualViewport?.addEventListener('resize', repositionBar);
+        window.visualViewport?.addEventListener('scroll', repositionBar);
+    }
+
     const fire = (kind) => {
         const now = Date.now();
         if (now - lastTrigger[kind] < 800) return; // anti-double (capture + bouton)
