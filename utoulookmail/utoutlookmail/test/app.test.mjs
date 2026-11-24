@@ -3331,6 +3331,26 @@ test('v4.3.7: offline screen is native Electron and survives a hidden window', a
 });
 
 // ============================================================
+// v4.4.8 — cible d'injection PJ = menu « Fichier » d'Outlook
+// ============================================================
+
+test('v4.4.8: attach targets the hidden Outlook file input used by the File menu', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const btn = fs.readFileSync(path.join(here, '../public/reload-button.js'), 'utf-8');
+    const ctl = fs.readFileSync(path.join(here, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+
+    assert.ok(btn.includes('owaMailComposeEditorScrollContainer') &&
+              btn.includes('docking_InitVisiblePart_'),
+        'compose detection must use the editor container, not a visible file input (v4.4.8)');
+    assert.ok(ctl.includes('local-computer-filein') &&
+              ctl.includes("getOwnPropertyDescriptor(HTMLInputElement.prototype, 'files').set"),
+        'injection must target Outlook file input and use the native setter (v4.4.8)');
+});
+
+// ============================================================
 // v4.4.7 — barre au-dessus du clavier virtuel
 // ============================================================
 

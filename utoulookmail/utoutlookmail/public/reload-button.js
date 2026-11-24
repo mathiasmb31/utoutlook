@@ -69,11 +69,11 @@
         return Array.from(rows).some((r) => r.getBoundingClientRect().height > 0);
     };
 
-    // v4.4.6: « Joindre » n'a de sens que dans une composition. Outlook Web
-    // n'expose pas toujours ses champs de fichier de la meme facon — on exige
-    // un input[type=file] reellement render (pas un simple noeud cache).
-    const composeFileInput = () => Array.from(document.querySelectorAll('input[type=file]'))
-        .some((el) => el.getClientRects().length > 0);
+    // v4.4.8: les inputs de fichier d'Outlook sont TOUJOURS caches (height 0).
+    // Le marqueur fiable d'une composition est le conteneur de l'editeur.
+    const composeFileInput = () => !!document.querySelector(
+        '[class*="owaMailComposeEditorScrollContainer"], [id^="docking_InitVisiblePart_"]'
+    );
 
     // v4.4.7: avec le clavier virtuel ouvert, un element fixed en bas du layout
     // viewport passe SOUS le clavier. On decale la barre de la hauteur reellement

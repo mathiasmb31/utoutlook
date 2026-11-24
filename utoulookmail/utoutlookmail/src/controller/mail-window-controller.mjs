@@ -89,17 +89,27 @@ async function attachFilesToComposer(win, filePaths) {
     }
     if (!payload.length || !win || win.isDestroyed()) return 0;
     const encoded = JSON.stringify(payload);
+    // v4.4.8: viser le MEME input que le menu « Fichier » d'Outlook
+    // (data-testid local-computer-filein), dans la composition visible, et
+    // passer par le setter natif pour que React voir le changement de files.
     const script = `(async () => {
       const items = ${encoded};
-      const inputs = Array.from(document.querySelectorAll('input[type=file]'));
+      const compose = document.querySelector('[class*="owaMailComposeEditorScrollContainer"], [id^="docking_InitVisiblePart_"]');
+      if (!compose) return 0;
+      let inputs = Array.from(compose.querySelectorAll('input[type=file][data-testid="local-computer-filein"]'));
+      if (!inputs.length) {
+        inputs = Array.from(document.querySelectorAll('input[type=file][data-testid="local-computer-filein"]'));
+      }
       if (!inputs.length) return 0;
-      const input = inputs.find(i => i.multiple) || inputs[0];
+      const free = inputs.find(i => !i.accept || i.accept === '*/*');
+      const input = free || inputs[0];
       const dt = new DataTransfer();
       for (const item of items) {
         const blob = await (await fetch('data:application/octet-stream;base64,' + item.data)).blob();
         dt.items.add(new File([blob], item.name, {type: item.type}));
       }
-      input.files = dt.files;
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'files').set;
+      setter.call(input, dt.files);
       input.dispatchEvent(new Event('change', {bubbles: true}));
       return 1;
     })()`;
