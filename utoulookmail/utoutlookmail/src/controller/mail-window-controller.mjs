@@ -3494,6 +3494,7 @@ class MailWindowController {
             settingsRenderSoftware: tr['settings.renderSoftware'],
             settingsRenderHardware: tr['settings.renderHardware'],
             commonClose: tr['common.close'],
+            commonUnavailable: tr['common.unavailable'],
         });
         this.win.webContents.executeJavaScript(
             `window.__utoutlookI18n = Object.assign(window.__utoutlookI18n||{}, ${i18nJson});\n` +

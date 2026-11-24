@@ -58,6 +58,19 @@
 
     const close = () => { if (panel) panel.style.display = 'none'; };
 
+    // v4.4.6: la selection doit changer AU MOMENT DU CLIC — le mode reel ne
+    // s'applique qu'au prochain lancement, mais le choix persiste, donc on
+    // doit montrer immédiatement celui qui est enregistre.
+    const markActive = (mode) => {
+        if (!panel) return;
+        panel.querySelectorAll('button[data-mode]').forEach((b) => {
+            const active = b.dataset.mode === mode;
+            b.style.borderColor = active ? '#E95420' : 'rgba(233,84,32,.35)';
+            b.style.background = active ? 'rgba(233,84,32,.22)' : 'rgba(15,15,26,.85)';
+            b.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+    };
+
     const build = () => {
         panel = document.createElement('div');
         panel.id = 'utoutlook-settings';
@@ -93,6 +106,7 @@
             const b = row(tr(key, fallback), async () => {
                 try {
                     await window.electronAPI.setRenderMode(mode);
+                    markActive(mode);
                     toast(tr('relaunchNotice', 'Please relaunch UToutlook Mail'));
                 } catch (e) { toast(String(e.message || e)); }
             });
@@ -112,8 +126,10 @@
         const reset = row(tr('actionFirstInstall', 'First install'), async () => {
             if (!armedReset) {
                 armedReset = true;
-                reset.textContent = tr('actionFirstInstallConfirm', 'Wipe everything?');
+                const confirmText = tr('actionFirstInstallConfirm', 'Wipe everything?');
+                reset.textContent = confirmText;
                 reset.style.background = '#E95420';
+                toast(confirmText);
                 armTimer = setTimeout(() => {
                     armedReset = false;
                     reset.textContent = tr('actionFirstInstall', 'First install');
@@ -123,6 +139,10 @@
             }
             clearTimeout(armTimer);
             armedReset = false;
+            if (!window.electronAPI || typeof window.electronAPI.firstInstall !== 'function') {
+                toast(tr('commonUnavailable', 'Action unavailable'));
+                return;
+            }
             try { await window.electronAPI.firstInstall(); } catch (e) { toast(String(e.message || e)); }
         }, 'border-color:#E95420;');
         card.appendChild(reset);
@@ -141,12 +161,7 @@
         if (!panel) build();
         panel.style.display = 'flex';
         try {
-            const mode = await window.electronAPI.getRenderMode();
-            panel.querySelectorAll('button[data-mode]').forEach((b) => {
-                const active = b.dataset.mode === mode;
-                b.style.borderColor = active ? '#E95420' : 'rgba(233,84,32,.35)';
-                b.style.background = active ? 'rgba(233,84,32,.22)' : 'rgba(15,15,26,.85)';
-            });
+            markActive(await window.electronAPI.getRenderMode());
         } catch (_) { /* mode inconnu : on laisse l'etat neutre */ }
     };
 })();

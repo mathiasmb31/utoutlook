@@ -181,6 +181,11 @@ const T = {
         it: 'Chiudi', pt: 'Fechar', zh: '关闭', ar: 'إغلاق',
         ca: 'Tanca', eu: 'Itxi',
     },
+    'common.unavailable': {
+        fr: 'Action indisponible', en: 'Action unavailable', es: 'Acción no disponible', de: 'Aktion nicht verfügbar',
+        it: 'Azione non disponibile', pt: 'Ação indisponível', zh: '操作不可用', ar: 'إجراء غير متاح',
+        ca: 'Acció no disponible', eu: 'Ekintza erabilgarri ez dago',
+    },
     // v4.0.127: override du rendu logiciel (bouton page de login)
     'render.enable': {
         fr: 'Activer le rendu logiciel', en: 'Enable software rendering',

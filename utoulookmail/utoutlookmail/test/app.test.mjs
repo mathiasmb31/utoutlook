@@ -3331,6 +3331,28 @@ test('v4.3.7: offline screen is native Electron and survives a hidden window', a
 });
 
 // ============================================================
+// v4.4.6 — retours UI des reglages
+// ============================================================
+
+test('v4.4.6: render selection updates immediately and attach is compose-only', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const sheet = fs.readFileSync(path.join(here, '../public/settings-sheet.js'), 'utf-8');
+    const btn = fs.readFileSync(path.join(here, '../public/reload-button.js'), 'utf-8');
+
+    assert.ok(sheet.includes('const markActive') && sheet.includes('markActive(mode)') &&
+              sheet.includes('aria-pressed'),
+        'selected render mode must change visually on click (v4.4.6)');
+    assert.ok(sheet.includes('toast(confirmText)') && sheet.includes('commonUnavailable'),
+        'first-install confirmation must be visible (v4.4.6)');
+    assert.ok(btn.includes('const composeFileInput') &&
+              btn.includes("attachEl.style.display = composeFileInput() ? '' : 'none'"),
+        'attach button must only appear when a compose file input exists (v4.4.6)');
+});
+
+// ============================================================
 // v4.4.1 — durcissement confidentialite
 // ============================================================
 

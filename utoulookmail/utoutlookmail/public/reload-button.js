@@ -69,6 +69,12 @@
         return Array.from(rows).some((r) => r.getBoundingClientRect().height > 0);
     };
 
+    // v4.4.6: « Joindre » n'a de sens que dans une composition. Outlook Web
+    // n'expose pas toujours ses champs de fichier de la meme facon — on exige
+    // un input[type=file] reellement render (pas un simple noeud cache).
+    const composeFileInput = () => Array.from(document.querySelectorAll('input[type=file]'))
+        .some((el) => el.getClientRects().length > 0);
+
     const fire = (kind) => {
         const now = Date.now();
         if (now - lastTrigger[kind] < 800) return; // anti-double (capture + bouton)
@@ -209,6 +215,14 @@
                 }
             });
             bar.appendChild(attachBtn);
+        }
+        const attachEl = document.getElementById(ATTACH_ID);
+        if (attachEl) attachEl.style.display = composeFileInput() ? '' : 'none';
+        if (!window.__utoutlookAttachPoll) {
+            window.__utoutlookAttachPoll = setInterval(() => {
+                const b = document.getElementById(ATTACH_ID);
+                if (b) b.style.display = composeFileInput() ? '' : 'none';
+            }, 1000);
         }
 
         // v4.1.3: badge UBtouch — décoratif, aucune action, inséré avant les
