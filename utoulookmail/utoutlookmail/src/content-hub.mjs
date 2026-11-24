@@ -95,7 +95,9 @@ export function parseCollectedUrls(text) {
 
 /** Extrait le chemin d'objet retourné par CreateImportFromPeer. */
 export function parseObjectPath(text) {
-    const m = typeof text === 'string' && text.match(/objectpath\s+["']([^"']+)["']/);
+    // dbus-send : `object path "/..."` ; gdbus : `objectpath '/...'`
+    const m = typeof text === 'string' &&
+        text.match(/(?:objectpath|object\s+path)\s+["']([^"']+)["']/);
     return m ? m[1] : null;
 }
 

@@ -3267,6 +3267,9 @@ test('v4.4: Content Hub D-Bus replies are parsed without a QML picker', async ()
     assert.deepStrictEqual(dbusSendPeers, [{id: 'filemanager.ubports_filemanager_1.1.4', name: 'Fichiers'}]);
     assert.strictEqual(parseObjectPath('   objectpath "/transfers/utoutlook/import/1"\n'),
         '/transfers/utoutlook/import/1');
+    // dbus-send --print-reply : deux mots, « object path »
+    assert.strictEqual(parseObjectPath('   object path "/transfers/utoutlook/import/2"\n'),
+        '/transfers/utoutlook/import/2');
     assert.deepStrictEqual(parseCollectedUrls('      string "file:///home/phablet/Downloads/a.pdf"\n'),
         ['file:///home/phablet/Downloads/a.pdf']);
     assert.ok(DEFAULT_ALLOWED_ROOTS.some(r => r.endsWith('/.cache/utoutlook.mathias/HubIncoming')),
