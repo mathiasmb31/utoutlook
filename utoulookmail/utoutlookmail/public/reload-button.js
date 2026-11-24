@@ -126,10 +126,37 @@
         window.__utoutlookBarViewportBound = true;
         const repositionBar = () => {
             const bar = document.getElementById(BAR_ID);
-            if (bar) bar.style.bottom = (12 + keyboardOverlap()) + 'px';
+            if (bar && bar.style.top === '') {
+                bar.style.bottom = (12 + keyboardOverlap()) + 'px';
+            }
         };
         window.visualViewport?.addEventListener('resize', repositionBar);
         window.visualViewport?.addEventListener('scroll', repositionBar);
+    }
+
+    // v4.7.1: sous Lomiri le clavier virtuel recouvre le bas SANS que
+    // visualViewport bouge. Pendant TOUTE la composition on monte donc la
+    // pastille en haut a droite (comportement éprouvé du 4.5.0), et le
+    // mini-menu s'ouvre alors vers le bas via column-reverse.
+    if (!window.__utoutlookComposeBarPoll) {
+        window.__utoutlookComposeBarPoll = true;
+        let barTop = false;
+        setInterval(() => {
+            const bar = document.getElementById(BAR_ID);
+            if (!bar) return;
+            const composing = composeFileInput();
+            if (composing && !barTop) {
+                bar.style.top = '12px';
+                bar.style.bottom = 'auto';
+                bar.style.flexDirection = 'column-reverse';
+                barTop = true;
+            } else if (!composing && barTop) {
+                bar.style.top = '';
+                bar.style.bottom = (12 + keyboardOverlap()) + 'px';
+                bar.style.flexDirection = 'column';
+                barTop = false;
+            }
+        }, 300);
     }
 
     // v4.6.3: consommer une PJ en attente sans condition de composition —

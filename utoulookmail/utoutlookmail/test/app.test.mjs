@@ -3465,8 +3465,10 @@ test('v4.7.0: a single floating button opens a menu instead of covering Outlook 
     assert.ok(btn.includes('FAB_ID') && btn.includes('PANEL_ID') &&
               btn.includes('toggleMenu') && btn.includes('closeMenu'),
         'one compact button must toggle a mini-menu of actions (v4.7.0)');
-    assert.ok(!btn.includes("bar.style.top = '12px'") &&
-              !btn.includes('tryDock') && !btn.includes('fui-TabList'),
+    assert.ok(btn.includes("bar.style.top = '12px'") &&
+              btn.includes("bar.style.flexDirection = 'column-reverse'"),
+        'the button must move to the top while composing so the keyboard cannot hide it (v4.7.1)');
+    assert.ok(!btn.includes('tryDock') && !btn.includes('fui-TabList'),
         'the action UI must no longer dock into the Outlook ribbon (v4.7.0)');
     assert.ok(btn.includes('keyboardOverlap()') && btn.includes('bar.style.bottom'),
         'the floating button must stay above the virtual keyboard (v4.4.7)');
