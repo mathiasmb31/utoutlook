@@ -3336,6 +3336,18 @@ test('v4.3.7: offline screen is native Electron and survives a hidden window', a
 // v4.4.9 — barre hors du clavier pendant la composition
 // ============================================================
 
+test('v4.5.2: attach-from-hub validates the renderer origin, not the controller map', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const ctl = fs.readFileSync(path.join(here, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    const start = ctl.indexOf('ipcMain.handle("attach-from-hub"');
+    const block = ctl.slice(start, start + 1200);
+    assert.ok(block.includes('event.sender.getURL') && block.includes('trusted'),
+        'attach must accept a trusted Outlook origin even if byWebContents lost the sender (v4.5.2)');
+});
+
 test('v4.5.1: attach/get-diagnostics are not removed by another controller destroy', async () => {
     const fs = await import('node:fs');
     const path = await import('node:path');

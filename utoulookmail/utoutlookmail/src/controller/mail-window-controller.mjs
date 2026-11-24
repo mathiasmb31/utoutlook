@@ -2167,8 +2167,14 @@ class MailWindowController {
         // v4.4: joindre un fichier via le Content Hub (Ubuntu Touch).
         ipcMain.removeHandler("attach-from-hub");
         ipcMain.handle("attach-from-hub", async (event) => {
-            if (!MailWindowController.byWebContents.has(event.sender)) {
-                logger.warn('v4.5.1: attach-from-hub refuse un sender non enregistre');
+            // v4.5.2: byWebContents peut ne plus contenir le sender apres une
+            // recreation de fenetre. On valide plutôt l'ORIGINE du renderer —
+            // seules les pages Outlook / locales peuvent demander un transfert.
+            const senderUrl = event.sender.getURL ? event.sender.getURL() : '';
+            const trusted = /^https?:\/\/(?:[^/]+\.)?(?:outlook\.(?:live|office|office365)\.com|outlook\.cloud\.microsoft\.com|live\.com|microsoftonline\.com)/i.test(senderUrl)
+                || /^file:/i.test(senderUrl);
+            if (!trusted) {
+                logger.warn(`v4.5.2: attach-from-hub refuse une origine non approuvée`);
                 return 0;
             }
             const owner = MailWindowController.byWebContents.get(event.sender);
