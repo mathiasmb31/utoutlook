@@ -187,12 +187,11 @@ class MailWindowController {
         this.recreating = false; // v4.1.0 (revue E1)
         // v4.1.0 (revue B8): registre des listeners pour destroy().
         this._listeners = [];
-        // v4.4.2: get-diagnostics et attach-from-hub etaient enregistres mais
-        // jamais retirees — handlers morts apres recreate de fenetre.
-        this._ipcHandleChannels = [
-            'get-render-mode', 'set-render-mode', 'first-install',
-            'get-diagnostics', 'attach-from-hub',
-        ];
+        // v4.5.1: get-diagnostics et attach-from-hub NE sont PAS dans cette
+        // liste — ipcMain.removeHandler est global : un ancien contrôleur
+        // détruit retirait le handler du nouveau et l'invocation échouait
+        // sans aucune trace dans wrapper.log.
+        this._ipcHandleChannels = ['get-render-mode', 'set-render-mode', 'first-install'];
         this.init();
         // Check both command-line flag and settings for initial minimization
         const hasMinimizedFlag = (global.cmdLine || []).indexOf("--minimized") !== -1;
@@ -2168,7 +2167,10 @@ class MailWindowController {
         // v4.4: joindre un fichier via le Content Hub (Ubuntu Touch).
         ipcMain.removeHandler("attach-from-hub");
         ipcMain.handle("attach-from-hub", async (event) => {
-            if (!MailWindowController.byWebContents.has(event.sender)) return 0;
+            if (!MailWindowController.byWebContents.has(event.sender)) {
+                logger.warn('v4.5.1: attach-from-hub refuse un sender non enregistre');
+                return 0;
+            }
             const owner = MailWindowController.byWebContents.get(event.sender);
             const win = (owner && owner.win) || this.win;
             const appId = `utoutlook.mathias_utoutlook_${app.getVersion()}`;

@@ -3165,7 +3165,9 @@ test('v4.3.7: diagnostics IPC is guarded and the button uses i18n labels', async
         'only the trusted mail renderer may request diagnostics');
     assert.ok(ctl.includes('buildDiagnostics({version: app.getVersion()})'),
         'diagnostics must use the whitelisted builder');
-    assert.ok(!/get-diagnostics[\s\S]{0,600}wrapper\.log/.test(ctl),
+    const diagnosticsHandler = ctl.slice(ctl.indexOf('ipcMain.handle("get-diagnostics"'),
+                                          ctl.indexOf('ipcMain.handle("get-diagnostics"') + 900);
+    assert.ok(!diagnosticsHandler.includes('wrapper.log'),
         'raw wrapper.log must never be exported');
     assert.ok(preload.includes('getDiagnostics: () => ipcRenderer.invoke("get-diagnostics")'),
         'preload must expose the diagnostics bridge');
@@ -3333,6 +3335,20 @@ test('v4.3.7: offline screen is native Electron and survives a hidden window', a
 // ============================================================
 // v4.4.9 — barre hors du clavier pendant la composition
 // ============================================================
+
+test('v4.5.1: attach/get-diagnostics are not removed by another controller destroy', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const ctl = fs.readFileSync(path.join(here, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    const start = ctl.indexOf('this._ipcHandleChannels = ');
+    const list = ctl.slice(start, start + 260);
+    assert.ok(list.includes('get-render-mode') && list.includes('first-install'),
+        'legacy handlers still cleaned up');
+    assert.ok(!list.includes('attach-from-hub') && !list.includes('get-diagnostics'),
+        'global removeHandler must not kill the active controller handler (v4.5.1)');
+});
 
 test('v4.5.0: the bar stays at the top for the whole compose window', async () => {
     const fs = await import('node:fs');
