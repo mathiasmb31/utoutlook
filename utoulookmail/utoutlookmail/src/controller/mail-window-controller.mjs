@@ -30,6 +30,7 @@ const __dirnameNew = path.dirname(__filenameNew);
 
 // Zoom levels for mobile (step through with zoomIn/zoomOut)
 const ZOOM_LEVELS = [0.75, 0.85, 1.0, 1.15, 1.3, 1.5];
+let pendingAttachTries = 0;
 
 // v4.4.1 — confidentialite : les URLs de login contiennent des jetons
 // (state, nonce, code_challenge, parfois login_hint). On ne journalise que
@@ -2233,6 +2234,11 @@ class MailWindowController {
             if (added > 0) {
                 logger.info('v4.5.4: PJ du Content Hub ajoutee a la composition');
                 try { fs.unlinkSync(PENDING_ATTACH_FILE); } catch (e) {}
+            } else {
+                pendingAttachTries += 1;
+                if (pendingAttachTries === 1 || pendingAttachTries % 10 === 0) {
+                    logger.warn(`v4.6.3: PJ en attente de composition (essai ${pendingAttachTries})`);
+                }
             }
             return added;
         });
