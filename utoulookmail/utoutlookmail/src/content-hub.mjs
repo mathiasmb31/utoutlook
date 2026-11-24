@@ -95,14 +95,15 @@ export function parseCollectedUrls(text) {
 }
 
 /**
- * v4.7.0: argument `av` de Charge() en notation GVariant.
- * Chaque URL est un variant entourant une chaine — `[<"file://…">]`.
- * JSON.stringify fournit les echappements (", \, Unicode) attendus par
- * GVariant pour une chaine entre guillemets doubles.
+ * v4.7.5: argument `av` de Charge() en notation GVariant.
+ * Chaque item est un VARIANT entourant un STRUCT dont le 1er champ est
+ * l'URL : `[<("file://…",)>]`. Une simple chaine `[<"file://…">]` est
+ * acceptée par le service mais Collect() renvoie alors une URL VIDE
+ * (vérifié sur device 24/11) — le destinataire voit le nom de fichier '.'.
  */
 export function gvariantStringArray(items) {
     const list = (Array.isArray(items) ? items : [items]).filter(Boolean);
-    return '[' + list.map((u) => `<${JSON.stringify(String(u))}>`).join(', ') + ']';
+    return '[' + list.map((u) => `<(${JSON.stringify(String(u))},)>`).join(', ') + ']';
 }
 
 /** Extrait le chemin d'objet retourné par CreateImportFromPeer. */
