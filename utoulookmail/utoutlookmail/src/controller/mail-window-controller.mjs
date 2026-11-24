@@ -95,9 +95,11 @@ async function attachFilesToComposer(win, filePaths) {
     // passer par le setter natif pour que React voir le changement de files.
     const script = `(async () => {
       const items = ${encoded};
+      // v4.6.1: le selecteur du Content Hub peut fermer/masquer la composition
+      // pendant le transfert — ne pas exiger le marqueur au retour. On cherche
+      // d'abord dans la composition, puis dans toute la page.
       const compose = document.querySelector('[class*="owaMailComposeEditorScrollContainer"], [id^="docking_InitVisiblePart_"]');
-      if (!compose) return 0;
-      let inputs = Array.from(compose.querySelectorAll('input[type=file][data-testid="local-computer-filein"]'));
+      let inputs = compose ? Array.from(compose.querySelectorAll('input[type=file][data-testid="local-computer-filein"]')) : [];
       if (!inputs.length) {
         inputs = Array.from(document.querySelectorAll('input[type=file][data-testid="local-computer-filein"]'));
       }
@@ -2195,7 +2197,17 @@ class MailWindowController {
                 }
                 logger.info(`v4.4: ${result.paths.length} fichier(s) recu(s) du Content Hub`);
                 const added = await attachFilesToComposer(win, result.paths);
-                logger.warn(`v4.6.0: injection terminée (${added})`);
+                if (added === 0) {
+                    // v4.6.1: la composition n'etait plus disponible au retour
+                    // du selecteur — on garde le fichier pour le renderer.
+                    try {
+                        fs.writeFileSync(PENDING_ATTACH_FILE, result.paths.join('\n') + '\n');
+                        logger.warn('v4.6.1: PJ conservee pour la composition');
+                    } catch (e) {
+                        logger.warn(`v4.6.1: conservation impossible: ${e.message}`);
+                    }
+                }
+                logger.warn(`v4.6.1: injection terminée (${added})`);
                 return added;
             } catch (e) {
                 logger.warn(`v4.4: echec Content Hub: ${e.message}`);
