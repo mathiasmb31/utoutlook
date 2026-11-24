@@ -3323,6 +3323,24 @@ test('v4.7.0: Charge uses a GVariant array of variants, not a plain string array
         '[<"file:///tmp/a b.pdf">, <"file:///tmp/c.pdf">]');
 });
 
+test('v4.7.2: a completed download triggers Content Hub sharing automatically', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const ctrl = fs.readFileSync(
+        path.join(here, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    const btn = fs.readFileSync(path.join(here, '../public/reload-button.js'), 'utf-8');
+
+    assert.ok(ctrl.includes("state === 'completed'") &&
+              ctrl.includes('this.shareDownloadedFile(dest)'),
+        'finishing a download must open Content Hub directly (v4.7.2)');
+    assert.ok(!btn.includes('SHARE_ID') && !btn.includes('__utoutlookSharePoll'),
+        'the flickering conditional Share button must be gone (v4.7.2)');
+    assert.ok(btn.includes('UT_DBG click-offset') && btn.includes('elementFromPoint'),
+        'click offsets must be measured when the user reproduces the issue (v4.7.2)');
+});
+
 test('v4.7.0: exportFile drives destination/Charge/Start and leaves the transfer alive', async () => {
     const {ContentHubBridge, gvariantStringArray} = await import('../src/content-hub.mjs');
     const calls = [];

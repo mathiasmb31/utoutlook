@@ -421,6 +421,20 @@ class MailWindowController {
     // --- Session persistence: periodic cookie flush ---
 
     /**
+     * v4.7.2: partager un fichier local via Content Hub. Factorise pour etre
+     * appele tanto par l'IPC que des qu'un telechargement se termine.
+     */
+    async shareDownloadedFile(filePath) {
+        const appId = `utoutlook.mathias_utoutlook_${app.getVersion()}`;
+        const bridge = new ContentHubBridge({
+            appId,
+            stage: (s) => logger.warn(`v4.7.2: ${s}`),
+            debug: (m) => logger.warn(`v4.7.2: ${m}`),
+        });
+        return bridge.exportFile(filePath);
+    }
+
+    /**
      * v4.7.0: intercepter les telechargements declenches par Outlook Web
      * (bouton « Telecharger » d'une PJ recue) et les garder dans OUTGOING_DIR.
      * On n'automatise pas le DOM d'Outlook : l'utilisateur télécharge comme
@@ -445,7 +459,13 @@ class MailWindowController {
                 item.once('done', (doneEvent, state) => {
                     if (state === 'completed') {
                         try { fs.writeFileSync(LAST_DOWNLOAD_FILE, dest); } catch (e) {}
-                        logger.info('v4.7.0: PJ telechargee, prete a partager');
+                        logger.info('v4.7.2: PJ telechargee — partage Content Hub lance');
+                        this.shareDownloadedFile(dest).then((res) => {
+                            logger.info(`v4.7.2: partage ${res.ok
+                                ? 'ouvert' : 'echoue (' + res.error + ')'}`);
+                        }).catch((e) => {
+                            logger.warn(`v4.7.2: partage impossible (${e.message})`);
+                        });
                     } else {
                         logger.warn(`v4.7.0: telechargement termine (${state})`);
                     }
@@ -2317,13 +2337,7 @@ class MailWindowController {
             if (!p || !p.startsWith(OUTGOING_DIR + path.sep)) return {ok: false, error: 'no-file'};
             try { if (!fs.statSync(p).isFile()) return {ok: false, error: 'no-file'}; }
             catch (e) { return {ok: false, error: 'no-file'}; }
-            const appId = `utoutlook.mathias_utoutlook_${app.getVersion()}`;
-            const bridge = new ContentHubBridge({
-                appId,
-                stage: (s) => logger.warn(`v4.7.0: ${s}`),
-                debug: (m) => logger.warn(`v4.7.0: ${m}`),
-            });
-            const res = await bridge.exportFile(p);
+            const res = await this.shareDownloadedFile(p);
             logger.info(`v4.7.0: partage ${res.ok ? 'lance' : 'echoue (' + res.error + ')'}`);
             return res;
         });

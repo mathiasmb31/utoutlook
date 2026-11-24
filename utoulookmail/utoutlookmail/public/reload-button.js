@@ -13,7 +13,6 @@
     const UBTOUCH_ID = 'utoutlook-ubtouch-badge';
     const ATTACH_ID = 'utoutlook-attach-btn';
     const SETTINGS_ID = 'utoutlook-settings-btn';
-    const SHARE_ID = 'utoutlook-share-btn';
     const COMPOSE_SEL = '[class*="owaMailComposeEditorScrollContainer"], [id^="docking_InitVisiblePart_"]';
     const ATTACH_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent(
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#E95420" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
@@ -24,12 +23,6 @@
     // les 3 pastilles/arcs blancs), extraite du logo Wikimedia "Ubuntu touch
     // logo 2025 dark.svg" — pas une approximation. Cadrée sur le carré 73x73.
     // En data-URI : pas de fichier aggiuntif, marche sous AppArmor.
-    // v4.7.0: icone « partager » (fleche vers le haut hors d'une boite).
-    const SHARE_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent(
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#E95420" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-        '<path d="M12 16V4m0 0L7 9m5-5 5 5"/><path d="M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/>' +
-        '</svg>'
-    );
     const UBTOUCH_SVG = 'data:image/svg+xml;utf8,' + encodeURIComponent(
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 30 73 73">' +
         '<path fill="#E95420" d="M72.712 0H0v114.48h72.712z"/>' +
@@ -340,62 +333,8 @@
             });
             panel.appendChild(attachBtn);
         }
-        // v4.7.0: « Partager » n'apparait que si une PJ a ete telechargee
-        // depuis Outlook Web. Le transfert Content Hub est cote main.
-        let shareBtn = document.getElementById(SHARE_ID);
-        if (!shareBtn) {
-            shareBtn = document.createElement('button');
-            shareBtn.id = SHARE_ID;
-            shareBtn.type = 'button';
-            const shareImg = document.createElement('img');
-            shareImg.src = SHARE_ICON;
-            shareImg.alt = '';
-            shareImg.width = 22;
-            shareImg.height = 22;
-            shareImg.style.cssText = 'display:inline-block;width:22px;height:22px;vertical-align:middle;margin-right:4px;';
-            const shareLabel = document.createElement('span');
-            shareBtn.appendChild(shareImg);
-            shareBtn.appendChild(shareLabel);
-            const shareText = tr('shareAttachment', 'Share attachment');
-            shareLabel.textContent = shareText;
-            shareBtn.title = shareText;
-            shareBtn.setAttribute('aria-label', shareText);
-            shareBtn.style.cssText = BTN_STYLE +
-                'background:rgba(15,15,26,0.92);color:#E95420;border:1px solid #E95420;';
-            shareBtn.addEventListener('click', async (e) => {
-                e.preventDefault(); e.stopPropagation(); closeMenu();
-                if (!window.electronAPI ||
-                    typeof window.electronAPI.shareLastDownload !== 'function') return;
-                shareBtn.disabled = true;
-                try {
-                    const res = await window.electronAPI.shareLastDownload();
-                    if (window.__utoutlookToast) {
-                        window.__utoutlookToast(res && res.ok
-                            ? tr('shareStarted', 'Sharing…')
-                            : tr('shareFailed', 'Could not share the file'));
-                    }
-                } catch (_) {
-                    if (window.__utoutlookToast) {
-                        window.__utoutlookToast(tr('shareFailed', 'Could not share the file'));
-                    }
-                } finally {
-                    shareBtn.disabled = false;
-                }
-            });
-            panel.appendChild(shareBtn);
-        }
-        shareBtn.style.display = 'none';
-        if (!window.__utoutlookSharePoll) {
-            window.__utoutlookSharePoll = setInterval(async () => {
-                const b = document.getElementById(SHARE_ID);
-                if (!b || !window.electronAPI ||
-                    typeof window.electronAPI.getLastDownload !== 'function') return;
-                try {
-                    const info = await window.electronAPI.getLastDownload();
-                    b.style.display = info ? '' : 'none';
-                } catch (_) { /* page en navigation */ }
-            }, 2000);
-        }
+        // v4.7.2: le partage est declenche automatiquement a la fin du
+        // telechargement (cote main) — plus de bouton « Partager » dans le menu.
 
         const attachEl = document.getElementById(ATTACH_ID);
         if (attachEl) attachEl.style.display = composeFileInput() ? '' : 'none';
@@ -472,6 +411,37 @@
             const bar = document.getElementById(BAR_ID);
             if (bar && e.target && !bar.contains(e.target)) closeMenu();
         }, true);
+    }
+
+    // v4.7.2: diagnostic du décalage aléatoire des clics (global à l'app).
+    // On loggue SEULEMENT un écart mesuré entre le point touché et l'élément
+    // réellement visé — jamais de texte de message ni d'adresse.
+    if (!window.__utoutlookClickDiag) {
+        window.__utoutlookClickDiag = true;
+        let lastDown = null;
+        window.addEventListener('pointerdown', (e) => {
+            lastDown = {x: e.clientX, y: e.clientY, t: Date.now()};
+        }, true);
+        window.addEventListener('click', (e) => {
+            if (!e.isTrusted) return;
+            const parts = [];
+            if (lastDown && Date.now() - lastDown.t < 1500) {
+                const dx = Math.round(e.clientX - lastDown.x);
+                const dy = Math.round(e.clientY - lastDown.y);
+                if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+                    parts.push(`down→click=${dx},${dy}`);
+                }
+            }
+            const hit = document.elementFromPoint(e.clientX, e.clientY);
+            const t = e.target;
+            if (hit && t && hit !== t && !hit.contains(t) && !t.contains(hit)) {
+                parts.push(`hit=${hit.tagName}#${hit.id} target=${t.tagName}#${t.id}`);
+            }
+            if (parts.length) {
+                console.error('Error: UT_DBG click-offset ' +
+                    `${Math.round(e.clientX)},${Math.round(e.clientY)} ${parts.join(' ')}`);
+            }
+        }, false);
     }
 
     // Filet de sécurité : attraper les clics en capture, avant le SPA Outlook.
