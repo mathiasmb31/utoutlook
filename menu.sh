@@ -30,7 +30,7 @@ version_from_repo() {
 }
 
 VERSION="${VERSION:-$(version_from_repo)}"
-DEVICE="${DEVICE:-${ADB_DEVICE:-XXXX}}"
+DEVICE="${DEVICE:-${ADB_DEVICE:-}}"
 COMMIT_MSG="${COMMIT_MSG:-}"
 PR_TITLE="${PR_TITLE:-}"
 FIX_NAME="${FIX_NAME:-}"

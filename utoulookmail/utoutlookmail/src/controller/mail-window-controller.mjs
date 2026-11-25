@@ -17,15 +17,135 @@ import {
     markCleanExit,
     ROTATION_RELAUNCH_FILE,
     RENDER_MODE_FILE,
+    PENDING_ATTACH_FILE,
+    OUTGOING_DIR,
+    LAST_DOWNLOAD_FILE,
     SWIPE_HIDDEN_FILE,
 } from '../config.mjs';
 import {logger} from '../logger.mjs';
+import {buildDiagnostics} from '../diagnostics.mjs';
+import {shouldShowOfflineScreen} from '../network-check.mjs';
+import {ContentHubBridge, normalizeContentUrl, validateTransferPath} from '../content-hub.mjs';
 
 const __filenameNew = fileURLToPath(import.meta.url);
 const __dirnameNew = path.dirname(__filenameNew);
 
 // Zoom levels for mobile (step through with zoomIn/zoomOut)
 const ZOOM_LEVELS = [0.75, 0.85, 1.0, 1.15, 1.3, 1.5];
+let pendingAttachTries = 0;
+
+// v4.7.7: garde d'origine partagée par les IPC de pièces jointes.
+// L'hôte doit être suivi d'un '/' ou de la fin : sans cette ancre,
+// outlook.live.com.attacker.tld passe le test. Les pages `file:` n'ont
+// aucun besoin de joindre/consommer une PJ (depuis 4.7.7).
+function trustedRenderer(event) {
+    const url = event && event.sender && event.sender.getURL
+        ? event.sender.getURL() : '';
+    return /^https?:\/\/(?:[^/]+\.)?(?:outlook\.(?:live|office|office365)\.com|outlook\.cloud\.microsoft\.com|live\.com|microsoftonline\.com)(?:\/|$)/i.test(url);
+}
+
+// v4.4.1 — confidentialite : les URLs de login contiennent des jetons
+// (state, nonce, code_challenge, parfois login_hint). On ne journalise que
+// origine + chemin, jamais la query ni le fragment.
+function safeUrl(raw) {
+    try {
+        const u = new URL(String(raw));
+        return `${u.origin}${u.pathname}`;
+    } catch (_) {
+        return '[url]';
+    }
+}
+
+// v4.4.1 — la console du renderer peut afficher sujets/expéditeurs d'emails.
+// En release on ne garde que les signatures d'erreur utiles au diagnostic,
+// avec les URLs et adresses email masquées. Le message complet reste dispo
+// avec UTOUTLOOK_DEBUG=1.
+// v4.4.2: '[UTOUTLOOK' n'est PAS safe — les observer JS logguent le sujet/le
+// expediteur avec ce prefixe. Ces messages restent debug-only cote page.
+const SAFE_CONSOLE_RE = /^(?:Uncaught|TypeError|ReferenceError|RangeError|SyntaxError|Error:|Failed to load|Refused to|Maximum call stack|ResizeObserver loop completed)/;
+function sanitizeConsole(message) {
+    return String(message)
+        .replace(/https?:\/\/\S+/g, '[URL]')
+        .replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g, '[EMAIL]')
+        .slice(0, 200);
+}
+
+// v4.4: injection d'un fichier validé par Content Hub dans le <input type=file>
+// de la webapp Outlook. Le rendu est isolé : on passe les octets en base64, on
+// reconstruit un File côté page et on déclenche 'change'. On ne touche qu'UN
+// input (le 1er, ou le 1er 'multiple') pour ne pas joindre deux fois le fichier.
+function guessMime(file) {
+    const ext = path.extname(file).toLowerCase();
+    const map = {
+        '.pdf': 'application/pdf', '.txt': 'text/plain', '.csv': 'text/csv',
+        '.doc': 'application/msword',
+        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        '.xls': 'application/vnd.ms-excel',
+        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif', '.webp': 'image/webp', '.zip': 'application/zip',
+    };
+    return map[ext] || 'application/octet-stream';
+}
+
+async function attachFilesToComposer(win, filePaths) {
+    const payload = [];
+    for (const file of filePaths) {
+        try {
+            payload.push({
+                name: path.basename(file),
+                type: guessMime(file),
+                data: fs.readFileSync(file).toString('base64'),
+            });
+        } catch (e) {
+            logger.warn(`v4.4: impossible de lire ${file}: ${e.message}`);
+        }
+    }
+    if (!payload.length || !win || win.isDestroyed()) return 0;
+    const encoded = JSON.stringify(payload);
+    // v4.4.8: viser le MEME input que le menu « Fichier » d'Outlook
+    // (data-testid local-computer-filein), dans la composition visible, et
+    // passer par le setter natif pour que React voir le changement de files.
+    const script = `(async () => {
+      const items = ${encoded};
+      // v4.6.1: le selecteur du Content Hub peut fermer/masquer la composition
+      // pendant le transfert — ne pas exiger le marqueur au retour. On cherche
+      // d'abord dans la composition, puis dans toute la page.
+      const compose = document.querySelector('[class*="owaMailComposeEditorScrollContainer"], [id^="docking_InitVisiblePart_"]');
+      let inputs = compose ? Array.from(compose.querySelectorAll('input[type=file][data-testid="local-computer-filein"]')) : [];
+      if (!inputs.length) {
+        inputs = Array.from(document.querySelectorAll('input[type=file][data-testid="local-computer-filein"]'));
+      }
+      if (!inputs.length) return 0;
+      const free = inputs.find(i => !i.accept || i.accept === '*/*');
+      const input = free || inputs[0];
+      const dt = new DataTransfer();
+      for (const item of items) {
+        // v4.6.4: fetch('data:...') est bloque par la CSP d'Outlook Web —
+        // atob() + Uint8Array reste dans le contexte page sans requete reseau.
+        const bin = atob(item.data);
+        const bytes = new Uint8Array(bin.length);
+        for (let j = 0; j < bin.length; j++) bytes[j] = bin.charCodeAt(j);
+        dt.items.add(new File([bytes], item.name, {type: item.type}));
+      }
+      // v4.6.5: Outlook expose 4 inputs 'local-computer-filein' sans qu'on
+      // sache lequel appartient a la composition courante. On pose le fichier
+      // sur chacun et on declenche change : le bon gestionnaire React le
+      // reconnaîtra, les autres ignoront l'evenement.
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'files').set;
+      for (const target of inputs) {
+        setter.call(target, dt.files);
+        target.dispatchEvent(new Event('change', {bubbles: true}));
+      }
+      return inputs.length;
+    })()`;
+    try {
+        return Number(await win.webContents.executeJavaScript(script, true)) || 0;
+    } catch (e) {
+        logger.warn(`v4.4: injection fichier impossible: ${e.message}`);
+        return 0;
+    }
+}
 
 /**
  * MailWindowController — Orchestre la fenêtre principale Electron affichant Outlook Web.
@@ -93,6 +213,10 @@ class MailWindowController {
         this.recreating = false; // v4.1.0 (revue E1)
         // v4.1.0 (revue B8): registre des listeners pour destroy().
         this._listeners = [];
+        // v4.5.1: get-diagnostics et attach-from-hub NE sont PAS dans cette
+        // liste — ipcMain.removeHandler est global : un ancien contrôleur
+        // détruit retirait le handler du nouveau et l'invocation échouait
+        // sans aucune trace dans wrapper.log.
         this._ipcHandleChannels = ['get-render-mode', 'set-render-mode', 'first-install'];
         this.init();
         // Check both command-line flag and settings for initial minimization
@@ -307,6 +431,62 @@ class MailWindowController {
     // --- Session persistence: periodic cookie flush ---
 
     /**
+     * v4.7.2: partager un fichier local via Content Hub. Factorise pour etre
+     * appele tanto par l'IPC que des qu'un telechargement se termine.
+     */
+    async shareDownloadedFile(filePath) {
+        const appId = `utoutlook.mathias_utoutlook_${app.getVersion()}`;
+        const bridge = new ContentHubBridge({
+            appId,
+            stage: (s) => logger.warn(`v4.7.2: ${s}`),
+            debug: (m) => logger.warn(`v4.7.2: ${m}`),
+        });
+        return bridge.exportFile(filePath);
+    }
+
+    /**
+     * v4.7.0: intercepter les telechargements declenches par Outlook Web
+     * (bouton « Telecharger » d'une PJ recue) et les garder dans OUTGOING_DIR.
+     * On n'automatise pas le DOM d'Outlook : l'utilisateur télécharge comme
+     * d'habitude, l'app se contente de recuperer le fichier.
+     */
+    installDownloadCapture(ses) {
+        if (!ses || ses.__utoutlookDownloadHook) return;
+        ses.__utoutlookDownloadHook = true;
+        ses.on('will-download', (event, item) => {
+            try {
+                fs.mkdirSync(OUTGOING_DIR, {recursive: true});
+                let name = path.basename(item.getFilename() || 'attachment')
+                    .replace(/[^a-zA-Z0-9._()\-]+/g, '_').slice(0, 120) || 'attachment';
+                let dest = path.join(OUTGOING_DIR, name);
+                let n = 1;
+                while (fs.existsSync(dest)) {
+                    const ext = path.extname(name);
+                    dest = path.join(OUTGOING_DIR,
+                        `${path.basename(name, ext)}-${n++}${ext || '.bin'}`);
+                }
+                item.setSavePath(dest);
+                item.once('done', (doneEvent, state) => {
+                    if (state === 'completed') {
+                        try { fs.writeFileSync(LAST_DOWNLOAD_FILE, dest); } catch (e) {}
+                        logger.info('v4.7.2: PJ telechargee — partage Content Hub lance');
+                        this.shareDownloadedFile(dest).then((res) => {
+                            logger.info(`v4.7.2: partage ${res.ok
+                                ? 'ouvert' : 'echoue (' + res.error + ')'}`);
+                        }).catch((e) => {
+                            logger.warn(`v4.7.2: partage impossible (${e.message})`);
+                        });
+                    } else {
+                        logger.warn(`v4.7.0: telechargement termine (${state})`);
+                    }
+                });
+            } catch (e) {
+                logger.warn(`v4.7.0: capture telechargement impossible (${e.message})`);
+            }
+        });
+    }
+
+    /**
      * Flush cookies to disk periodically so session survives SIGKILL / OOM.
      * Chromium flushes every ~30s by default, but on Ubuntu Touch the app is
      * frequently killed without a clean shutdown. We flush every 15s to be safe.
@@ -322,6 +502,7 @@ class MailWindowController {
         // si Chromium l'a perdu (cookie de session non persisté). Le fichier est
         // local au téléphone (AppArmor confine l'app à son CONFIG_DIR).
         const ses = session.fromPartition(this.sessionPartition);
+        this.installDownloadCapture(ses);
         const AUTH_TOKEN_FILE = path.join(DATA_DIR, 'auth-token.json');
         const AUTH_COOKIE_NAMES = /^(__Host-)?MSAAUTH(P)?$|ESTSAUTH(PERSIST)?$/i;
         try { fs.mkdirSync(DATA_DIR, {recursive: true}); } catch (e) { /* ignore */ }
@@ -681,11 +862,25 @@ class MailWindowController {
      * recharger la page (garde-fou: max 1 reload / 60 s). Un simple querySelector
      * par tick, coût négligeable. Couvre pivot, refresh et chargement incomplet.
      */
+    // v4.3.7: vrai quand la fenetre n'est pas reellement visible pour l'user.
+    // Garde-fou RESERVE aux taches purement visuals : ne JAMAIS l'appliquer au
+    // heartbeat (2 s), au flush de cookies (15 s), aux pulses de surface
+    // (v4.2.7), au socket ni a la detection de quit propre (v4.2.5).
+    isBackgrounded() {
+        try {
+            if (!this.win || this.win.isDestroyed()) return true;
+            return !this.win.isVisible() || this.win.isMinimized();
+        } catch (e) {
+            return false;
+        }
+    }
+
     startListEmptyWatchdog() {
         this.listEmptyCount = 0;
         this.lastListReload = 0;
         this.listWatchdog = setInterval(async () => {
             if (!this.win || this.win.isDestroyed()) return;
+            if (this.isBackgrounded()) return; // v4.3.7: inutile quand masque
             try {
                 const url = this.win.webContents.getURL();
                 if (!/outlook\.(live|office|office365|cloud\.microsoft)\.com\/mail/.test(url)) { this.listEmptyCount = 0; return; }
@@ -1224,7 +1419,8 @@ class MailWindowController {
             try { ipcMain.removeAllListeners(channel); } catch (e) { /* ignore */ }
         }
         for (const timer of ['cookieFlushInterval', 'observerHealthCheck', 'serverMonitor',
-                             'rotationPoll', 'keyboardHealthPoll', 'surfaceHealthPoll', 'listWatchdog']) {
+                             'rotationPoll', 'keyboardHealthPoll', 'surfaceHealthPoll', 'listWatchdog',
+                             'startupNetworkTimer']) {
             if (this[timer]) { try { clearInterval(this[timer]); } catch (e) {} this[timer] = null; }
         }
         if (this.win) MailWindowController.byWebContents.delete(this.win.webContents);
@@ -1262,6 +1458,7 @@ class MailWindowController {
         this.setupScreenEvents();
         this.setupOfflineDetection();
         this.startServerMonitor(); // v4.0.3: real in-app server reachability test
+        this.startStartupNetworkCheck(); // v4.3.7: ecran hors-ligne des le demarrage
         this.startCacheWatcher();
         this.startObserverHealthCheck();
     }
@@ -1632,7 +1829,7 @@ class MailWindowController {
             // ne soit remplacé / que la page mail ne soit réellement affichée).
             setTimeout(() => { this.fixMailLayout(); this.injectReloadButton(); }, 2000);
             const url = this.win.webContents.getURL();
-            logger.info(`Page loaded #${this.loginPage}: ${url}`);
+            logger.info(`Page loaded #${this.loginPage}: ${safeUrl(url)}`);
 
             // v3.3.14: re-sync on every load — cheap and keeps cloud.microsoft /
             // live.com in sync as Microsoft rotates domains during the redirect chain.
@@ -1952,7 +2149,12 @@ class MailWindowController {
                 // hotfix #13: skip notification when the app is in the foreground —
                 // UNLESS urgent (e.g. DOM changed alert, v3.3.21).
                 if (!urgent && this.win.isVisible() && this.win.isFocused()) {
-                    logger.info(`[NOTIFICATION SUPPRESSED] foreground — title="${title}" body="${body}"`);
+                    // v4.4.2: jamais le titre/le corps (expediteur, sujet, lieu) dans les logs.
+                    if (process.env.UTOUTLOOK_DEBUG === '1') {
+                        logger.debug(`[NOTIFICATION SUPPRESSED] foreground — title="${title}" body="${body}"`);
+                    } else {
+                        logger.info('[NOTIFICATION SUPPRESSED] foreground (details hidden)');
+                    }
                     return;
                 }
                 this.handleNotification(title, body, icon);
@@ -2005,6 +2207,23 @@ class MailWindowController {
         // fichier au prochain lancement (auto + bascule sur crash GPU).
         // v4.1.0 (revue B9): un handle par compte lève "second handler" dès le
         // 2ᵉ compte → uncaughtException → app.exit(1). On retire avant d'ajouter.
+        // v4.3.7: rapport de diagnostic WHITELISTE — jamais de wrapper.log brut
+        // (titres/sujets de notifications et console du renderer peuvent contenir
+        // du contenu de messages). Seules des donnees structurelles sont ecrites.
+        ipcMain.removeHandler("get-diagnostics");
+        ipcMain.handle("get-diagnostics", async (event) => {
+            if (!MailWindowController.byWebContents.has(event.sender)) return null;
+            const report = buildDiagnostics({version: app.getVersion()});
+            const out = path.join(CONFIG_DIR, 'diagnostics.json');
+            try {
+                fs.mkdirSync(CONFIG_DIR, {recursive: true});
+                fs.writeFileSync(out, JSON.stringify(report, null, 2) + '\n', {mode: 0o600});
+                return out;
+            } catch (e) {
+                logger.warn(`v4.3.7: impossible d'ecrire diagnostics.json: ${e.message}`);
+                return null;
+            }
+        });
         ipcMain.removeHandler("get-render-mode");
         ipcMain.handle("get-render-mode", () => {
             try { return fs.readFileSync(RENDER_MODE_FILE, 'utf-8').trim() || 'auto'; }
@@ -2028,6 +2247,91 @@ class MailWindowController {
                 return false;
             }
         });
+        // v4.4: joindre un fichier via le Content Hub (Ubuntu Touch).
+        ipcMain.removeHandler("attach-from-hub");
+        ipcMain.handle("attach-from-hub", async (event) => {
+            // v4.5.2: byWebContents peut ne plus contenir le sender apres une
+            // recreation de fenetre. On valide l'ORIGINE du renderer (v4.7.7 :
+            // garde partagée, hôte ancré, pages file: exclues).
+            if (!trustedRenderer(event)) {
+                logger.warn('v4.5.2: attach-from-hub refuse une origine non approuvée');
+                return 0;
+            }
+            const owner = MailWindowController.byWebContents.get(event.sender);
+            const win = (owner && owner.win) || this.win;
+            const appId = `utoutlook.mathias_utoutlook_${app.getVersion()}`;
+            logger.info('v4.6.0: attach-from-hub entré');
+            const bridge = new ContentHubBridge({
+                appId,
+                debug: (msg) => logger.warn(`v4.6.0: ${msg}`),
+                stage: (s) => logger.warn(`v4.6.0: étape ${s}`),
+            });
+            try {
+                const result = await bridge.importFiles();
+                if (!result.paths.length) {
+                    logger.warn(`v4.4: Content Hub sans fichier (${result.error || 'empty'})`);
+                    return 0;
+                }
+                logger.info(`v4.4: ${result.paths.length} fichier(s) recu(s) du Content Hub`);
+                const added = await attachFilesToComposer(win, result.paths);
+                if (added === 0) {
+                    // v4.6.1: la composition n'etait plus disponible au retour
+                    // du selecteur — on garde le fichier pour le renderer.
+                    try {
+                        fs.writeFileSync(PENDING_ATTACH_FILE, result.paths.join('\n') + '\n');
+                        logger.warn('v4.6.1: PJ conservee pour la composition');
+                    } catch (e) {
+                        logger.warn(`v4.6.1: conservation impossible: ${e.message}`);
+                    }
+                }
+                logger.warn(`v4.6.1: injection terminée (${added})`);
+                return added;
+            } catch (e) {
+                logger.warn(`v4.4: echec Content Hub: ${e.message}`);
+                return 0;
+            }
+        });
+        // v4.5.4: le wrapper a recu une ou plusieurs PJ du Content Hub en
+        // arguments au lancement (une ligne par fichier). On valide et injecte
+        // TOUTES les PJ valides d'un coup ; le fichier n'est supprime qu'apres.
+        ipcMain.removeHandler("consume-pending-attachment");
+        ipcMain.handle("consume-pending-attachment", async (event) => {
+            // v4.7.7: même garde d'origine que « attach-from-hub ».
+            if (!trustedRenderer(event)) {
+                logger.warn('v4.7.7: consume-pending-attachment refuse une origine non approuvee');
+                return 0;
+            }
+            let lines = [];
+            try {
+                lines = fs.readFileSync(PENDING_ATTACH_FILE, 'utf-8')
+                    .split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+            } catch (e) { return 0; }
+            if (!lines.length) return 0;
+            const paths = [];
+            for (const line of lines) {
+                const resolved = validateTransferPath(normalizeContentUrl(line));
+                if (resolved.ok) paths.push(resolved.path);
+                else logger.warn(`v4.5.4: PJ recue refusee (${resolved.reason})`);
+            }
+            if (!paths.length) {
+                try { fs.unlinkSync(PENDING_ATTACH_FILE); } catch (e) {}
+                return 0;
+            }
+            const added = await attachFilesToComposer(this.win, paths);
+            if (added > 0) {
+                logger.info(`v4.5.4: ${added} PJ du Content Hub ajoutee(s) a la composition`);
+                try { fs.unlinkSync(PENDING_ATTACH_FILE); } catch (e) {}
+            } else {
+                pendingAttachTries += 1;
+                if (pendingAttachTries === 1 || pendingAttachTries % 10 === 0) {
+                    logger.warn(`v4.6.3: PJ en attente de composition (essai ${pendingAttachTries})`);
+                }
+            }
+            return added;
+        });
+        // v4.7.7: les IPC get/share-last-download ont ete retires — le partage
+        // est declenche directement a la fin du telechargement (v4.7.2), aucun
+        // bouton renderer ne les utilise plus.
         // v3.3.66: first-install — wipe ALL session data from the main process.
         // The in-page clear (document.cookie/localStorage) only reaches the current
         // origin, and syncCookiesToLiveCom() would re-copy surviving cookies to the
@@ -2106,7 +2410,12 @@ class MailWindowController {
      * @param {string|null} icon
      */
     handleNotification(title, body, icon) {
-        logger.info(`[NOTIFICATION] title="${title}" body="${body}"`);
+        // v4.4.2: contenu de notification = donnees mail (confidentialite).
+        if (process.env.UTOUTLOOK_DEBUG === '1') {
+            logger.debug(`[NOTIFICATION] title="${title}" body="${body}"`);
+        } else {
+            logger.info('[NOTIFICATION] shown (details hidden)');
+        }
         fs.writeFile(NOTIF_FLAG_FILE, 'notif!', err => { if (err) logger.error(err); });
 
         // Relay to Ubuntu Touch notifications (D-Bus Postal / Lomiri)
@@ -2195,7 +2504,7 @@ class MailWindowController {
                 if (this.pageRangeErrors.length >= 5 && !this.sessionClearedForLoop) {
                     this.sessionClearedForLoop = true;
                     const url = this.win.webContents.getURL();
-                    logger.warn(`v3.3.74: ${this.pageRangeErrors.length} RangeError/30s sur ${url} — session probablement vérolée, clear + reload avec prompt=login`);
+                    logger.warn(`v3.3.74: ${this.pageRangeErrors.length} RangeError/30s sur ${safeUrl(url)} — session probablement vérolée, clear + reload avec prompt=login`);
                     this.clearOutlookSession().then(() => {
                         this.pageRangeErrors = [];
                         // force prompt=login pour sauter le resume SSO silencieux
@@ -2209,16 +2518,21 @@ class MailWindowController {
                     }).catch(() => {});
                 }
             }
-            // Skip noisy messages
+            // v4.4.1: en release, la console du renderer n'est journalisee
+            // QUE pour les signatures d'erreur (et masquee). Le contenu complet
+            // (sujets/expediteurs/URLs de login) reste reserve au debug local.
             if (message.includes('Autofill') || message.includes('DevTools')) return;
-            logger.info(`[console.${levelName}] ${message.substring(0, 500)}`);
+            const debugConsole = process.env.UTOUTLOOK_DEBUG === '1';
+            if (!debugConsole && !SAFE_CONSOLE_RE.test(message)) return;
+            const text = debugConsole ? message.substring(0, 500) : sanitizeConsole(message);
+            logger.info(`[console.${levelName}] ${text}`);
         });
 
         // Log failed resource loads — helps diagnose boot failures (olkerror.html)
         this.win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
             // -3 (ERR_ABORTED) is normal for SPA redirects — skip it
             if (errorCode === -3) return;
-            logger.warn(`Load failed [${errorCode}] ${errorDescription}: ${validatedURL} (mainFrame=${isMainFrame})`);
+            logger.warn(`Load failed [${errorCode}] ${errorDescription}: ${safeUrl(validatedURL)} (mainFrame=${isMainFrame})`);
             // v4.0.10: a main-frame failure (network down, server unreachable,
             // renderer error page) will never match isMailInterfaceUrl/isLoginPageUrl
             // in did-finish-load — close the splash here so the user sees the
@@ -2269,7 +2583,7 @@ class MailWindowController {
         // Re-inject on SPA navigation (Outlook is a single-page app)
         this.win.webContents.on('did-navigate-in-page', (_event, url) => {
             if (!this.alive) return; // v3.3.22
-            logger.info(`SPA navigation: ${url}`);
+            logger.info(`SPA navigation: ${safeUrl(url)}`);
             this.trackInPageAuthLoop(url); // v4.0.37: la boucle 2FA desktop passe par des pushState sur ppsecure/post.srf
             this.injectStyles().catch(() => {});
             this.addUnreadNumberObserver().catch(() => {});
@@ -2301,7 +2615,7 @@ class MailWindowController {
                 && url.includes('login_hint=')) {
                 event.preventDefault();
                 this.loginHintIntercepts++;
-                logger.info(`Intercepted login_hint redirect #${this.loginHintIntercepts}: ${url}`);
+                logger.info(`Intercepted login_hint redirect #${this.loginHintIntercepts}: ${safeUrl(url)}`);
                 this.syncCookiesToLiveCom().then(() => {
                     logger.info(`Loading with synced cookies (login_hint preserved)`);
                     this.win.loadURL(url); // keep login_hint
@@ -2372,14 +2686,14 @@ class MailWindowController {
         // full redraw of the webContents and re-assert visibility/focus.
         this._on(powerMonitor, 'resume', () => {
             logger.info('powerMonitor resume — re-surfacing window (v4.1.0)');
-            this.resurfaceWindow(true);
+            this.resurfaceWindow(true, true);
         });
         // v4.1.0: sur le device le event 'resume' de logind n'est pas Always
         // reçu au déverrouillage (journal : aucun "powerMonitor resume" après
         // "gkr-pam: unlocked login keyring") — 'unlock-screen' couvre ce cas.
         this._on(powerMonitor, 'unlock-screen', () => {
             logger.info('powerMonitor unlock-screen — re-surfacing window (v4.1.0)');
-            this.resurfaceWindow(true);
+            this.resurfaceWindow(true, true);
         });
         this._on(powerMonitor, 'suspend', () => logger.info('powerMonitor suspend (v3.3.32)'));
     }
@@ -2407,6 +2721,16 @@ class MailWindowController {
 
         // Hide instead of quit on close
         this.win.on("close", (e) => {
+            // v4.4.3: Lomiri envoie un 'close' parasite ~200 ms apres que la
+            // fenetre soit devenue visible au demarrage. Le masquer a cet instant
+            // fait couper la session Mir par le shell → splash bloque alors que
+            // l'app tourne. On ignore donc TOUTE fermeture pendant la periode
+            // de grace du demarrage (sans quitter, sans masquer).
+            if (Date.now() - (this.appStartedAt || 0) < 10000) {
+                logger.info('Window event: close ignored (startup grace, no hide)');
+                e.preventDefault();
+                return;
+            }
             // v4.0.125: pendant un VRAI quit (bouton Quitter / socket quit /
             // swipe), ne PAS intercepter la fermeture — hideOnClose masquerait
             // la fenêtre, annulerait app.quit() et laisserait l'app vivante mais
@@ -2998,7 +3322,9 @@ class MailWindowController {
         const messageKey = kind === 'server' ? 'server.message' : 'offline.message';
 
         this.win.webContents.executeJavaScript(`
-            (() => {
+            new Promise((resolve) => {
+                // v4.3.7: au demarrage, document.body peut ne pas exister encore.
+                const inject = () => {
                 // Remove existing overlay if any
                 const existing = document.getElementById('utoutlook-offline-overlay');
                 if (existing) existing.remove();
@@ -3026,7 +3352,14 @@ class MailWindowController {
                 style.textContent = '@keyframes utoutlook-spin{to{transform:rotate(360deg)}}';
                 document.head.appendChild(style);
                 document.body.appendChild(overlay);
-            })()
+                resolve(true);
+                };
+                if (document.body) inject();
+                else {
+                    const timer = setTimeout(() => { if (document.body) inject(); else resolve(false); }, 3000);
+                    document.addEventListener('DOMContentLoaded', () => { clearTimeout(timer); inject(); }, {once: true});
+                }
+            })
         `).catch(err => logger.error('Failed to show offline overlay:', err));
 
         // Notify via UBports
@@ -3055,6 +3388,11 @@ class MailWindowController {
                 this.connectivityTimer = null;
                 return;
             }
+            // v4.3.7: un vrai HEAD toutes les 3 s meme fenetre masquee coutait
+            // cher en batterie/reseau. EXCEPTION : des que l'ecran hors-ligne est
+            // affiche, le poll doit continuer MEME si la fenetre est masquee,
+            // sinon l'app resterait bloquee sur l'ecran apres retour du reseau.
+            if (this.isBackgrounded() && !this.isOffline) return;
 
             try {
                 // v4.0.3: navigator.onLine is NOT a real network test — in
@@ -3115,6 +3453,33 @@ class MailWindowController {
      * page mail n'est pas disponible). Dès que le serveur répond à nouveau,
      * masque l'écran et notifie.
      */
+    // v4.3.7 — ecran hors-ligne NATIF (aucun qmlscene separe : un ApplicationWindow
+    // QML recreerait l'item unknown.qtmir / icone jaune, regle §2.14).
+    // En mode avion, did-fail-load peut ne jamais tirer (page Outlook en cache)
+    // et le serverMonitor met 35 s a cumuler 2 echecs. On fait donc 2 vrais
+    // tests serveur espaces de 8 s des le demarrage, puis on affiche l'overlay
+    // HTML deja traduit en 10 langues et on demarre le poll de reconnexion.
+    startStartupNetworkCheck() {
+        this.startupNetworkFailures = 0;
+        const check = async () => {
+            if (!this.win || this.win.isDestroyed()) return;
+            const reachable = await this.checkServerReachable();
+            if (reachable) {
+                this.startupNetworkFailures = 0;
+                return;
+            }
+            this.startupNetworkFailures++;
+            if (!shouldShowOfflineScreen(this.startupNetworkFailures)) {
+                this.startupNetworkTimer = setTimeout(check, 8000);
+                return;
+            }
+            logger.warn('No network at startup — showing native offline screen');
+            this.showOfflineOverlay('offline');
+            this.startConnectivityMonitor();
+        };
+        this.startupNetworkTimer = setTimeout(check, 6000);
+    }
+
     startServerMonitor() {
         if (this.serverMonitor) clearInterval(this.serverMonitor);
         // Premier test rapide après le lancement (le splash couvre les 30s,
@@ -3248,11 +3613,15 @@ class MailWindowController {
     injectReloadButton() {
         if (!this.win || this.win.isDestroyed()) return;
         let script;
+        let settingsScript = '';
         try {
+            // v4.4.5: la feuille Parametres doit etre chargee AVANT la barre —
+            // celle-ci utilise window.__utoutlookOpenSettings / Icon / Toast.
+            settingsScript = getClientFile("settings-sheet.js") + '\n';
             script = getClientFile("reload-button.js");
         } catch (err) {
             // Fichier absent d'un asar plus ancien : ne pas casser le dom-ready.
-            logger.warn('v4.0.95: reload-button.js introuvable — bouton non injecté', err.message);
+            logger.warn('v4.0.95: scripts UI introuvables — boutons non injectés', err.message);
             return;
         }
         const tr = getAllTranslations();
@@ -3260,13 +3629,34 @@ class MailWindowController {
             reloadMessages: tr['overlay.reloadMessages'],
             reloading: tr['overlay.reloading'], // feedback immédiat au clic
             quitApp: tr['common.quit'], // bouton Quitter (déjà traduit en 8 langues)
+            // v4.7.7: la feuille Paramètres utilise `commonQuit`, pas `quitApp`.
+            commonQuit: tr['common.quit'],
             // v4.1.3: boutons de la barre — first-install + notification
             actionFirstInstall: tr['action.firstInstall'],
             actionFirstInstallConfirm: tr['action.firstInstallConfirm'],
             actionFirstInstallNotify: tr['action.firstInstallNotify'],
+            // v4.3.7: libellés du bouton diagnostics (avant: anglais hardcodé)
+            actionDiagnostics: tr['action.diagnostics'],
+            diagnosticsSaved: tr['diagnostics.saved'],
+            // v4.3.8: bascule de rendu accessible depuis la page mail
+            renderSoftwareEnable: tr['render.enable'],
+            renderSoftwareDisable: tr['render.disable'],
+            relaunchNotice: tr['splash.relaunch'],
+            // v4.4: bouton « joindre un fichier » via Content Hub
+            attachFile: tr['action.attachFile'],
+            contentHubFailed: tr['contentHub.failed'],
+            // v4.4.5: feuille Parametres
+            settingsTitle: tr['settings.title'],
+            settingsDisplay: tr['settings.display'],
+            settingsRenderAuto: tr['settings.renderAuto'],
+            settingsRenderSoftware: tr['settings.renderSoftware'],
+            settingsRenderHardware: tr['settings.renderHardware'],
+            commonClose: tr['common.close'],
+            commonUnavailable: tr['common.unavailable'],
         });
         this.win.webContents.executeJavaScript(
-            `window.__utoutlookI18n = Object.assign(window.__utoutlookI18n||{}, ${i18nJson});\n` + script
+            `window.__utoutlookI18n = Object.assign(window.__utoutlookI18n||{}, ${i18nJson});\n` +
+            settingsScript + script
         ).catch(() => {
             // page not ready — sera réinjecté au prochain dom-ready / navigation
         });
@@ -3337,7 +3727,7 @@ class MailWindowController {
      * alwaysOnTop puis invalidate() oblige Mir à réintégrer la surface, sans
      * win.hide() (interdit : crash GPU FATAL sur UT, voir v4.0.39).
      */
-    resurfaceWindow(stealFocus = false) {
+    resurfaceWindow(stealFocus = false, nudge = false) {
         if (!this.alive || global.utoutlookQuitting) return;
         try { if (fs.existsSync(SWIPE_HIDDEN_FILE)) return; } catch (e) { /* ignore */ }
         if (!this.win.isVisible()) {
@@ -3360,7 +3750,11 @@ class MailWindowController {
         // pas ignorer. PAS de hide() (crash GPU FATAL, v4.0.39) ni de minimize()
         // (intercepts hideOnMinimize → hide). Le déplacement est restauré après
         // 250 ms ; garde `_resurfaceNudgePending` pour éviter les chevauchements.
-        if (!this._resurfaceNudgePending) {
+        // v4.7.3: le nudge déplace l'UI de 40 px pendant 250 ms — appelé à
+        // chaque focus et toutes les 30 s, il décalait les clics au hasard
+        // dans TOUTE l'app. Il est désormais Optionnel et réservé aux seuls
+        // réveils/déverrouillages (où l'utilisateur n'interagit pas).
+        if (nudge && !this._resurfaceNudgePending) {
             this._resurfaceNudgePending = true;
             try {
                 const b = this.win.getBounds();
@@ -3381,12 +3775,11 @@ class MailWindowController {
         if (stealFocus) {
             try { this.win.focus(); } catch (e) { /* ignore */ }
         }
-        logger.info('v4.1.0: window re-surfaced (alwaysOnTop pulse + bounds nudge + invalidate)');
+        logger.info(`v4.7.7: window re-surfaced (alwaysOnTop pulse + invalidate${nudge ? ' + bounds nudge' : ''})`);
     }
 
     /**
      * Affiche la fenêtre principale (restore si minimisée).
-     * Extrait également le token fb_dtsg de la page.
      */
     async show() {
         if (!this.alive) return; // v3.3.22
@@ -3397,16 +3790,8 @@ class MailWindowController {
             this.win.show();
         }
         this.win.focus();
-
-        // Extract fb_dtsg token from the page
-        try {
-            const result = await this.win.webContents.executeJavaScript(
-                `(() => { const el = document.querySelector('input[name="fb_dtsg"]'); return el ? el.value : null; })()`
-            );
-            if (result) logger.debug("fb_dtsg token retrieved");
-        } catch (err) {
-            logger.debug("Could not extract fb_dtsg token:", err.message);
-        }
+        // v4.4.2: l'ancien token fb_dtsg du fork Prospect n'etait jamais utilise
+        // — on supprime ce round-trip renderer a chaque show().
     }
 }
 

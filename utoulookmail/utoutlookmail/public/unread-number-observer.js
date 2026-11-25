@@ -14,8 +14,8 @@ const CONFIG = {
   initialRetryDelayMs: 3000,         // 3 seconds before first retry
   maxRetryDelayMs: 30000,            // 30 seconds max between retries
 
-  // Debug logging (set to true to enable verbose console output)
-  debug: true,
+  // v4.4.2: silencieux en release — les logs debug contiennent expediteur/sujet.
+  debug: false,
 };
 
 // Debug logger — silent by default
@@ -108,8 +108,9 @@ const state = window.__utoutlookState;
 
 // Helper to create and show notifications using native Electron notifications
 const showNotification = (title, body) => {
-  // Always log to console — captured by the main process console-message handler
-  console.log('[UTOUTLOOK NOTIF]', title, '|', body);
+  // v4.4.2: plus de console.log des notifications — title/body contiennent
+  // expediteur/sujet/lieu et finissaient dans wrapper.log. Le debug reste
+  // derriere CONFIG.debug (false en release).
   debug('showNotification:', { title, body });
   window.electronAPI.showNotification(title, body);
 };

@@ -1,7 +1,7 @@
 // ============================================================
 // i18n.mjs — Internationalisation for UToutlook Mail
 //
-// Supported languages: fr (default), en, es, de, it, pt, zh, ar
+// Supported languages (10): fr (default), en, es, de, it, pt, zh, ar, ca, eu
 // Usage: import { t, getLanguage, setLanguage, getAvailableLanguages } from './i18n.mjs'
 //   t('tray.quit')           → "Quitter" / "Quit" / "Salir" ...
 //   t('notif.newMessages.body', { count: 5 }) → "5 messages non lus" / "5 unread messages"
@@ -132,10 +132,59 @@ const T = {
         it: 'Dati cancellati — riavvio…', pt: 'Dados apagados — reiniciando…', zh: '数据已清除 — 正在重启…', ar: 'تم مسح البيانات — جارٍ إعادة التشغيل…',
         ca: 'S’han esborrat les dades. S’està reiniciant…', eu: 'Datuak ezabatu dira — berrabiaratzen…',
     },
+    // v4.3.7: bouton diagnostics + message apres generation du rapport
+    'action.diagnostics': {
+        fr: 'Diagnostics', en: 'Diagnostics', es: 'Diagnóstico', de: 'Diagnose',
+        it: 'Diagnostica', pt: 'Diagnóstico', zh: 'Diagnostics', ar: 'التشخيص',
+        ca: 'Diagnòstic', eu: 'Diagnostikoa',
+    },
+    'diagnostics.saved': {
+        fr: 'Rapport enregistré : {path}', en: 'Report saved to: {path}',
+        es: 'Informe guardado en: {path}', de: 'Bericht gespeichert unter: {path}',
+        it: 'Report salvato in: {path}', pt: 'Relatório guardado em: {path}',
+        zh: 'Report saved to: {path}', ar: 'تم حفظ التقرير في: {path}',
+        ca: 'Informe desat al directori: {path}', eu: 'Txostena gorde da: {path}',
+    },
     'common.show': {
         fr: 'Afficher', en: 'Show', es: 'Mostrar', de: 'Anzeigen',
         it: 'Mostra', pt: 'Mostrar', zh: '显示', ar: 'إظهار',
         ca: 'Mostra', eu: 'Erakutsi',
+    },
+    // v4.4.5: feuille Parametres (reglages retires de la barre d'actions)
+    'settings.title': {
+        fr: 'Paramètres', en: 'Settings', es: 'Ajustes', de: 'Einstellungen',
+        it: 'Impostazioni', pt: 'Configurações', zh: '设置', ar: 'الإعدادات',
+        ca: 'Paràmetres', eu: 'Ezpennak',
+    },
+    'settings.display': {
+        fr: 'Affichage', en: 'Display', es: 'Pantalla', de: 'Anzeige',
+        it: 'Visualizzazione', pt: 'Exibição', zh: '显示', ar: 'العرض',
+        ca: 'Pantalla', eu: 'Bistaratzea',
+    },
+    'settings.renderAuto': {
+        fr: 'Automatique', en: 'Automatic', es: 'Automático', de: 'Automatisch',
+        it: 'Automatico', pt: 'Automático', zh: '自动', ar: 'تلقائي',
+        ca: 'Automàtic', eu: 'Automatikoa',
+    },
+    'settings.renderSoftware': {
+        fr: 'Logiciel', en: 'Software', es: 'Software', de: 'Software',
+        it: 'Software', pt: 'Software', zh: '软件', ar: 'برمجي',
+        ca: 'Programari', eu: 'Software',
+    },
+    'settings.renderHardware': {
+        fr: 'Matériel', en: 'Hardware', es: 'Hardware', de: 'Hardware',
+        it: 'Hardware', pt: 'Hardware', zh: '硬件', ar: 'عتادي',
+        ca: 'Maquinari', eu: 'Hardwarea',
+    },
+    'common.close': {
+        fr: 'Fermer', en: 'Close', es: 'Cerrar', de: 'Schließen',
+        it: 'Chiudi', pt: 'Fechar', zh: '关闭', ar: 'إغلاق',
+        ca: 'Tanca', eu: 'Itxi',
+    },
+    'common.unavailable': {
+        fr: 'Action indisponible', en: 'Action unavailable', es: 'Acción no disponible', de: 'Aktion nicht verfügbar',
+        it: 'Azione non disponibile', pt: 'Ação indisponível', zh: '操作不可用', ar: 'إجراء غير متاح',
+        ca: 'Acció no disponible', eu: 'Ekintza erabilgarri ez dago',
     },
     // v4.0.127: override du rendu logiciel (bouton page de login)
     'render.enable': {
@@ -151,6 +200,20 @@ const T = {
         it: 'Disattiva rendering software', pt: 'Desativar renderização por software',
         zh: '禁用软件渲染', ar: 'تعطيل العرض البرمجي',
         ca: 'Desactiva el renderitzat de programari', eu: 'Desgaitu software bidezko errendatzea',
+    },
+    // v4.4: transfert de pièces jointes via Content Hub (10 langues)
+    'action.attachFile': {
+        fr: 'Joindre un fichier', en: 'Attach a file', es: 'Adjuntar un archivo',
+        de: 'Datei anhängen', it: 'Allega un file', pt: 'Anexar um arquivo',
+        zh: '附加文件', ar: 'إرفاق ملف',
+        ca: 'Adjuntar un fitxer', eu: 'Erantsi fitxategia',
+    },
+    'contentHub.failed': {
+        fr: 'Impossible de joindre le fichier', en: 'Could not attach the file',
+        es: 'No se pudo adjuntar el archivo', de: 'Datei konnte nicht angehängt werden',
+        it: 'Impossibile allegare il file', pt: 'Não foi possível anexar o arquivo',
+        zh: '无法附加文件', ar: 'تعذر إرفاق الملف',
+        ca: 'No s’ha pogut adjuntar el fitxer', eu: 'Ezin izan da fitxategia erantsi',
     },
     'common.reload': {
         fr: 'Recharger', en: 'Reload', es: 'Recargar', de: 'Neu laden',
@@ -929,6 +992,23 @@ const T = {
     },
 };
 
+/**
+ * v4.3.7: couverture des catalogues — nombre de clés réellement traduites
+ * dans chaque langue. Sert de test de non-régression i18n (10 langues).
+ * @returns {Object} Map lang code → number of translated keys
+ */
+export function getTranslationCoverage() {
+    const result = {};
+    for (const lang of Object.keys(LANGUAGES)) result[lang] = 0;
+    for (const entry of Object.values(T)) {
+        for (const lang of Object.keys(result)) {
+            const value = entry[lang];
+            if (typeof value === 'string' && value.length > 0) result[lang] += 1;
+        }
+    }
+    return result;
+}
+
 // --- Current language ---
 let currentLang = DEFAULT_LANG;
 
@@ -1005,4 +1085,3 @@ export function detectLanguage(locale) {
     return LANGUAGES[code] ? code : DEFAULT_LANG;
 }
 
-export default { t, setLanguage, getLanguage, getAvailableLanguages, getAllTranslations, detectLanguage, LANGUAGES };

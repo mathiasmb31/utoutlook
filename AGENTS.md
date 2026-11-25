@@ -26,13 +26,13 @@ titres de fenêtres). Tout passe par le catalogue i18n du projet.
 
 ## Confidentialité (OBLIGATOIRE — règle de Mathias, 2026-11-01)
 
-**Ne jamais publier l'email ni le nom « XXXX »** — ni dans les commits/PR
+**Ne jamais publier l'email ni le nom « <NOM-PROSCRIT> »** — ni dans les commits/PR
 (messages, auteurs, committers), ni dans le code, la doc, les logs, les captures,
-les tickets. RIEN de publié ne doit contenir `XXXX` (casse-insensible) ni
+les tickets. RIEN de publié ne doit contenir `<NOM-PROSCRIT>` (casse-insensible) ni
 l'adresse associée.
 
-- Avant chaque commit/PR : `grep -ri XXXX --exclude-dir=.git .` et
-  `git log --all --format='%ae %ce %B' | grep -i XXXX` doivent être vides.
+- Avant chaque commit/PR : `grep -ri <NOM-PROSCRIT> --exclude-dir=.git .` et
+  `git log --all --format='%ae %ce %B' | grep -i <NOM-PROSCRIT>` doivent être vides.
 - Exception : les données strictement locales et non publiées (cookies sur le
   téléphone, logs locaux du device, scratchpad) peuvent les contenir.
 - Si un nom/email perso apparaît dans un log ou une capture destiné à être
@@ -95,7 +95,7 @@ Uniquement pour déboguer **utoutlook** (adb ciblé, logs de l'app, état du she
 
 ## Publication OpenStore (OBLIGATOIRE — règle Mathias, 2026-11-17)
 
-**L'agent IA ne lance JAMAIS `openstore-prepare.sh --upload` ni aucun upload OpenStore : c'est Mathias qui exécute la commande à la main** (`OPENSTORE_APIKEY=... ./openstore-prepare.sh <version> --upload "OK"`, apikey en env var uniquement). L'agent peut seulement lire/préparer les fichiers du kit `publishstore/` et afficher les récap. Préalables : test device concluant (adb `XXXX`, 0 crash) + « OK » explicite de Mathias après revue du contenu complet.
+**L'agent IA ne lance JAMAIS `openstore-prepare.sh --upload` ni aucun upload OpenStore : c'est Mathias qui exécute la commande à la main** (`OPENSTORE_APIKEY=... ./openstore-prepare.sh <version> --upload "OK"`, apikey en env var uniquement). L'agent peut seulement lire/préparer les fichiers du kit `publishstore/` et afficher les récap. Préalables : test device concluant (serial via `DEVICE`/`ADB_DEVICE`, 0 crash) + « OK » explicite de Mathias après revue du contenu complet.
 
 ## Pied de commit (OBLIGATOIRE)
 
@@ -142,7 +142,7 @@ ESLINT_USE_FLAT_CONFIG=false npm run lint                     # obligatoire : ES
 ```
 
 - ESLint sort ~1170 warnings mais **0 erreur** : seul un passage à >0 erreur casse la CI.
-- `./check.sh` (racine) = pré-vol complet en une commande : `bash -n` (racine + `utoulookmail/` + `githooks/`), `node --check`, synchro `manifest.json`/`package.json`, `npm run lint`, `npm test`, grep `XXXX`, et scan i18n (informatif). Il sort en code 1 dès qu'une étape échoue.
+- `./check.sh` (racine) = pré-vol complet en une commande : `bash -n` (racine + `utoulookmail/` + `githooks/`), `node --check`, synchro `manifest.json`/`package.json`, `npm run lint`, `npm test`, grep `<NOM-PROSCRIT>`, et scan i18n (informatif). Il sort en code 1 dès qu'une étape échoue.
 - Version : `./bump-version.sh X.Y.Z` met à jour `manifest.json` **et** `package.json` (les deux doivent rester identiques).
 
 ## Pièges coûteux
@@ -159,7 +159,7 @@ ESLINT_USE_FLAT_CONFIG=false npm run lint                     # obligatoire : ES
 
 `command.sh` lance `bin/App/prospect-mail`, surveille le heartbeat `~/.config/utoutlook.mathias/follow`, tue/relance, et affiche les QML (`relaunch.qml` après rotation, `nonetwork.qml`, `exit.qml`). Flags de vie = fichiers dans `~/.config/utoutlook.mathias/` : `exitclient` (`quitclient:<wrapper-pid>`), `rotation-relaunch`, `close`, `init`, `killedmail`.
 
-Debug device sans rebuild (device adb `XXXX` ; l'ID `XXXX` du § OpenStore ci-dessus est périmé) :
+Debug device sans rebuild (serial via `DEVICE`/`ADB_DEVICE`) :
 
 ```bash
 printf '{"cmd":"eval","code":"window.location.href"}\n' | nc -U /home/phablet/.config/utoutlook.mathias/utoutlook.sock
@@ -173,7 +173,7 @@ Commandes socket (`src/ipc-socket.mjs`) : `eval ping quit show zoom zoomIn zoomO
 
 - Build **jamais** depuis l'agent (§ Build manuel). `./build-deploy.sh [version]` = electron-builder arm64 + `clickable build --arch arm64` + install ; `utoulookmail/build-fast.sh [jobs] [--cpp-only|--electron-only]` pour le C++/Electron séparément (`make` dans `utoulookmail/`).
 - Ne pas utiliser `npm run dist:linux:targz` pour un click local : il construit x64 **et** arm64 (2× plus long) ; `build-deploy.sh` appelle `electron-builder --arm64` seul.
-- Le `README.md` racine est en partie obsolète (`cd prospectmailut`, `./make-project`) : se fier à `build-deploy.sh` / `build-fast.sh`.
+- Build : se fier à `build-deploy.sh` / `build-fast.sh` (le `README.md` racine est volontairement succinct).
 - CI `.github/workflows/ci.yml` : `npm test` (Node 22 et 24), `npm run lint`, build Electron sur push `main`/`feature/**`/`fix/**`/`hotfix/**` et PR vers `main`. `build-click.yml` ne tourne que sur tag `v*`, `workflow_dispatch` ou commit contenant `[click]` sur `main`.
 - Hooks actifs ici (`core.hooksPath=githooks`) : pre-commit bloque > 50 Mo hors `.click`, pre-push bloque les `.click` et les blobs > 100 Mo.
 - Livraison : `livraison/utoutlook-<ver>/` **de ce dépôt** (dernières : 4.0.41, 4.0.93) + kit `publishstore/utoutlook-<ver>/`. `./git-auto.sh livraison <ver> "titre"` copie le `.click` de **cette version** (depuis `utoulookmail/build/<arch>/app/`), exige `CHANGELOG.md` + `README.txt` (abandon sinon) et commit avec `git add -f`.

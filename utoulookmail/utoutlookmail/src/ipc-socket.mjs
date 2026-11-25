@@ -21,6 +21,26 @@ import {logger} from './logger.mjs';
 
 let server = null;
 let activeConnections = new Set();
+// v4.3.7: connexions en long-poll (`hold`) du watchdog du wrapper.
+// On garde la socket ET son timer pour pouvoir prevenir le wrapper des
+// qu'il se quitte (cf. notifyQuitting) avant de fermer le serveur.
+const heldSockets = new Map();
+
+/**
+ * v4.3.7: repond immediatement a tous les clients en long-poll que l'app
+ * se quitte. Le wrapper sort alors SANS attendre le timer de 3 s ni la
+ * fermeture du socket (indispensable pour un relance ~1 s apres fermeture).
+ */
+export function notifyQuitting() {
+    for (const [sock, timer] of heldSockets) {
+        clearTimeout(timer);
+        if (sock && !sock.destroyed) {
+            try { sock.write(JSON.stringify({ok: true, held: true, quitting: true}) + '\n'); }
+            catch (e) { /* socket deja fermee */ }
+        }
+    }
+    heldSockets.clear();
+}
 
 /**
  * Start the Unix socket server.
@@ -102,6 +122,8 @@ export function startSocketServer(handlers) {
  * Stop the socket server and clean up.
  */
 export function stopSocketServer() {
+    // v4.3.7: prevenir AVANT de detruire les connexions (cas app.exit direct).
+    notifyQuitting();
     if (server) {
         for (const socket of activeConnections) {
             socket.destroy();
@@ -175,6 +197,32 @@ function handleCommand(msg, handlers, socket) {
 
         case 'ping':
             return {ok: true, pong: true};
+
+        case 'hold':
+            // v4.3.7: long-poll pour le watchdog du wrapper. On garde la
+            // connexion ouverte `ms` millisecondes puis on repond held:true.
+            // Si Electron meurt avant (quit propre), le socket se ferme : le
+            // client C (socketcli) voit EOF et le wrapper reagit IMMEDIATEMENT,
+            // sans sleep ni polling. Un event-loop bloque ne fait pas partir
+            // ce timer, mais le timeout cote socketcli (5 s) prend le relais.
+            {
+                const ms = Math.max(100, Math.min(Number(msg.ms) || 3000, 10000));
+                const replyTimer = setTimeout(() => {
+                    heldSockets.delete(socket);
+                    if (socket && !socket.destroyed) {
+                        try { socket.write(JSON.stringify({ok: true, held: true}) + '\n'); }
+                        catch (e) { /* socket fermee entre-temps */ }
+                    }
+                }, ms);
+                heldSockets.set(socket, replyTimer);
+                if (socket && socket.once) {
+                    socket.once('close', () => {
+                        clearTimeout(replyTimer);
+                        heldSockets.delete(socket);
+                    });
+                }
+                return null; // deferred reply (voir socket.on('data'))
+            }
 
         default:
             return {ok: false, error: `Unknown command: ${cmd}`};

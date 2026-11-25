@@ -161,9 +161,16 @@
             b.setAttribute('aria-label', 'Backspace');
             b.style.cssText = 'position:fixed;right:14px;bottom:14px;width:56px;height:56px;border-radius:50%;border:none;background:#E95420;color:#fff;font-size:26px;z-index:2147483647;cursor:pointer;';
             positionBsButton(b);
-            if (window.visualViewport) {
-                window.visualViewport.addEventListener('resize', () => { const x = document.getElementById('utoutlook-bs'); if (x) positionBsButton(x); });
-                window.visualViewport.addEventListener('scroll', () => { const x = document.getElementById('utoutlook-bs'); if (x) positionBsButton(x); });
+            // v4.4.2: enregistrer UNE seule fois — ces listeners etaient ajoutes
+            // a chaque recreation du bouton (focus/champ) et jamais retires.
+            if (window.visualViewport && !window.__utoutlookBsViewportBound) {
+                window.__utoutlookBsViewportBound = true;
+                const reposition = () => {
+                    const x = document.getElementById('utoutlook-bs');
+                    if (x) positionBsButton(x);
+                };
+                window.visualViewport.addEventListener('resize', reposition);
+                window.visualViewport.addEventListener('scroll', reposition);
             }
             // v4.0.1: empêcher le bouton de prendre le focus au clic — sinon
             // activeElement devient le bouton, le handler ne retrouve plus le champ
@@ -707,22 +714,8 @@
         }
     }, {passive: true});
 
-    // --- Double-tap to zoom on text ---
-    let lastTapTime = 0;
-    document.addEventListener('touchend', function (e) {
-        const now = Date.now();
-        if (now - lastTapTime < 300 && e.changedTouches.length === 1) {
-            // Double tap — could toggle zoom on the tapped element
-            const el = document.elementFromPoint(
-                e.changedTouches[0].clientX,
-                e.changedTouches[0].clientY
-            );
-            if (el && (el.tagName === 'P' || el.tagName === 'DIV' || el.tagName === 'SPAN')) {
-                console.log('[gestures] Double-tap detected on text element');
-            }
-        }
-        lastTapTime = now;
-    }, {passive: true});
+    // v4.4.2: l'ancien handler double-tap ne faisait qu'un console.log —
+    // aucun zoom n'etait applique. Supprime (mort + bruit de log).
 
     // ============================================================
     // v3.3.25: Empty state — show a friendly message when the message

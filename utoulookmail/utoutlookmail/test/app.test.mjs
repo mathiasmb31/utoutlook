@@ -100,6 +100,107 @@ test('ipc-socket: handleCommand processes quit', async () => {
     }
 });
 
+test('ipc-socket: hold command keeps the connection open then replies (v4.3.7)', async () => {
+    // Long-poll du watchdog : la reponse doit etre DIFFEREE (pas "ok" immediat)
+    // et porter held:true. C'est ce qui permet au wrapper de detecter un quit
+    // par fermeture du socket, sans sleep ni polling (commit 8b8e647+).
+    const net = await import('node:net');
+    const {startSocketServer, stopSocketServer} = await import('../src/ipc-socket.mjs');
+    const {SOCKET_PATH} = await import('../src/config.mjs');
+    const server = startSocketServer({});
+    try {
+        const t0 = Date.now();
+        const response = await new Promise((resolve, reject) => {
+            const c = net.createConnection(SOCKET_PATH);
+            let buf = '';
+            const timer = setTimeout(() => { c.destroy(); reject(new Error('hold socket timeout')); }, 2000);
+            c.on('connect', () => c.write(JSON.stringify({cmd: 'hold', ms: 120}) + '\n'));
+            c.on('data', (d) => {
+                buf += d.toString();
+                if (buf.includes('\n')) { clearTimeout(timer); c.end(); resolve(buf); }
+            });
+            c.on('error', (e) => { clearTimeout(timer); reject(e); });
+        });
+        assert.ok(response.includes('"held":true'), 'hold must reply held:true (v4.3.7)');
+        assert.ok(!response.includes('"pong"'), 'hold must not be answered like ping');
+        assert.ok(Date.now() - t0 >= 90, 'hold must keep the connection open for the requested delay');
+        assert.ok(server);
+    } finally {
+        stopSocketServer();
+    }
+});
+
+test('ipc-socket: notifyQuitting releases long-poll clients immediately (v4.3.7)', async () => {
+    const net = await import('node:net');
+    const {startSocketServer, stopSocketServer, notifyQuitting} =
+        await import('../src/ipc-socket.mjs');
+    const {SOCKET_PATH} = await import('../src/config.mjs');
+    const server = startSocketServer({});
+    try {
+        const t0 = Date.now();
+        const response = await new Promise((resolve, reject) => {
+            const c = net.createConnection(SOCKET_PATH);
+            let buf = '';
+            const timer = setTimeout(() => { c.destroy(); reject(new Error('notifyQuitting timeout')); }, 2000);
+            c.on('connect', () => {
+                // hold 10 s : si notifyQuitting ne libere pas le client, le test expire a 2 s.
+                c.write(JSON.stringify({cmd: 'hold', ms: 10000}) + '\n');
+                setTimeout(() => notifyQuitting(), 60);
+            });
+            c.on('data', (d) => {
+                buf += d.toString();
+                if (buf.includes('\n')) { clearTimeout(timer); c.end(); resolve(buf); }
+            });
+            c.on('error', (e) => { clearTimeout(timer); reject(e); });
+        });
+        assert.ok(response.includes('"quitting":true'), 'quit announcement must carry quitting:true');
+        assert.ok(Date.now() - t0 < 1000, 'quit announcement must be immediate (not the 10 s hold)');
+        assert.ok(server);
+    } finally {
+        stopSocketServer();
+    }
+});
+
+// ============================================================
+// v4.3.7 — relance apres fermeture : instance orpheline, pas de "au revoir"
+// ============================================================
+
+test('v4.3.7: a SIGKILLed wrapper is detected as dead (orphaned Electron)', async () => {
+    const {checkWrapperAlive} = await import('../src/wrapper-monitor.mjs');
+    const state = checkWrapperAlive({
+        pidFilePath: 'wrapper.pid',
+        expectedPid: '4242',
+        readFileSync: () => '4242\n',                          // pidfile encore l'ancien wrapper
+        readProc: () => { throw new Error('ENOENT'); },         // /proc illisible
+        probe: () => 'dead',                                    // ESRCH = vraiment disparu
+    });
+    assert.strictEqual(state, false,
+        'an orphaned Electron must be seen as wrapper-dead, not merely unknown');
+});
+
+test('v4.3.7: no goodbye when wrapper is gone; orphan closed before fresh launch', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const main = fs.readFileSync(path.join(here, '../src/main.mjs'), 'utf-8');
+    const cmd = fs.readFileSync(path.join(here, '../../command.sh'), 'utf-8');
+
+    assert.ok(main.includes('wrapperStillAlive'),
+        'goodbye must be gated on wrapper liveness (no au revoir at next launch)');
+    assert.ok(main.includes('if (process.env.WD && wrapperStillAlive)'),
+        'goodbye must be skipped when the wrapper is already dead');
+    assert.ok(main.includes('skipping goodbye notification'),
+        'the skipped goodbye must be observable in wrapper.log');
+
+    assert.ok(cmd.includes('PREV_WRAPPER_PID='),
+        'previous wrapper PID must be captured before cleanup() overwrites the pidfile');
+    assert.ok(cmd.includes('orphaned instance') && cmd.includes('closing it before fresh launch'),
+        'orphaned Electron must be closed then relaunched, never reused with show');
+    assert.ok(!cmd.includes('adopt'),
+        'no adopt loop: an already-quitting Electron must not be told to stay');
+});
+
 // ============================================================
 // Tests for settings defaults
 // These require electron-store which needs the Electron runtime.
@@ -122,9 +223,9 @@ test('settings: default URL is Outlook', {skip: !settingsAvailable && 'requires 
     assert.strictEqual(settings.get('urlMainWindow'), 'https://outlook.office.com/mail');
 });
 
-test('settings: hideOnClose defaults to true', {skip: !settingsAvailable && 'requires Electron runtime'}, async () => {
+test('settings: hideOnClose defaults to false (v4.4.4)', {skip: !settingsAvailable && 'requires Electron runtime'}, async () => {
     const {settings} = await import('../src/settings.mjs');
-    assert.strictEqual(settings.get('hideOnClose'), true);
+    assert.strictEqual(settings.get('hideOnClose'), false);
 });
 
 test('settings: startMinimized forced to false at load (v4.0.10, stale pre-3.0 settings.json)', {skip: !settingsAvailable && 'requires Electron runtime'}, async () => {
@@ -1100,13 +1201,13 @@ test('settings: window behaves like a native UT app — no X11 frame, close quit
     const sPath = path.resolve(__dirname, '../src/settings.mjs');
     const content = fs.readFileSync(sPath, 'utf-8');
 
-    // With showWindowFrame+hideOnClose=true, closing via the X11 cross only hid
+    // v4.4.4: on force un vrai quit a la fermeture (plus de masquage)
     // the window while the process kept running; the next launcher tap raised a
     // hidden window = nothing appeared ("app does not start", 1 in 2-3 launches).
     assert.ok(/showWindowFrame:\s*false/.test(content),
         'showWindowFrame default must be false on UT (v3.3.4)');
-    assert.ok(/hideOnClose:\s*true/.test(content),
-        'hideOnClose default must be true on UT so swipe-close only hides (v4.0.23)');
+    assert.ok(/hideOnClose:\s*false/.test(content),
+        'hideOnClose default must be false so Lomiri can relaunch (v4.4.4)');
     assert.ok(/hideOnMinimize:\s*true/.test(content),
         'hideOnMinimize default must be true on UT (v4.0.23)');
 });
@@ -1164,10 +1265,10 @@ test('settings: persisted window flags forced to native UT behavior (v4.0.23)', 
     const content = fs.readFileSync(sPath, 'utf-8');
 
     // v4.0.23: showWindowFrame=false + startMinimized=false are still forced, but
-    // hideOnClose/hideOnMinimize now default true so a swipe-close only hides the
+    // v4.4.4: hideOnClose force false, hideOnMinimize reste true
     // window (process stays alive for notifications; relaunch is instant).
-    assert.ok(content.includes("'showWindowFrame', false") && content.includes("'hideOnClose', true") && content.includes("'startMinimized', false"),
-        'settings.mjs must force showWindowFrame=false, hideOnClose=true, startMinimized=false (v4.0.24)');
+    assert.ok(content.includes("'showWindowFrame', false") && content.includes("'hideOnClose', false") && content.includes("'startMinimized', false"),
+        'settings.mjs must force showWindowFrame=false, hideOnClose=false, startMinimized=false (v4.4.4)');
     assert.ok(!/for \(const key of \['showWindowFrame', 'hideOnClose', 'hideOnMinimize'\]\)/.test(content),
         'settings.mjs must NOT force hideOnClose/hideOnMinimize=false anymore (v4.0.23)');
 });
@@ -1535,9 +1636,10 @@ test('v4.1.2: cookie auth sauvegardé par batch (anti-tempête login invisible)'
         'periodic flush must remain as persistence fallback (v4.1.2)');
 });
 
-test('v4.1.3: barre liste — badge UBtouch décoratif + bouton first-install (i18n 8 langues)', async () => {
+test('v4.4.5: barre liste — badge UBtouch décoratif + accès Paramètres', async () => {
     const fs = await import('node:fs');
     const btn = fs.readFileSync(path.resolve(__dirname, '../public/reload-button.js'), 'utf-8');
+    const sheet = fs.readFileSync(path.resolve(__dirname, '../public/settings-sheet.js'), 'utf-8');
     const i18n = fs.readFileSync(path.resolve(__dirname, '../src/i18n.mjs'), 'utf-8');
     const ctrl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
     const preload = fs.readFileSync(path.resolve(__dirname, '../src/controller/preload.js'), 'utf-8');
@@ -1548,9 +1650,9 @@ test('v4.1.3: barre liste — badge UBtouch décoratif + bouton first-install (i
     assert.ok(btn.includes("UBTOUCH_ID = 'utoutlook-ubtouch-badge'"), 'UBtouch decorative badge id (v4.1.3)');
     assert.ok(btn.includes('aria-hidden'), 'UBtouch badge hidden from assistive tech (v4.1.3)');
     assert.ok(btn.includes('UBTOUCH_SVG'), 'UBtouch round SVG logo (v4.1.3)');
-    assert.ok(btn.includes("FIRST_ID = 'utoutlook-first-install-btn'"), 'first-install button id (v4.1.3)');
-    assert.ok(btn.includes("fire('first')"), 'first-install wired to fire(first) (v4.1.3)');
-    assert.ok(btn.includes("window.electronAPI.firstInstall"), 'first-install uses IPC (v4.1.3)');
+    assert.ok(btn.includes("SETTINGS_ID = 'utoutlook-settings-btn'"), 'settings access id (v4.4.5)');
+    assert.ok(btn.includes('window.__utoutlookOpenSettings'), 'bar opens the settings sheet (v4.4.5)');
+    assert.ok(sheet.includes('window.electronAPI.firstInstall'), 'first-install moved to settings sheet (v4.4.5)');
     // Connectique : preload → IPC → handler principal
     assert.ok(preload.includes('firstInstall: () => ipcRenderer.invoke("first-install")'),
         'preload exposes firstInstall IPC (v4.1.3)');
@@ -1572,7 +1674,9 @@ test('v4.1.5: cocarde UBtouch officielle + icône deux doigts sur les boutons', 
     const gestures = fs.readFileSync(path.resolve(__dirname, '../public/gestures.js'), 'utf-8');
     const btn = fs.readFileSync(path.resolve(__dirname, '../public/reload-button.js'), 'utf-8');
     // Nouveau dessin double-tap : DEUX DOIGTS (rects) + pastilles + chiffre 2.
-    for (const [name, src] of [['login', gestures], ['liste', btn]]) {
+    // v4.4.5: l'icone double-tap reste sur la page login ; la barre de liste
+    // n'a plus qu'un acces Parametres (icone gear).
+    for (const [name, src] of [['login', gestures]]) {
         assert.ok(src.includes('DOUBLE_TAP_ICON'), `${name}: icône double-tap définie (v4.1.5)`);
         assert.ok((src.match(/<rect x="5"/g) || []).length >= 1 &&
                   (src.match(/<rect x="17"/g) || []).length >= 1,
@@ -1591,11 +1695,11 @@ test('v4.1.5: cocarde UBtouch officielle + icône deux doigts sur les boutons', 
     // Le texte vit dans un span dédié pour ne pas écraser l'icône.
     assert.ok(gestures.includes("label.className = 'ut-first-label'"),
         'login: span de texte dédié (v4.1.4)');
-    assert.ok(btn.includes("span.className = 'ut-first-label'"),
-        'liste: span de texte dédié (v4.1.4)');
-    assert.ok(btn.includes('setFirstLabel'), 'liste: setFirstLabel cible le span (v4.1.4)');
-    assert.ok(!/first\.textContent = tr/.test(btn),
-        'liste: plus de textContent direct sur le bouton first (v4.1.4)');
+    const sheet = fs.readFileSync(path.resolve(__dirname, '../public/settings-sheet.js'), 'utf-8');
+    assert.ok(sheet.includes('const reset = row(') && sheet.includes('reset.textContent ='),
+        'liste: reset vit dans la feuille Parametres, sans icone a preserver (v4.4.5)');
+    assert.ok(!btn.includes('ut-first-label'),
+        'liste: plus de bouton first dans la barre (v4.4.5)');
 });
 
 test('v4.1.11: WD dérivé du vrai cwd (pwd -P), pas de la variable PWD périmée', async () => {
@@ -1842,7 +1946,7 @@ test('v3.3.28: clean quit writes exitclient synchronously so the wrapper does NO
     // swipe-close (Mir session stop can kill the process before 'closed') —
     // it must write the flag synchronously while letting the window close
     const ctrl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
-    const closeHandler = ctrl.slice(ctrl.indexOf('"close", (e)'), ctrl.indexOf('"close", (e)') + 1600);
+    const closeHandler = ctrl.slice(ctrl.indexOf('"close", (e)'), ctrl.indexOf('"close", (e)') + 2600);
     assert.ok(closeHandler.includes('markCleanExit()') && closeHandler.includes('letting it close'),
         'window close handler must call markCleanExit before letting it close (v3.3.28)');
     // the 'closed' handler (app.exit there fires before window-all-closed) must mark too
@@ -1884,7 +1988,7 @@ test('v3.3.30: démarrage rapide + wrapper périmé silencieux (pas de kill du n
         'kill_app must check live processes (zombies ignored) BEFORE writing the close flag / sleeping (v3.3.30/v4.1.0)');
     // kill_stale_wrappers: SIGKILL only, never SIGTERM (a TERM runs the EXIT trap
     // which writes the close flag / socket quit and can kill the NEW instance)
-    const ksw = common.slice(common.indexOf('utoutlook_kill_stale_wrappers()'), common.indexOf('utoutlook_cleanup_flags()'));
+    const ksw = common.slice(common.indexOf('utoutlook_kill_stale_wrappers()'), common.indexOf('utoutlook_flag_fresh()'));
     assert.ok(!ksw.includes('kill -TERM'), 'kill_stale_wrappers must not SIGTERM stale wrappers (v3.3.30)');
     assert.ok(ksw.includes('kill -9'), 'kill_stale_wrappers must SIGKILL stale wrappers (v3.3.30)');
 
@@ -2053,7 +2157,7 @@ test('v4.0.3: periodic server monitor shows "server not responding" overlay afte
         'did-fail-load handler must run an immediate server check to pick the right overlay (v4.0.3)');
 });
 
-test('v4.0.3: i18n has server.* and notif.server* keys in all 8 languages', async () => {
+test('v4.0.3: i18n has server.* and notif.server* keys in all 10 languages', async () => {
     const {t, setLanguage, getAvailableLanguages} = await import('../src/i18n.mjs');
     const keys = ['server.title', 'server.message', 'notif.serverUnreachable.title', 'notif.serverReachable.title'];
     for (const lang of Object.keys(getAvailableLanguages())) {
@@ -2063,6 +2167,26 @@ test('v4.0.3: i18n has server.* and notif.server* keys in all 8 languages', asyn
             assert.ok(translated !== key, `Missing ${key} for ${lang} (v4.0.3)`);
             assert.ok(translated.length > 0, `Empty ${key} for ${lang} (v4.0.3)`);
         }
+    }
+});
+
+// v4.3.7: garde-fou i18n — les 10 langues (dont ca/eu) doivent avoir le même
+// nombre de clés traduites. Le vieux test ne parlait que de 8 langues.
+test('v4.3.7: i18n coverage is complete in all 10 languages', async () => {
+    const {getAvailableLanguages, getTranslationCoverage} = await import('../src/i18n.mjs');
+    const langs = Object.keys(getAvailableLanguages());
+    assert.strictEqual(langs.length, 10, 'exactly 10 languages must be registered');
+    assert.deepStrictEqual(
+        langs.slice().sort(),
+        ['ar', 'ca', 'de', 'en', 'es', 'eu', 'fr', 'it', 'pt', 'zh'],
+        'catalan (ca) and basque (eu) must be present (v4.3.0)'
+    );
+    const coverage = getTranslationCoverage();
+    const reference = coverage.fr;
+    assert.ok(reference > 0, 'French catalogue must not be empty');
+    for (const lang of langs) {
+        assert.strictEqual(coverage[lang], reference,
+            `${lang} has ${coverage[lang]}/${reference} translated keys — incomplete catalogue`);
     }
 });
 
@@ -2090,10 +2214,11 @@ test('v4.0.95: bouton « Recharger les messages » injecté, câblé IPC et i18n
         'reload-button.js must catch clicks in capture phase (v4.0.95)');
     assert.ok(button.includes("tr('reloading'") && button.includes('setTimeout(() => { location.reload(); }, 2000)'),
         'reload button must give immediate feedback and force a renderer-side reload fallback (v4.0.95)');
-    assert.ok(button.includes('window.electronAPI.quitApp') && button.includes('QUIT_ID'),
-        'reload-button.js must expose a Quitter button calling quitApp (v4.0.95)');
-    assert.ok(button.includes("fire('quit')") && button.includes('window.close()'),
-        'reload-button.js must quit via IPC with a window.close fallback (v4.0.95)');
+    const sheet = fs.readFileSync(path.join(publicDir, 'settings-sheet.js'), 'utf-8');
+    assert.ok(sheet.includes('window.electronAPI.quitApp') && sheet.includes("tr('commonQuit'"),
+        'Quit moved to the settings sheet (v4.4.5)');
+    assert.ok(button.includes('window.__utoutlookOpenSettings') && button.includes('SETTINGS_ID'),
+        'the bar only exposes the settings entry (v4.4.5)');
     assert.ok(button.includes('unhideList') && button.includes("h + 'px'"),
         'action bar must keep list unhidden after SPA re-renders (v4.0.98)');
     assert.ok(button.includes('a !== ml && a !== document.body') &&
@@ -2101,8 +2226,8 @@ test('v4.0.95: bouton « Recharger les messages » injecté, câblé IPC et i18n
         'MessageList itself must never get a frozen px height (v4.0.101)');
     assert.ok(!controller.includes("msgList.style.width = '40%'"),
         'landscape must not shrink the message list to 40% width (v4.0.102)');
-    assert.ok(button.includes('listReady') && button.includes('bar.style.display'),
-        'action buttons must show only when the message list is loaded (v4.0.103)');
+    assert.ok(button.includes('listReady') && button.includes("bar.style.setProperty('display'"),
+        'the floating action button must gate visibility on the Outlook mail URL (v4.0.103, v4.7.0)');
     assert.ok(button.includes("'pointer-events', 'auto'") && controller.includes("'pointer-events', 'auto'"),
         'message rows must accept clicks again (v4.0.104)');
 
@@ -2535,7 +2660,6 @@ test('v4.1.0: crédit « Inspired from Julien Alarcon » + liens réels du proje
     const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf-8'));
     const i18n = fs.readFileSync(path.resolve(__dirname, '../src/i18n.mjs'), 'utf-8');
     const readme = fs.readFileSync(path.resolve(root, 'README.md'), 'utf-8');
-    const about = fs.readFileSync(path.resolve(__dirname, '../../patches/about.html'), 'utf-8');
 
     assert.strictEqual(pkg.author.name, 'Inspired from Julien Alarcon',
         'author credit must say inspired, not authored (v4.1.0)');
@@ -2546,10 +2670,9 @@ test('v4.1.0: crédit « Inspired from Julien Alarcon » + liens réels du proje
               pkg.repository.url.includes('mathiasmb31/utoutlook'),
         'package.json links must point to the utoutlook project (v4.1.0)');
     assert.ok(readme.includes('Inspired from Julien Alarcon') &&
-              readme.includes('./build-deploy.sh') &&
-              about.includes('Inspired from Julien Alarcon'),
-        'README/about credit and links must be updated (v4.1.0)');
-    assert.ok(!/julian[-\s]?alarcon/i.test(readme + about + JSON.stringify(pkg)),
+              readme.includes('./build-deploy.sh'),
+        'README credit and links must be updated (v4.1.0)');
+    assert.ok(!/julian[-\s]?alarcon/i.test(readme + JSON.stringify(pkg)),
         'no stale upstream credit or link may remain (v4.1.0)');
     for (const needle of ['Inspiré de Julien Alarcon', 'Inspired from Julien Alarcon',
                           'Inspirado en Julien Alarcon', 'Inspiriert von Julien Alarcon',
@@ -2642,7 +2765,7 @@ test('v4.1.0: icône — WM_CLASS alignée sur le click + démarrage en 6 étape
 
     // Fenêtre "visible" pour Electron mais surface Mir perdue après unlock.
     const ctl = fs.readFileSync(path.resolve(__dirname, '../src/controller/mail-window-controller.mjs'), 'utf-8');
-    assert.ok(ctl.includes('resurfaceWindow(stealFocus = false)') &&
+    assert.ok(ctl.includes('resurfaceWindow(stealFocus = false, nudge = false)') &&
               ctl.includes('setAlwaysOnTop(true)') && ctl.includes('webContents.invalidate()'),
         'controller must re-surface the Mir window without hide() (v4.1.0)');
     assert.ok(ctl.includes("this._on(powerMonitor, 'unlock-screen'") &&
@@ -2691,7 +2814,7 @@ test('v4.0.125: bouton Quitter — cleanupAndExit plus court-circuité (app viva
     assert.ok(cae.includes('global.utoutlookQuitting = true'),
         'cleanupAndExit must flag a real quit for the window controller (v4.0.125)');
 
-    // Avec hideOnClose=true (forcé sur UT), intercepter 'close' pendant le
+    // v4.4.4: le handler reste tolerant, mais hideOnClose est force a false
     // quit masque la fenêtre et annule app.quit() → app invisible.
     const closeStart = controller.indexOf('this.win.on("close", (e) => {');
     const close = controller.slice(closeStart, controller.indexOf('});', closeStart));
@@ -2699,6 +2822,8 @@ test('v4.0.125: bouton Quitter — cleanupAndExit plus court-circuité (app viva
         'hideOnClose must still apply outside a quit (v4.0.125)');
     assert.ok(close.includes('!global.utoutlookQuitting'),
         'close handler must skip hideOnClose during a real quit (v4.0.125)');
+    assert.ok(close.includes('this.appStartedAt') && close.includes('10000'),
+        'a spurious close right after startup must be ignored, not hide the window (v4.4.3)');
 });
 
 test('v4.1.0 (revue): outillage release et garde-fous', async () => {
@@ -2796,10 +2921,10 @@ test('v4.1.0 (analyse approfondie): correctifs applicatifs et outillage', async 
     assert.ok(ctl.includes('static byWebContents') && ctl.includes('const owner = MailWindowController.byWebContents.get(event.sender)'),
         'IPC handlers must dispatch to the controller owning the sender (M4)');
 
-    // reload button visible when the list is broken
-    assert.ok(reload.includes("reload.style.display = listReady() ? '' : 'none'") &&
+    // reload button always visible — especially when the list is broken (0x0)
+    assert.ok(reload.includes("reload.style.display = '';") &&
               !reload.includes("a.style.setProperty('overflow', 'visible'"),
-        'reload button must be available on broken lists without breaking scroll (renderer #4/#5)');
+        'reload button must never be hidden on broken lists (v4.7.7, renderer #4/#5)');
     assert.ok(ctl.includes('render-process-gone') && ctl.includes('this.win.reload()'),
         'dead renderer must trigger a reload (M6)');
 
@@ -2816,4 +2941,684 @@ test('v4.1.0 (analyse approfondie): correctifs applicatifs et outillage', async 
               buildFast.includes('"$PROJECT_DIR/CMakeCache.txt"') &&
               !buildFast.includes('rm -f "$PROJECT_DIR/Makefile"'),
         'build-fast must clean in-source cmake artifacts WITHOUT deleting the real Makefile (F4)');
+});
+
+// ============================================================
+// v4.3.8 — stabilite : plus de glass, bascule de rendu accessible
+// ============================================================
+
+test('v4.3.8: no blur animation on the message list (software mode hangs)', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const btn = fs.readFileSync(path.join(here, '../public/reload-button.js'), 'utf-8');
+    const css = fs.readFileSync(path.join(here, '../public/main.css'), 'utf-8');
+
+    assert.ok(!css.includes('utoutlook-list-glass-in') &&
+              !css.includes('filter: blur('),
+        'no blur keyframes/filter may remain in the injected CSS (v4.3.8)');
+    assert.ok(!btn.includes('READY_CLASS') && !btn.includes('signalListReady'),
+        'the list-ready glass trigger must be gone (v4.3.8)');
+});
+
+test('v4.4.5: render-mode choices live in the settings sheet', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const sheet = fs.readFileSync(path.join(here, '../public/settings-sheet.js'), 'utf-8');
+    const ctrl = fs.readFileSync(path.join(here, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+
+    assert.ok(sheet.includes("['auto', 'settingsRenderAuto', 'Automatic']") &&
+              sheet.includes("['software', 'settingsRenderSoftware', 'Software']") &&
+              sheet.includes("['hardware', 'settingsRenderHardware', 'Hardware']") &&
+              sheet.includes('setRenderMode(mode)'),
+        'settings sheet must expose the three render modes (v4.4.5)');
+    const inject = ctrl.slice(ctrl.indexOf('injectReloadButton()'));
+    assert.ok(inject.includes('renderSoftwareEnable: tr[\'render.enable\']') &&
+              inject.includes('renderSoftwareDisable: tr[\'render.disable\']') &&
+              inject.includes('relaunchNotice: tr[\'splash.relaunch\']'),
+        'render toggle labels must be injected in 10 languages (v4.3.8)');
+});
+
+test('v4.3.8: "software rendering after a crash" is only announced on a real switch', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const cmd = fs.readFileSync(path.join(here, '../../command.sh'), 'utf-8');
+
+    const block = cmd.slice(cmd.indexOf('if [ "${RENDER_MODE}" = "software" ]; then'),
+                            cmd.indexOf('echo "launch utoutlookmail"'));
+    assert.ok(block.includes('if [ "${GPU_CRASH_NEW}" -eq 1 ]'),
+        'softwareMode notification must be gated on a fresh GPU crash (v4.3.8)');
+    assert.ok(block.includes('software|on|1) : ;;'),
+        'already-software mode must never announce a crash (v4.3.8)');
+    assert.ok(cmd.includes('read -r CUR_RENDER_MODE < "${UTOUTLOOK_RENDER_MODE_FILE}"'),
+        'current mode must be read with the bash builtin (v4.3.8)');
+});
+
+// ============================================================
+// v4.3.7 — robustesse : logs bornes et polls en arriere-plan
+// ============================================================
+
+test('v4.3.7: crash.log is capped without touching wrapper.log line numbers', async () => {
+    const {capLogIfLarge, MAX_CRASH_LOG_BYTES} = await import('../src/log-rotation.mjs');
+    let size = MAX_CRASH_LOG_BYTES - 1;
+    let truncated = 0;
+    const fakeFs = {
+        statSync: () => ({size}),
+        writeFileSync: (_p, data) => { assert.strictEqual(data, ''); truncated++; },
+    };
+    assert.strictEqual(capLogIfLarge('crash.log', MAX_CRASH_LOG_BYTES, fakeFs), false);
+    assert.strictEqual(truncated, 0, 'a log below the limit must be left alone');
+    size = MAX_CRASH_LOG_BYTES + 1;
+    assert.strictEqual(capLogIfLarge('crash.log', MAX_CRASH_LOG_BYTES, fakeFs), true);
+    assert.strictEqual(truncated, 1, 'an oversized log must be truncated');
+    assert.strictEqual(capLogIfLarge('missing.log', MAX_CRASH_LOG_BYTES, {
+        statSync: () => { throw new Error('ENOENT'); },
+        writeFileSync: () => { throw new Error('should not write'); },
+    }), false);
+});
+
+test('v4.3.7: watchdog noise is debug-only and background gating is whitelisted', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const wrapper = fs.readFileSync(path.resolve(here, '../../command.sh'), 'utf-8');
+    const ctl = fs.readFileSync(path.join(here, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    const main = fs.readFileSync(path.join(here, '../src/main.mjs'), 'utf-8');
+
+    assert.ok(wrapper.includes('[ "${UTOUTLOOK_DEBUG:-0}" = "1" ] && echo "done"'),
+        'watchdog "done" noise must be debug-only (v4.3.7)');
+    assert.ok(wrapper.includes('[ "${UTOUTLOOK_DEBUG:-0}" = "1" ] && echo "client is alive"'),
+        'watchdog "client is alive" noise must be debug-only (v4.3.7)');
+    assert.ok(ctl.includes('isBackgrounded()') &&
+              ctl.includes('if (this.isBackgrounded()) return; // v4.3.7: inutile quand masque') &&
+              ctl.includes('if (this.isBackgrounded() && !this.isOffline) return;'),
+        'only the list watchdog and connectivity poll may be gated (v4.3.7)');
+    const gates = ctl.match(/if \(this\.isBackgrounded\(\)(?: && !this\.isOffline)?\) return;/g) || [];
+    assert.strictEqual(gates.length, 2,
+        'only the list watchdog and the connectivity poll may use the background gate');
+    assert.ok(!main.includes('isBackgrounded'),
+        'heartbeat lives in main.mjs and must never be gated (v4.2.5 clean quit)');
+    assert.ok(main.includes('capLogIfLarge(file, MAX_CRASH_LOG_BYTES)'),
+        'crash.log must be capped from main.mjs (v4.3.7)');
+});
+
+// ============================================================
+// v4.3.7 — supervision inverse wrapper <- Electron
+// ============================================================
+
+test('v4.3.7: wrapper monitor never quits on an unknown or newer wrapper', async () => {
+    const {checkWrapperAlive} = await import('../src/wrapper-monitor.mjs');
+    const base = (pidfile, proc, expected = '4242') => ({
+        pidFilePath: 'wrapper.pid',
+        expectedPid: expected,
+        readFileSync: () => pidfile,
+        readProc: () => proc,
+        probe: () => 'unknown', // on force le repli /proc pour ces cas
+    });
+    assert.strictEqual(checkWrapperAlive({...base('4242\n', '4242 (bash) S 1 1'), expectedPid: ''}), 'unknown');
+    assert.strictEqual(checkWrapperAlive({pidFilePath: 'wrapper.pid', expectedPid: '', readFileSync: () => '4242'}), 'unknown');
+    assert.strictEqual(checkWrapperAlive(base('9999\n', '9999 (bash) S 1 1')), 'unknown',
+        'a newer wrapper PID must not trigger a quit');
+    assert.strictEqual(checkWrapperAlive(base('garbage', '4242 (bash) S 1 1')), 'unknown');
+    // v4.3.8: le probe (signal 0) est la source de verite. Sans lui, on
+    // replie sur /proc, et une lecture impossible n'est PAS une mort.
+    const withProbe = (proc, probeState) => ({
+        pidFilePath: 'wrapper.pid', expectedPid: '4242',
+        readFileSync: () => '4242\n',
+        readProc: () => proc,
+        probe: () => probeState,
+    });
+    assert.strictEqual(checkWrapperAlive(withProbe('4242 (bash) S 1 1', 'alive')), true);
+    assert.strictEqual(checkWrapperAlive(withProbe('4242 (bash) S 1 1', 'dead')), false);
+    assert.strictEqual(checkWrapperAlive(withProbe('4242 (bash) S 1 1', 'unknown')), true,
+        '/proc dit S => vivant quand le probe est indecis');
+    assert.strictEqual(checkWrapperAlive(base('4242\n', '4242 (bash) Z 1 1')), false,
+        'a zombie wrapper counts as dead');
+    assert.strictEqual(checkWrapperAlive({
+        pidFilePath: 'wrapper.pid', expectedPid: '4242',
+        readFileSync: () => { throw new Error('ENOENT'); },
+        readProc: () => 'unused',
+    }), 'unknown',
+        'an unreadable pidfile must NEVER quit Electron (v4.3.8 false positives)');
+    assert.strictEqual(checkWrapperAlive({
+        pidFilePath: 'wrapper.pid', expectedPid: '4242',
+        readFileSync: () => '4242\n',
+        readProc: () => { throw new Error('EACCES'); },
+        // v4.7.7: sans probe injecté, le vrai signal 0 sur PID 4242 dépend
+        // de l'environnement (présent localement, absent sur le runner CI).
+        probe: () => 'unknown',
+    }), 'unknown',
+        'an unreadable /proc must NEVER quit Electron (v4.3.8 false positives)');
+});
+
+test('v4.3.7: reverse supervision uses cleanupAndExit with quit/rotation guards', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const main = fs.readFileSync(path.join(here, '../src/main.mjs'), 'utf-8');
+    const block = main.slice(main.indexOf('v4.3.7 — supervision INVERSE'));
+
+    assert.ok(block.includes('appInstance.cleanupAndExit()'),
+        'a dead wrapper must trigger a CLEAN exit, not app.exit (v4.0.116/v4.0.125)');
+    assert.ok(!block.slice(0, 1600).includes('app.exit('),
+        'no direct app.exit in the reverse supervision block');
+    assert.ok(block.includes('!global.utoutlookQuitting') &&
+              block.includes('!global.restartRequested') &&
+              block.includes('!global.skipCleanExitFlag'),
+        'quit, restart and rotation guards must all be present (v4.1.0/v4.3.1)');
+    assert.ok(block.includes('wrapperMisses >= 4') && block.includes('heartbeatTicks % 5 === 0'),
+        'must require 3 consecutive misses spaced by 10 s (anti false positive)');
+    assert.ok(block.includes("state === 'unknown'") || block.includes("// 'unknown'"),
+        'unknown state must be explicitly ignored');
+});
+
+// ============================================================
+// v4.3.7 — bouton diagnostics : rapport whiteliste, jamais de log brut
+// ============================================================
+
+test('v4.3.7: diagnostics report contains only structural, non-private data', async () => {
+    const {buildDiagnostics} = await import('../src/diagnostics.mjs');
+    const fake = {
+        readFileSync: (p) => {
+            if (String(p).endsWith('lang')) return 'fr\n';
+            if (String(p).endsWith('render-mode')) return 'software\n';
+            if (String(p).endsWith('follow')) return '42';
+            throw new Error('ENOENT');
+        },
+        existsSync: (p) => String(p).endsWith('wrapper.pid'),
+        statSync: () => ({size: 1234}),
+    };
+    const report = buildDiagnostics({
+        version: '4.3.7', now: () => 1700000000000,
+        configDir: '/cfg', dataDir: '/data', heartbeatFile: '/cfg/follow',
+        readFileSync: fake.readFileSync, existsSync: fake.existsSync, statSync: fake.statSync,
+    });
+    assert.strictEqual(report.version, '4.3.7');
+    assert.strictEqual(report.language, 'fr');
+    assert.strictEqual(report.renderMode, 'software');
+    assert.strictEqual(report.heartbeat, '42');
+    assert.strictEqual(report.wrapperPidPresent, true);
+    assert.strictEqual(report.socketPresent, false);
+    assert.strictEqual(report.flags.exitclient, false);
+    assert.strictEqual(report.logBytes.wrapper, 1234);
+    const json = JSON.stringify(report);
+    assert.ok(!/[a-z0-9._%+-]+@[a-z0-9.-]+/.test(json), 'no email address in the report');
+    assert.ok(!json.includes('wrapper.log content'), 'no raw log content in the report');
+});
+
+test('v4.3.7: diagnostics IPC is guarded and the button uses i18n labels', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const ctl = fs.readFileSync(path.join(here, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    const preload = fs.readFileSync(path.join(here, '../src/controller/preload.js'), 'utf-8');
+    const btn = fs.readFileSync(path.join(here, '../public/reload-button.js'), 'utf-8');
+    const i18n = fs.readFileSync(path.join(here, '../src/i18n.mjs'), 'utf-8');
+
+    assert.ok(ctl.includes('ipcMain.handle("get-diagnostics"') &&
+              ctl.includes('MailWindowController.byWebContents.has(event.sender)'),
+        'only the trusted mail renderer may request diagnostics');
+    assert.ok(ctl.includes('buildDiagnostics({version: app.getVersion()})'),
+        'diagnostics must use the whitelisted builder');
+    const diagnosticsHandler = ctl.slice(ctl.indexOf('ipcMain.handle("get-diagnostics"'),
+                                          ctl.indexOf('ipcMain.handle("get-diagnostics"') + 900);
+    assert.ok(!diagnosticsHandler.includes('wrapper.log'),
+        'raw wrapper.log must never be exported');
+    assert.ok(preload.includes('getDiagnostics: () => ipcRenderer.invoke("get-diagnostics")'),
+        'preload must expose the diagnostics bridge');
+    const sheet = fs.readFileSync(path.join(here, '../public/settings-sheet.js'), 'utf-8');
+    assert.ok(sheet.includes("tr('actionDiagnostics'") &&
+              sheet.includes("tr('diagnosticsSaved'") &&
+              sheet.includes('getDiagnostics()'),
+        'diagnostics now lives in the settings sheet (v4.4.5)');
+    assert.ok(ctl.includes('actionDiagnostics: tr[\'action.diagnostics\']') &&
+              ctl.includes('diagnosticsSaved: tr[\'diagnostics.saved\']'),
+        'controller must inject the flat keys used by settings-sheet.js');
+    assert.ok(i18n.includes("'action.diagnostics':") && i18n.includes("'diagnostics.saved':"),
+        'new i18n keys must exist');
+});
+
+// ============================================================
+// v4.3.7 — preparation Content Hub (validation de chemin, sans device)
+// ============================================================
+
+test('v4.3.7: content hub paths are whitelisted before reaching Outlook', async () => {
+    const {normalizeContentUrl, validateTransferPath, TRANSFER_TIMEOUT_MS, MAX_TRANSFER_BYTES} =
+        await import('../src/content-hub.mjs');
+    assert.strictEqual(TRANSFER_TIMEOUT_MS, 30000);
+    assert.strictEqual(normalizeContentUrl('file:///home/phablet/Download/a%20b.pdf'),
+        '/home/phablet/Download/a b.pdf');
+    assert.strictEqual(normalizeContentUrl('file:/tmp/x.txt'), '/tmp/x.txt');
+    assert.strictEqual(normalizeContentUrl(null), null);
+
+    const fsApi = {
+        statSync: (p) => {
+            if (p.includes('missing')) throw new Error('ENOENT');
+            return {isFile: () => !p.endsWith('/')};
+        },
+    };
+    const opts = {allowedRoots: ['/home/phablet/Downloads'], fsApi};
+    assert.deepStrictEqual(
+        validateTransferPath('file:///home/phablet/Downloads/plan%20velo.pdf', opts),
+        {ok: true, path: '/home/phablet/Downloads/plan velo.pdf'});
+    assert.deepStrictEqual(
+        validateTransferPath('/home/phablet/Downloads/../../etc/passwd', opts),
+        {ok: false, reason: 'outside-allowed-roots'},
+        'path traversal must be rejected');
+    assert.deepStrictEqual(
+        validateTransferPath('/home/phablet/Documents/secret.pdf', opts),
+        {ok: false, reason: 'outside-allowed-roots'});
+    assert.deepStrictEqual(
+        validateTransferPath('/home/phablet/Downloads/missing.pdf', opts),
+        {ok: false, reason: 'not-readable'});
+    assert.deepStrictEqual(
+        validateTransferPath('relative/file.pdf', opts),
+        {ok: false, reason: 'invalid-path'});
+    assert.deepStrictEqual(
+        validateTransferPath('/home/phablet/Downloads/gros.pdf', {
+            allowedRoots: ['/home/phablet/Downloads'],
+            fsApi: {statSync: () => ({isFile: () => true, size: MAX_TRANSFER_BYTES + 1})},
+        }),
+        {ok: false, reason: 'too-large'},
+        'a huge file must be rejected before base64 injection (v4.4.2)');
+});
+
+test('v4.3.7: Content Hub is wired via D-Bus, with no visible QML picker', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const clickDir = path.resolve(here, '../..');
+    const qmlDir = path.join(clickDir, 'qml');
+    const manifest = fs.readFileSync(path.join(clickDir, 'manifest.json'), 'utf-8');
+    const apparmor = fs.readFileSync(path.join(clickDir, 'utoutlook.apparmor'), 'utf-8');
+    const hook = fs.readFileSync(path.join(clickDir, 'content-hub.json'), 'utf-8');
+
+    assert.ok(manifest.includes('content-hub'), 'content-hub hook must stay declared');
+    assert.ok(apparmor.includes('content_exchange') && apparmor.includes('content_exchange_source'));
+    assert.ok(JSON.parse(hook).source.length > 0, 'source content types must be declared');
+    const qmlFiles = fs.readdirSync(qmlDir).filter(f => f.endsWith('.qml'));
+    const withPicker = qmlFiles.filter(f =>
+        fs.readFileSync(path.join(qmlDir, f), 'utf-8').includes('ContentPeerPicker'));
+    assert.deepStrictEqual(withPicker, [],
+        'no visible QML picker yet — a separate QML window creates unknown.qtmir (§2.14)');
+});
+
+// ============================================================
+// v4.4 — pont D-Bus Content Hub (import de pieces jointes)
+// ============================================================
+
+test('v4.4: Content Hub D-Bus replies are parsed without a QML picker', async () => {
+    const {parsePeers, parseObjectPath, parseCollectedUrls, DEFAULT_ALLOWED_ROOTS} =
+        await import('../src/content-hub.mjs');
+    const peers = parsePeers("('filemanager.ubports_filemanager_1.1.4', 'Fichiers', @ay [...], '', false)");
+    assert.deepStrictEqual(peers, [{id: 'filemanager.ubports_filemanager_1.1.4', name: 'Fichiers'}]);
+    assert.strictEqual(parseObjectPath("(objectpath '/transfers/utoutlook/import/1',)"),
+        '/transfers/utoutlook/import/1');
+    assert.deepStrictEqual(parseCollectedUrls("([<('file:///home/phablet/Downloads/a%20b.pdf')>])"),
+        ['file:///home/phablet/Downloads/a%20b.pdf']);
+    // v4.5.5: dbus-send --print-reply (pas d'Introspect, autorise par AppArmor)
+    const dbusSendPeers = parsePeers('   variant struct {\n      string "filemanager.ubports_filemanager_1.1.4"\n      string "Fichiers"\n');
+    assert.deepStrictEqual(dbusSendPeers, [{id: 'filemanager.ubports_filemanager_1.1.4', name: 'Fichiers'}]);
+    assert.strictEqual(parseObjectPath('   objectpath "/transfers/utoutlook/import/1"\n'),
+        '/transfers/utoutlook/import/1');
+    // dbus-send --print-reply : deux mots, « object path »
+    assert.strictEqual(parseObjectPath('   object path "/transfers/utoutlook/import/2"\n'),
+        '/transfers/utoutlook/import/2');
+    assert.deepStrictEqual(parseCollectedUrls('      string "file:///home/phablet/Downloads/a.pdf"\n'),
+        ['file:///home/phablet/Downloads/a.pdf']);
+    assert.ok(DEFAULT_ALLOWED_ROOTS.some(r => r.endsWith('/.cache/utoutlook.mathias/HubIncoming')),
+        'files really received via Content Hub land in the app cache (v4.4.2, path from config.mjs)');
+    assert.ok(DEFAULT_ALLOWED_ROOTS.some(r => r.endsWith('/.config/utoutlook.mathias/incoming')),
+        'durable copy of received attachments must be whitelisted (v4.6.2)');
+    assert.ok(!DEFAULT_ALLOWED_ROOTS.some(r => r.startsWith('/home/phablet/')) ||
+              process.env.HOME === '/home/phablet',
+        'no hardcoded /home/phablet outside the device (v4.4.2)');
+});
+
+test('v4.4: importFiles drives Start/Collect/Finalize and validates the path', async () => {
+    const {ContentHubBridge} = await import('../src/content-hub.mjs');
+    const calls = [];
+    const run = async (args) => {
+        // v4.5.6: dbus-send exige --dest=NAME / --type=TYPE (forme avec '=')
+        assert.ok(args.includes(`--dest=com.lomiri.content.dbus.Service`) &&
+                  args.includes('--type=method_call'),
+            'dbus-send arguments must use the --opt=value form (v4.5.6)');
+        const method = args[args.indexOf('--print-reply') + 2];
+        calls.push(method);
+        if (method.endsWith('KnownSourcesForType')) {
+            return "([<('filemanager.ubports_filemanager_1.1.4', 'Fichiers')>], '')";
+        }
+        if (method.endsWith('CreateImportFromPeer')) return "(objectpath '/transfers/x/import/1',)";
+        if (method.endsWith('.State')) return '   int32 3\n'; // charged
+        if (method.endsWith('Collect')) return "([<('file:///home/phablet/.cache/utoutlook.mathias/HubIncoming/1/plan.pdf')>])";
+        return '()';
+    };
+    const bridge = new ContentHubBridge({
+        run,
+        appId: 'utoutlook.mathias_utoutlook_4.4.0',
+        sleep: async () => {},
+        now: (() => { let n = 0; return () => (n += 100); })(),
+        validate: (raw) => ({ok: true, path: raw}),
+        fsApi: {mkdirSync: () => {}, copyFileSync: () => {}},
+        incomingDir: '/incoming',
+    });
+    const result = await bridge.importFiles();
+    assert.deepStrictEqual(result, {paths: ['/incoming/plan.pdf']});
+    assert.ok(calls.some(c => c.endsWith('.Start')) && calls.some(c => c.endsWith('.Finalize')),
+        'the transfer must be started and finalized');
+});
+
+// v4.7.0 — export d'une PJ recue vers une autre app (Content Hub)
+test('v4.7.6: Charge puts the URL in the 4th field of the Item struct', async () => {
+    const {gvariantStringArray} = await import('../src/content-hub.mjs');
+    assert.strictEqual(gvariantStringArray('file:///tmp/a.pdf'),
+        '[<("", @ay [], "", "file:///tmp/a.pdf")>]');
+    assert.strictEqual(
+        gvariantStringArray(['file:///tmp/a b.pdf', 'file:///tmp/c.pdf']),
+        '[<("", @ay [], "", "file:///tmp/a b.pdf")>, ' +
+        '<("", @ay [], "", "file:///tmp/c.pdf")>]');
+});
+
+test('v4.7.3: the 40px window nudge cannot run on focus/health-poll anymore', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const ctrl = fs.readFileSync(
+        path.join(here, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+
+    assert.ok(ctrl.includes('resurfaceWindow(stealFocus = false, nudge = false)'),
+        'the bounds nudge must be opt-in (v4.7.3)');
+    assert.ok(ctrl.includes('if (nudge && !this._resurfaceNudgePending)'),
+        'the 40px shift must be guarded (v4.7.3)');
+    assert.ok(!ctrl.includes('this.resurfaceWindow(false, true)'),
+        'no normal focus/health-poll call may ask for a nudge (v4.7.3)');
+    assert.ok((ctrl.match(/resurfaceWindow\(true, true\)/g) || []).length === 2,
+        'only power resume/unlock may keep the recovery nudge (v4.7.3)');
+});
+
+test('v4.7.2: a completed download triggers Content Hub sharing automatically', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const ctrl = fs.readFileSync(
+        path.join(here, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    const btn = fs.readFileSync(path.join(here, '../public/reload-button.js'), 'utf-8');
+
+    assert.ok(ctrl.includes("state === 'completed'") &&
+              ctrl.includes('this.shareDownloadedFile(dest)'),
+        'finishing a download must open Content Hub directly (v4.7.2)');
+    assert.ok(!btn.includes('SHARE_ID') && !btn.includes('__utoutlookSharePoll'),
+        'the flickering conditional Share button must be gone (v4.7.2)');
+    assert.ok(btn.includes('UT_DBG click-offset') && btn.includes('elementFromPoint'),
+        'click offsets must be measured when the user reproduces the issue (v4.7.2)');
+});
+
+test('v4.7.0: exportFile drives destination/Charge/Start and leaves the transfer alive', async () => {
+    const {ContentHubBridge, gvariantStringArray} = await import('../src/content-hub.mjs');
+    const calls = [];
+    const order = [];
+    const run = async (args) => {
+        const method = args[args.indexOf('--print-reply') + 2];
+        calls.push(method);
+        order.push(method);
+        if (method.endsWith('KnownDestinationsForType')) {
+            return "([<('filemanager.ubports_filemanager_1.1.4', 'Fichiers')>], '')";
+        }
+        if (method.endsWith('CreateExportToPeer')) return "(objectpath '/transfers/x/export/1',)";
+        return '()';
+    };
+    const gvCalls = [];
+    const gvRun = async (args) => {
+        gvCalls.push(args);
+        order.push('Charge');
+        return '()';
+    };
+    const bridge = new ContentHubBridge({
+        run, gvRun,
+        appId: 'utoutlook.mathias_utoutlook_4.7.0',
+    });
+    const result = await bridge.exportFile('/home/phablet/.config/utoutlook.mathias/outgoing/a.pdf');
+    assert.deepStrictEqual(result, {ok: true});
+    assert.ok(calls.some(c => c.endsWith('.CreateExportToPeer')), 'an export transfer must be created');
+    assert.ok(order.indexOf('com.lomiri.content.dbus.Transfer.Start') !== -1 &&
+              order.indexOf('com.lomiri.content.dbus.Transfer.Start') < order.indexOf('Charge'),
+        'Start must precede Charge so the transfer state goes 0→2→3 (v4.7.4)');
+    assert.ok(!calls.some(c => c.endsWith('.Finalize')),
+        'do not finalize before the user picked a destination');
+    assert.strictEqual(gvCalls.length, 1, 'Charge must go through gdbus');
+    assert.ok(gvCalls[0].includes(gvariantStringArray(
+        ['file:///home/phablet/.config/utoutlook.mathias/outgoing/a.pdf'])));
+});
+
+// ============================================================
+// v4.3.7 — ecran hors-ligne natif (pas de QML separe)
+// ============================================================
+
+test('v4.3.7: two consecutive failures are required before the offline screen', async () => {
+    const {shouldShowOfflineScreen, STARTUP_NETWORK_CHECKS} =
+        await import('../src/network-check.mjs');
+    assert.strictEqual(STARTUP_NETWORK_CHECKS, 2);
+    assert.strictEqual(shouldShowOfflineScreen(0), false);
+    assert.strictEqual(shouldShowOfflineScreen(1), false, 'one slow network must not block startup');
+    assert.strictEqual(shouldShowOfflineScreen(2), true);
+    assert.strictEqual(shouldShowOfflineScreen(3), true);
+});
+
+test('v4.3.7: offline screen is native Electron and survives a hidden window', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const ctl = fs.readFileSync(path.join(here, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+
+    assert.ok(ctl.includes('this.startStartupNetworkCheck()'),
+        'startup network check must be wired at window setup');
+    const block = ctl.slice(ctl.indexOf('startStartupNetworkCheck()'));
+    assert.ok(block.includes("this.showOfflineOverlay('offline')") &&
+              block.includes('this.startConnectivityMonitor()'),
+        'offline screen must use the native overlay and keep polling for recovery');
+    assert.ok(!block.slice(0, 1800).includes('qmlscene'),
+        'no separate QML window for offline (yellow icon rule §2.14)');
+    assert.ok(ctl.includes('if (document.body) inject();') &&
+              ctl.includes("addEventListener('DOMContentLoaded'"),
+        'overlay injection must wait for the DOM at startup');
+    assert.ok(ctl.includes('if (this.isBackgrounded() && !this.isOffline) return;'),
+        'recovery poll must keep running while the offline screen is displayed');
+});
+
+// ============================================================
+// v4.4.9 — barre hors du clavier pendant la composition
+// ============================================================
+
+test('v4.5.4: a file passed by Content Hub is consumed into the composer', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const ctl = fs.readFileSync(path.join(here, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    const preload = fs.readFileSync(path.join(here, '../src/controller/preload.js'), 'utf-8');
+    const btn = fs.readFileSync(path.join(here, '../public/reload-button.js'), 'utf-8');
+
+    assert.ok(ctl.includes('"consume-pending-attachment"') && ctl.includes('PENDING_ATTACH_FILE'),
+        'main must consume the pending attachment file (v4.5.4)');
+    assert.ok(preload.includes('consumePendingAttachment'),
+        'preload must expose the pending attachment bridge (v4.5.4)');
+    assert.ok(btn.includes('consumePendingAttachment()'),
+        'renderer must request it when a compose window opens (v4.5.4)');
+});
+
+test('v4.5.3: the click declares both source and destination to Content Hub', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const hub = JSON.parse(fs.readFileSync(path.join(here, '../../content-hub.json'), 'utf-8'));
+    const cmd = fs.readFileSync(path.join(here, '../../command.sh'), 'utf-8');
+
+    assert.ok(Array.isArray(hub.source) && hub.source.length > 0 &&
+              Array.isArray(hub.destination) && hub.destination.length > 0,
+        'UToutlook must be declared as both source and destination (v4.5.3)');
+    assert.ok(cmd.includes('pending-attach'),
+        'arguments passed by Content Hub must be saved for the renderer (v4.5.3)');
+});
+
+test('v4.5.2: attach-from-hub validates the renderer origin, not the controller map', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const ctl = fs.readFileSync(path.join(here, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    const start = ctl.indexOf('ipcMain.handle("attach-from-hub"');
+    const block = ctl.slice(start, start + 1200);
+    assert.ok(block.includes('trustedRenderer(event)'),
+        'attach must accept a trusted Outlook origin even if byWebContents lost the sender (v4.5.2, v4.7.7)');
+    assert.ok(ctl.includes('function trustedRenderer(event)') &&
+              ctl.includes('microsoftonline\\.com)(?:\\/|$)') &&
+              !ctl.includes('|| /^file:/i.test(url)'),
+        'the shared origin guard must anchor the host and exclude file: pages (v4.7.7)');
+});
+
+test('v4.5.1: attach/get-diagnostics are not removed by another controller destroy', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const ctl = fs.readFileSync(path.join(here, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+    const start = ctl.indexOf('this._ipcHandleChannels = ');
+    const list = ctl.slice(start, start + 260);
+    assert.ok(list.includes('get-render-mode') && list.includes('first-install'),
+        'legacy handlers still cleaned up');
+    assert.ok(!list.includes('attach-from-hub') && !list.includes('get-diagnostics'),
+        'global removeHandler must not kill the active controller handler (v4.5.1)');
+});
+
+test('v4.7.0: a single floating button opens a menu instead of covering Outlook menus', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const btn = fs.readFileSync(path.join(here, '../public/reload-button.js'), 'utf-8');
+
+    assert.ok(btn.includes('const COMPOSE_SEL') && btn.includes('composeFileInput()'),
+        'the compose marker must still drive attach-button visibility (v4.4.8)');
+    assert.ok(btn.includes('FAB_ID') && btn.includes('PANEL_ID') &&
+              btn.includes('toggleMenu') && btn.includes('closeMenu'),
+        'one compact button must toggle a mini-menu of actions (v4.7.0)');
+    assert.ok(btn.includes("bar.style.top = '12px'") &&
+              btn.includes("bar.style.flexDirection = 'column-reverse'"),
+        'the button must move to the top while composing so the keyboard cannot hide it (v4.7.1)');
+    assert.ok(!btn.includes('tryDock') && !btn.includes('fui-TabList'),
+        'the action UI must no longer dock into the Outlook ribbon (v4.7.0)');
+    assert.ok(btn.includes('keyboardOverlap()') && btn.includes('bar.style.bottom'),
+        'the floating button must stay above the virtual keyboard (v4.4.7)');
+});
+
+// ============================================================
+// v4.4.8 — cible d'injection PJ = menu « Fichier » d'Outlook
+// ============================================================
+
+test('v4.4.8: attach targets the hidden Outlook file input used by the File menu', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const btn = fs.readFileSync(path.join(here, '../public/reload-button.js'), 'utf-8');
+    const ctl = fs.readFileSync(path.join(here, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+
+    assert.ok(btn.includes('owaMailComposeEditorScrollContainer') &&
+              btn.includes('docking_InitVisiblePart_'),
+        'compose detection must use the editor container, not a visible file input (v4.4.8)');
+    assert.ok(ctl.includes('local-computer-filein') &&
+              ctl.includes("getOwnPropertyDescriptor(HTMLInputElement.prototype, 'files').set"),
+        'injection must target Outlook file input and use the native setter (v4.4.8)');
+});
+
+// ============================================================
+// v4.4.7 — barre au-dessus du clavier virtuel
+// ============================================================
+
+test('v4.4.7: action bar and overlays move above the on-screen keyboard', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const btn = fs.readFileSync(path.join(here, '../public/reload-button.js'), 'utf-8');
+    const sheet = fs.readFileSync(path.join(here, '../public/settings-sheet.js'), 'utf-8');
+
+    assert.ok(btn.includes('const keyboardOverlap') &&
+              btn.includes("bar.style.bottom = (12 + keyboardOverlap()) + 'px'") &&
+              btn.includes("visualViewport?.addEventListener('resize'"),
+        'the bar must be repositioned when the OSK resizes the viewport (v4.4.7)');
+    assert.ok(sheet.includes('document.activeElement.blur') && sheet.includes('panel.style.bottom = overlap'),
+        'settings sheet must dismiss the keyboard and stay above it (v4.4.7)');
+});
+
+// ============================================================
+// v4.4.6 — retours UI des reglages
+// ============================================================
+
+test('v4.4.6: render selection updates immediately and attach is compose-only', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const sheet = fs.readFileSync(path.join(here, '../public/settings-sheet.js'), 'utf-8');
+    const btn = fs.readFileSync(path.join(here, '../public/reload-button.js'), 'utf-8');
+
+    assert.ok(sheet.includes('const markActive') && sheet.includes('markActive(mode)') &&
+              sheet.includes('aria-pressed'),
+        'selected render mode must change visually on click (v4.4.6)');
+    assert.ok(sheet.includes('toast(confirmText)') && sheet.includes('commonUnavailable'),
+        'first-install confirmation must be visible (v4.4.6)');
+    assert.ok(btn.includes('const composeFileInput') &&
+              btn.includes("attachEl.style.display = composeFileInput() ? '' : 'none'"),
+        'attach button must only appear when a compose file input exists (v4.4.6)');
+});
+
+// ============================================================
+// v4.4.1 — durcissement confidentialite
+// ============================================================
+
+test('v4.4.1: unused media permissions are removed from the click', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const apparmor = fs.readFileSync(path.join(here, '../../utoutlook.apparmor'), 'utf-8');
+    const groups = JSON.parse(apparmor).policy_groups;
+    for (const unused of ['audio', 'video', 'microphone', 'camera']) {
+        assert.ok(!groups.includes(unused), `${unused} is not used by the app (v4.4.1)`);
+    }
+    assert.ok(groups.includes('webview') && groups.includes('content_exchange'),
+        'required groups must stay');
+});
+
+test('v4.4.1: renderer console and URLs are redacted in release logs', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {fileURLToPath} = await import('node:url');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const ctl = fs.readFileSync(path.join(here, '../src/controller/mail-window-controller.mjs'), 'utf-8');
+
+    assert.ok(ctl.includes('function safeUrl(') && ctl.includes('${u.origin}${u.pathname}'),
+        'logged URLs must keep origin+path only (v4.4.1)');
+    const rawUrlLogs = ctl.split('\n').filter(l =>
+        l.includes('logger.') && /\$\{(url|validatedURL)\}/.test(l));
+    assert.deepStrictEqual(rawUrlLogs, [], 'no logger may print a raw login URL');
+
+    assert.ok(ctl.includes("process.env.UTOUTLOOK_DEBUG === '1'") &&
+              ctl.includes('sanitizeConsole(message)') &&
+              ctl.includes('SAFE_CONSOLE_RE'),
+        'full renderer console output must be debug-only (v4.4.1)');
 });

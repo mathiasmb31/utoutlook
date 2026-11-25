@@ -769,24 +769,8 @@ utoutlook_exitclient_ours() {
 	[ "$content" = "quitclient:$$" ]
 }
 
-# ============================================================
-# Remove IPC flag files (exitclient, killedmail, close)
-# ============================================================
-utoutlook_cleanup_flags() {
-	"${UTOUTLOOK_BIN}/rm" -f "${UTOUTLOOK_EXITCLIENT}" \
-		"${UTOUTLOOK_KILLEDCLIENT}" \
-		"${UTOUTLOOK_EXITCOMMAND}" 2>/dev/null || true
-}
-
-# ============================================================
-# Full cleanup: kill app + remove locks + remove flags
-# ============================================================
-utoutlook_full_cleanup() {
-	utoutlook_kill_app
-	utoutlook_kill_stale_wrappers
-	utoutlook_cleanup_locks
-	utoutlook_cleanup_flags
-}
+# v4.4.2: utoutlook_cleanup_flags / utoutlook_full_cleanup etaient jamais
+# appeles — command.sh fait deja le menage inline (v4.1.0). Supprimes.
 
 # ============================================================
 # Kill processes by scanning /proc for prospect-mail binary

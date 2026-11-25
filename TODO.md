@@ -21,7 +21,7 @@
 - [x] Fix: preload.js — ajout de reload() manquant (référencé par offline.html)
 - [x] Tests: ajout tests validation darkMode
 - [x] Logo "Human made, vibe verified" — texte rotatif autour du cercle sur splash + about
-- [x] i18n — 8 langues (FR/EN/ES/DE/IT/PT/ZH/AR) : tray menu, dialogs, notifications, offline, splash, about, shell scripts
+- [x] i18n — 10 langues (FR/EN/ES/DE/IT/PT/ZH/AR/CA/EU) : tray menu, dialogs, notifications, offline, splash, about, shell scripts
 
 ## Fait (v3.2.2 — fixes session + notifications)
 
@@ -313,8 +313,8 @@
 
 ## Audit i18n (2026-11-02 — consigne transverse appliquée à tous les projets)
 
-- ✅ Notifications push/D-Bus, tray, IPC : 8 langues via `i18n.mjs` (FR/EN/ES/DE/IT/PT/ZH/AR)
-- ✅ Messages shell (command.sh/utils) : via `utoutlook_t` (8 langues)
+- ✅ Notifications push/D-Bus, tray, IPC : 10 langues via `i18n.mjs` (FR/EN/ES/DE/IT/PT/ZH/AR/CA/EU)
+- ✅ Messages shell (command.sh/utils) : via `utoutlook_t` (10 langues)
 - ✅ Splash : textes passés en query params i18n depuis le main process
 - ❌ `qml/nonetwork.qml` : `text: "NO NETWORK !!"` en dur (pas traduit)
 - ❌ `qml/exit.qml` : texte anglais long en dur

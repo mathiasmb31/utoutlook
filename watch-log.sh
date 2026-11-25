@@ -1,5 +1,5 @@
 #!/bin/bash
-# Watch les logs utoutlook en live sur le téléphone (adb XXXX)
+# Watch les logs utoutlook en live sur le téléphone (serial via DEVICE/ADB_DEVICE)
 # Usage: ./watch-log.sh [filtre]
 #   ./watch-log.sh           → tous les logs (sans le bruit FOLLOW/heartbeat)
 #   ./watch-log.sh error     → seulement les erreurs
@@ -16,7 +16,7 @@ if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
   exit 0
 fi
 
-DEV="${DEVICE:-${ADB_SERIAL:-XXXX}}"
+DEV="${DEVICE:-${ADB_SERIAL:-}}"
 LOG="/home/phablet/.config/utoutlook.mathias/wrapper.log"
 FILTER="${1:-}"
 

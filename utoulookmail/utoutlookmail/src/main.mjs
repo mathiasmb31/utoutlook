@@ -2,13 +2,16 @@ import path from 'node:path';
 import {app, BrowserWindow, globalShortcut, session} from 'electron';
 import AccountManager from './account-manager.mjs';
 import {TrayController} from './controller/tray-controller.mjs';
-import {startSocketServer, stopSocketServer} from './ipc-socket.mjs';
+import {startSocketServer, stopSocketServer, notifyQuitting} from './ipc-socket.mjs';
 import {logger} from './logger.mjs';
+import {capLogIfLarge, MAX_CRASH_LOG_BYTES} from './log-rotation.mjs';
+import {checkWrapperAlive} from './wrapper-monitor.mjs';
 import {setLanguage, t} from './i18n.mjs';
 import {execFile} from 'node:child_process';
 import {resolveLanguage, writeLangFile, settings} from './settings.mjs';
 import {
     CONFIG_DIR,
+    DATA_DIR,
     HEARTBEAT_FILE,
     EXIT_CLIENT_FILE,
     KILLED_CLIENT_FILE,
@@ -33,12 +36,15 @@ app.commandLine.appendSwitch('js-flags', '--stack-size=4000');
 // of null). Now: log + crash.log always, exit only after 5 errors in 60s.
 let uncaughtCount = 0;
 let uncaughtWindowStart = Date.now();
+// v4.3.7: crash.log borne a 1 Mo — sans binaire externe (AppArmor), via fs.
+const appendCrash = (line) => {
+    const file = `${CONFIG_DIR}/crash.log`;
+    capLogIfLarge(file, MAX_CRASH_LOG_BYTES);
+    fs.writeFile(file, line, {flag: 'a'}, () => {});
+};
 process.on('uncaughtException', (err) => {
     logger.error('Uncaught exception:', err);
-    fs.writeFile(`${CONFIG_DIR}/crash.log`,
-        `${new Date().toISOString()} [uncaughtException] ${err.stack}\n`, {flag: 'a'},
-        () => {}
-    );
+    appendCrash(`${new Date().toISOString()} [uncaughtException] ${err.stack}\n`);
     const now = Date.now();
     if (now - uncaughtWindowStart > 60000) { uncaughtCount = 0; uncaughtWindowStart = now; }
     uncaughtCount++;
@@ -52,10 +58,7 @@ process.on('uncaughtException', (err) => {
 
 process.on('unhandledRejection', (reason, promise) => {
     logger.error('Unhandled rejection at:', promise, 'reason:', reason);
-    fs.writeFile(`${CONFIG_DIR}/crash.log`,
-        `${new Date().toISOString()} [unhandledRejection] ${reason}\n`, {flag: 'a'},
-        () => {}
-    );
+    appendCrash(`${new Date().toISOString()} [unhandledRejection] ${reason}\n`);
 });
 
 // Ensure config directory exists
@@ -81,6 +84,11 @@ try { fs.unlinkSync(CLOSE_FLAG_FILE); } catch (e) { /* ignore */ }
 // Heartbeat: write a counter to a file so the shell wrapper (command.sh) can
 // detect whether the Electron process is still alive.
 let heartbeatSeconds = 0;
+// v4.3.7: compteur monotone (heartbeatSeconds se remet a 0 apres 60 ticks).
+let heartbeatTicks = 0;
+let wrapperChecks = 0;
+let wrapperMisses = 0;
+const WRAPPER_PID_FILE = path.join(DATA_DIR, 'wrapper.pid');
 let heartbeatExiting = false;
 // hotfix #12: remember whether the window has ever been shown. The heartbeat
 // auto-exit is only a startup-failure safety net (the window never appears).
@@ -175,6 +183,35 @@ const heartbeatInterval = setInterval(() => {
     fs.writeFile(HEARTBEAT_FILE, content, err => {
         if (err) logger.error(err);
     });
+
+    // v4.3.7 — supervision INVERSE : le wrapper peut etre SIGKILL par Lomiri
+    // (swipe-close, crash). Sans ca, Electron restait vivant avec un heartbeat
+    // actif → "app vivante mais invisible" et notifications orphelines.
+    // Toutes les 5 ticks (10 s), apres 15 ticks de grace (30 s) : il faut
+    // 4 echecs consecutifs (40 s) avant de quitter (v4.3.8, plus conservateur).
+    // On ne quitte QUE par
+    // cleanupAndExit() (jamais app.exit direct : zombies + goodbye), et
+    // jamais pendant un quit/une rotation/une relance en cours.
+    heartbeatTicks++;
+    if (process.env.UTOUTLOOK_WRAPPER_PID && heartbeatTicks > 15 && heartbeatTicks % 5 === 0) {
+        wrapperChecks++;
+        const state = checkWrapperAlive({
+            pidFilePath: WRAPPER_PID_FILE,
+            expectedPid: process.env.UTOUTLOOK_WRAPPER_PID,
+        });
+        if (state === true) {
+            wrapperMisses = 0;
+        } else if (state === false) {
+            wrapperMisses++;
+            if (wrapperMisses >= 4 && !global.utoutlookQuitting &&
+                !global.restartRequested && !global.skipCleanExitFlag) {
+                logger.warn(`Wrapper ${process.env.UTOUTLOOK_WRAPPER_PID} disappeared after ${wrapperChecks} checks — silent exit (no goodbye)`);
+                appInstance.cleanupAndExit();
+            }
+        }
+        // 'unknown' (pidfile absent au tout debut, PID different = wrapper
+        // plus recent, /proc illisible) : on ne touche a rien deliberement.
+    }
 
     // Check for external close flag from the shell wrapper (fallback for socket).
     // v4.0.22: the close flag file is NO LONGER honored at all — it was the
@@ -423,15 +460,30 @@ class ProspectMail {
         // Skipped when the quit is a restart (settings import/reset).
         // v4.0.84: skipCleanExitFlag = relance volontaire après rotation (le wrapper doit relancer l'app)
         if (!global.restartRequested && !global.skipCleanExitFlag) markCleanExit();
+        // v4.3.7: prevenir le wrapper (long-poll) DES MAINTENANT. Sans ca,
+        // socketcli reste bloque jusqu'a la fermeture effective du socket
+        // puis reessaye 5 s en mode "wait" -> relance rapide impossible.
+        notifyQuitting();
+        // v4.3.7 (21/11): le "goodbye" n'a de sens QUE si le wrapper est
+        // encore la (vrai quit demande par l'utilisateur). Quand Lomiri a
+        // SIGKILL le wrapper apres la fermeture de la fenetre, la supervision
+        // inverse peut declencher ce cleanup : un "au revoir" apparaissait
+        // alors au lancement suivant. On le supprime dans ce cas precis.
+        let wrapperStillAlive = true;
+        if (process.env.UTOUTLOOK_WRAPPER_PID) {
+            try {
+                wrapperStillAlive = checkWrapperAlive({
+                    pidFilePath: WRAPPER_PID_FILE,
+                    expectedPid: process.env.UTOUTLOOK_WRAPPER_PID,
+                }) !== false;
+            } catch (e) { /* on garde le goodbye par defaut */ }
+        }
+        if (!wrapperStillAlive) logger.info('Wrapper already gone — skipping goodbye notification');
         // v4.3.3: envoyer "goodbye" IMMEDIATEMENT ici, pendant que l'app est
-        // encore vivante. Le wrapper ne peut plus le faire : Lomiri le tue par
-        // SIGKILL quelques secondes apres la fermeture de la fenetre, donc sa
-        // notification partait trop tard (au lancement suivant).
-        // v4.3.4: execFile ASYNCHRONE — execFileSync bloquait le thread
-        // principal jusqu'a 4 s et le bouton Quitter de la liste semblait ne
-        // plus repondre (log "fermeture demandee" absent).
+        // encore vivante. v4.3.4: execFile ASYNCHRONE (execFileSync bloquait
+        // le thread principal jusqu'a 4 s et le bouton Quitter semblait geler).
         try {
-            if (process.env.WD) {
+            if (process.env.WD && wrapperStillAlive) {
                 execFile(`${process.env.WD}/bin/notify`, [t('shell.goodbye')],
                     {timeout: 4000}, () => {});
             }
@@ -488,10 +540,9 @@ class ProspectMail {
     }
 }
 
-// v3.3.45: no ozone override anymore — Electron runs as a native Wayland client
-// under Lomiri and the Maliit on-screen keyboard uses the Wayland text-input
-// protocol (password fields work, as in 3.2.x). XMODIFIERS is still exported by
-// command.sh for the X11/XWayland fallback.
+// v3.3.45: no ozone override anymore — see the startup env log above: Chromium
+// runs under XWayland on Lomiri (DISPLAY set), not as a native Wayland client.
+// command.sh still exports XMODIFIERS/QT_IM_MODULE for the Maliit keyboard.
 
 appInstance = new ProspectMail();
 appInstance.init();

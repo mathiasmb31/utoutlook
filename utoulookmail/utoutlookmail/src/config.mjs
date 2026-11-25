@@ -11,7 +11,7 @@ import {fileURLToPath} from 'node:url';
 // v4.0.37: use the real home directory — /home/phablet on Ubuntu Touch,
 // $HOME/<user> on a desktop (clickable desktop / PC). Fallback keeps the
 // old behavior if HOME is unset.
-const PHABLET_HOME = process.env.HOME || os.homedir() || '/home/phablet';
+export const PHABLET_HOME = process.env.HOME || os.homedir() || '/home/phablet';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // --- Ubuntu Touch click app directories ---
@@ -38,6 +38,16 @@ export const NOTIF_FLAG_FILE = path.join(CONFIG_DIR, 'notif');
 // v4.0.127: override manuel du mode de rendu (auto|software|hardware), lu par
 // le wrapper command.sh et modifiable depuis le bouton de la page de login.
 export const RENDER_MODE_FILE = path.join(CONFIG_DIR, 'render-mode');
+// v4.5.4: fichier ecrit par command.sh quand le Content Hub relance le click
+// avec une PJ recue en argument.
+export const PENDING_ATTACH_FILE = path.join(CONFIG_DIR, 'pending-attach');
+// v4.6.2: copie durable des PJ recues — le cache du Content Hub est purge par
+// Finalize(), donc on doit sauvegarder avant de finaliser le transfert.
+export const INCOMING_DIR = path.join(CONFIG_DIR, 'incoming');
+// v4.7.0: PJ telechargees depuis Outlook Web, en attente d'etre partagees via
+// le Content Hub. OUTGOING_DIR doit rester sous CONFIG_DIR (profil AppArmor).
+export const OUTGOING_DIR = path.join(CONFIG_DIR, 'outgoing');
+export const LAST_DOWNLOAD_FILE = path.join(CONFIG_DIR, 'last-download');
 // v4.1.0: marqueur « swipe-close » — l'app reste vivante en arrière-plan,
 // mais sa fenêtre ne doit pas être ré-affichée par le watchdog de surface.
 export const SWIPE_HIDDEN_FILE = path.join(CONFIG_DIR, 'swipe-hidden');

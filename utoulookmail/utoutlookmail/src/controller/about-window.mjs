@@ -62,30 +62,30 @@ export function openAboutWindow() {
         search: params.toString(),
     });
 
-    // Handle IPC messages for opening external links
-    ipcMain.removeAllListeners("open-external-url");
-    ipcMain.on("open-external-url", (event, url) => {
-        if (event.sender !== aboutWindow.webContents) return;
-        if (!/^https?:\/\//i.test(url)) return; // v4.1.0: refuser file:/custom
+    // v4.4.2: capturer la fenêtre et ne retirer QUE nos handlers (pas
+    // removeAllListeners process-wide), et les retirer a la fermeture — sinon
+    // un IPC tardif dereferencait aboutWindow=null.
+    const win = aboutWindow;
+    const onOpenExternal = (event, url) => {
+        if (event.sender !== win.webContents) return;
+        if (!/^https?:\/\//i.test(url)) return; // refuser file:/custom
         shell.openExternal(url);
-    });
+    };
+    const onClose = (event) => {
+        if (event.sender !== win.webContents) return;
+        if (!win.isDestroyed()) win.close();
+    };
+    ipcMain.on("open-external-url", onOpenExternal);
+    ipcMain.on("close-about-window", onClose);
 
-    ipcMain.removeAllListeners("close-about-window");
-    ipcMain.on("close-about-window", (event) => {
-        if (event.sender !== aboutWindow.webContents) return;
-        if (aboutWindow && !aboutWindow.isDestroyed()) {
-            aboutWindow.close();
-        }
-    });
-
-    // Open external links in default browser
-    aboutWindow.webContents.setWindowOpenHandler(({url}) => {
-        shell.openExternal(url);
+    win.webContents.setWindowOpenHandler(({url}) => {
+        if (/^https?:\/\//i.test(url)) shell.openExternal(url);
         return {action: "deny"};
     });
 
-    // Clean up reference when window is closed
-    aboutWindow.on("closed", () => {
-        aboutWindow = null;
+    win.on("closed", () => {
+        ipcMain.removeListener("open-external-url", onOpenExternal);
+        ipcMain.removeListener("close-about-window", onClose);
+        if (aboutWindow === win) aboutWindow = null;
     });
 }

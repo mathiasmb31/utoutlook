@@ -204,9 +204,14 @@ function verify_prospect_life() {
 		follow=$("${WD}"/bin/cat "${filelifefollow}" 2>/dev/null | "${WD}"/bin/tr -d '[:space:]')
 	fi
 
-	echo "FOLLOW"
-	echo ${follow}
-	echo ${oldfollow}
+	# v4.3.7: ces 3 echoes tournaient toutes les 3 s (~1,5 ligne/s,
+	# 130 000 lignes/jour) et remplissaient wrapper.log. On ne les garde
+	# qu'en debug — la logique de stagnation ci-dessous est identique.
+	if [ "${UTOUTLOOK_DEBUG:-0}" = "1" ]; then
+		echo "FOLLOW"
+		echo ${follow}
+		echo ${oldfollow}
+	fi
 
 	# Heartbeat absent/vide : Electron n'a pas encore écrit son premier
 	# heartbeat (cold start lent). Fenêtre de grâce de 20 lectures x 3s = 60s
@@ -321,7 +326,8 @@ function verify_prospect_life() {
 	fi
 	oldfollow=${follow}
 	if [ ${clientalive} -eq 1 ]; then
-		echo "client is alive"
+		# v4.3.7: bruit de watchdog conserve uniquement en debug
+		[ "${UTOUTLOOK_DEBUG:-0}" = "1" ] && echo "client is alive"
 	else
 
 		# v4.0.10: freshness guards on both flags — a stale killedmail left by a
@@ -337,7 +343,8 @@ function verify_prospect_life() {
 			exit 0
 		fi
 	fi
-	echo "done"
+	# v4.3.7: idem — plus de "done" a chaque tick en production
+	[ "${UTOUTLOOK_DEBUG:-0}" = "1" ] && echo "done"
 }
 
 function test_net() {
@@ -420,7 +427,12 @@ function close_command() {
 		wait "${CLIENT_PID}" 2>/dev/null || true # v4.0.99: récupérer le zombie
 	fi
 	# v4.0.58: idem pour un éventuel qmlscene nonetwork.qml lancé par ce wrapper
-	if [ -n "${QML_PID}" ] && kill -0 "${QML_PID}" 2>/dev/null; then
+	# v4.3.7 (21/11): QML_PID est initialise a 0 et `[ -n "0" ]` est VRAI —
+	# sans ce garde-fou, ce bloc executait `kill -9 0` (signal a TOUT le
+	# groupe de processus) puis `wait 0` (attente de TOUS les enfants) alors
+	# qu'aucun ecran QML n'avait ete lance. Garde-fou de securite independant
+	# du correctif du watchdog (suppression du sleep_int 15 plus bas).
+	if [ -n "${QML_PID}" ] && [ "${QML_PID}" != "0" ] && kill -0 "${QML_PID}" 2>/dev/null; then
 		kill -9 "${QML_PID}" 2>/dev/null || true
 		wait "${QML_PID}" 2>/dev/null || true # v4.0.99: récupérer le zombie
 	fi
@@ -456,6 +468,17 @@ source "${WD}/utils/common.sh"
 # externes (date, tee, process substitution /dev/fd) sont bloqués par AppArmor.
 _WRAPPER_LOG="${UTOUTLOOK_CONFIG_DIR}/wrapper.log"
 mkdir -p "${UTOUTLOOK_CONFIG_DIR}" 2>/dev/null || true
+
+# v4.5.3: le Content Hub peut relancer le click avec le fichier recu en
+# argument. On le conserve dans un fichier local (jamais loggue : chemin =
+# donnee personnelle) pour que le renderer puisse le recuperer via IPC.
+if [ "$#" -gt 0 ]; then
+    printf '%s\n' "Content Hub: $# fichier(s) recu(s) en argument" >> "${_WRAPPER_LOG}"
+    : > "${UTOUTLOOK_CONFIG_DIR}/pending-attach"
+    for _arg in "$@"; do
+        printf '%s\n' "${_arg}" >> "${UTOUTLOOK_CONFIG_DIR}/pending-attach"
+    done
+fi
 printf '=== wrapper start pid=%s sec=%s ===\n' "$$" "${EPOCHSECONDS:-0}" >> "$_WRAPPER_LOG"
 exec >> "$_WRAPPER_LOG" 2>&1
 
@@ -467,8 +490,6 @@ export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUN
 
 # Alias legacy variable names to common.sh constants (avoids changing every reference)
 export lock="${UTOUTLOOK_LOCK}"
-export lockcook="${UTOUTLOOK_LOCKCOOK}"
-export locksock="${UTOUTLOOK_LOCKSOCK}"
 export exitclient="${UTOUTLOOK_EXITCLIENT}"
 export rotationflag="${UTOUTLOOK_ROTATIONFLAG}"
 RELAUNCH_QML_PID=""
@@ -483,6 +504,10 @@ export socketpath="${UTOUTLOOK_SOCKET}"
 # tell a close flag written by ITS wrapper apart from one written by a dying
 # older wrapper (race: old wrapper writes "closed" after the new one cleaned up).
 export UTOUTLOOK_WRAPPER_PID=$$
+# v4.3.7 (21/11): capturer le PID du wrapper PRECEDENT avant que cleanup()
+# n'ecrase le pidfile. Sert a detecter une instance Electron ORPHELINE (son
+# wrapper a ete SIGKILL par Lomiri apres la fermeture de la fenetre).
+PREV_WRAPPER_PID=$("${WD}"/bin/cat "${UTOUTLOOK_DATA_DIR}/wrapper.pid" 2>/dev/null | "${WD}"/bin/tr -d '[:space:]')
 export UTOUTLOOK_SWIPE_HIDDEN="${UTOUTLOOK_CONFIG_DIR}/swipe-hidden"
 "${WD}"/bin/rm -f "${UTOUTLOOK_SWIPE_HIDDEN}" 2>/dev/null || true
 # v4.1.0: repartir d'un pidfile vide (revue M1).
@@ -516,7 +541,7 @@ function start_startup_qml() {
 	# v4.2.4: ne pas créer la fenêtre QML de démarrage (voir note en tête de
 	# fichier — c'était elle qui créait l'item inconnu `unknown.qtmir`).
 	if [ "${UTOUTLOOK_DISABLE_STARTUP_QML:-0}" = "1" ]; then
-		echo "startup QML bar disabled (experiment v4.2.4)"
+		echo "startup QML bar disabled (permanent since v4.2.4 — native splash only)"
 		return 0
 	fi
 	qmlscene "${UTOUTLOOK_STARTUP_QML}" > "${UTOUTLOOK_CONFIG_DIR}/startup-qml.log" 2>&1 &
@@ -669,13 +694,32 @@ cleanup
 # swipe-close racing us), fall through and start normally instead of exiting
 # into a void (intermittent "nothing happens" on relaunch).
 if utoutlook_socket_ping; then
-	echo "app already running — asking it to show (pid $$)"
-	utoutlook_send_socket_cmd '{"cmd":"show"}'
-	sleep_int 2
-	if utoutlook_socket_ping; then
-		exit 0
+	# v4.3.7 (21/11): apres une fermeture, Lomiri SIGKILL le wrapper mais
+	# l'ancien Electron peut rester vivant encore quelques secondes (fenetre
+	# masquee). Son wrapper est MORT : le reutiliser (show) le ferait quitter
+	# des que la supervision inverse se declenche -> "au revoir" au relance.
+	# On detecte ce cas via le pidfile quiet par l'ancien wrapper, on lui
+	# demande un quit SILENCIEUX (cote Electron, wrapper deja mort = pas de
+	# goodbye), on attend sa mort, puis on repart neuf. UNIQUEMENT ce cas.
+	if [ -n "${PREV_WRAPPER_PID}" ] && [ "${PREV_WRAPPER_PID}" != "$$" ] && \
+	   ! kill -0 "${PREV_WRAPPER_PID}" 2>/dev/null; then
+		echo "orphaned instance (wrapper ${PREV_WRAPPER_PID} gone) — closing it before fresh launch (pid $$)"
+		utoutlook_send_socket_cmd '{"cmd":"quit"}'
+		_i=0
+		while [ ${_i} -lt 8 ] && utoutlook_socket_ping; do
+			sleep_int 1
+			_i=$((_i + 1))
+		done
+		echo "orphan closed after ${_i}s — launching fresh (pid $$)"
+	else
+		echo "app already running — asking it to show (pid $$)"
+		utoutlook_send_socket_cmd '{"cmd":"show"}'
+		sleep_int 2
+		if utoutlook_socket_ping; then
+			exit 0
+		fi
+		echo "previous instance died after show — starting fresh (pid $$)"
 	fi
-	echo "previous instance died after show — starting fresh (pid $$)"
 fi
 # v4.0.37: refuse to launch while a previous instance is still closing (flag
 # set between SIGTERM and the goodbye notification, removed after). Wait up to
@@ -733,11 +777,6 @@ export QT_FILE_SELECTORS=ubuntu-touch
 
 ## cleanup
 cleanup
-numberold="0"
-if [ -f "${filelifefollow}" ]; then
-	numberold=$("${WD}"/bin/cat "${filelifefollow}" 2>/dev/null | "${WD}"/bin/tr -d '[:space:]')
-fi
-
 echo "------------------------------------------------------------------"
 echo $$ >>${HOME}/.config/utoutlook.mathias/data/__prospect.pid
 
@@ -807,16 +846,22 @@ gpuoptions="--in-process-gpu --disable-features=VaapiVideoDecoder,AcceleratedVid
 # avant de lancer Electron. Sinon, appliquer directement (mode auto silencieux).
 GPU_CRASH_NEW=0
 CUR_RENDER_MODE=""
+# v4.3.8: lecture avec le BUILTIN read (cat/tr externes pouvaient renvoyer vide)
 if [ -f "${UTOUTLOOK_RENDER_MODE_FILE}" ]; then
-	CUR_RENDER_MODE=$("${UTOUTLOOK_BIN}/cat" "${UTOUTLOOK_RENDER_MODE_FILE}" 2>/dev/null | "${UTOUTLOOK_BIN}/tr" -d '[:space:]')
+	read -r CUR_RENDER_MODE < "${UTOUTLOOK_RENDER_MODE_FILE}" 2>/dev/null || true
 fi
-if [ -z "${CUR_RENDER_MODE}" ] || [ "${CUR_RENDER_MODE}" = "auto" ]; then
-	if utoutlook_gpu_crash_is_new; then GPU_CRASH_NEW=1; fi
-fi
+CUR_RENDER_MODE="${CUR_RENDER_MODE//[[:space:]]/}"
+HAS_RENDER_OVERRIDE=0
+case "${CUR_RENDER_MODE}" in
+	software|on|1|hardware|off|0) HAS_RENDER_OVERRIDE=1 ;;
+esac
+# On detecte le crash FRAIS meme avec un override (utile pour la notification),
+# mais l'ecran de secours reste reserve aux cas sans choix manuel.
+if utoutlook_gpu_crash_is_new; then GPU_CRASH_NEW=1; fi
 
 RENDER_MODE=$(utoutlook_resolve_render_mode)
 
-if [ ${GPU_CRASH_NEW} -eq 1 ]; then
+if [ "${GPU_CRASH_NEW}" -eq 1 ] && [ "${HAS_RENDER_OVERRIDE}" -eq 0 ]; then
 	# fermer la barre de progression pour que l'écran de secours soit seul
 	if [ -n "${STARTUP_QML_PID}" ]; then
 		kill "${STARTUP_QML_PID}" 2>/dev/null || true
@@ -831,7 +876,16 @@ fi
 compute_gpu_options "${RENDER_MODE}"
 if [ "${RENDER_MODE}" = "software" ]; then
 	echo "software rendering enabled (render-mode=${RENDER_MODE})"
-	utoutlook_notify "$(utoutlook_t 'shell.softwareMode')"
+	# v4.3.8: le message "apres un crash graphique" ne doit apparaitre QUE
+	# lors du basculement reel. render-mode=software persistant (choisi par
+	# l'utilisateur ou suite a un ancien crash) ne notifie plus a chaque
+	# lancement.
+	if [ "${GPU_CRASH_NEW}" -eq 1 ]; then
+		case "${CUR_RENDER_MODE}" in
+			software|on|1) : ;; # deja logiciel : aucun message
+			*) utoutlook_notify "$(utoutlook_t 'shell.softwareMode')" ;;
+		esac
+	fi
 else
 	echo "hardware rendering (render-mode=${RENDER_MODE})"
 fi
@@ -845,9 +899,34 @@ launch_prospect
 # v4.0.126: la barre est lancée au début du wrapper (voir start_startup_qml),
 # bien avant test_net / cleanup / attente notifications — ici rien de plus.
 
-sleep_int 15
+# v4.3.7 (21/11): SUPPRESSION du sleep_int 15 heritage de 2026-08. Ce delai
+# rendait le wrapper AVEUGLE pendant ~18 s (15 s + 3 s) apres le lancement :
+# si l'utilisateur quittait dans cette fenetre (typiquement des que la page
+# mail apparait), le watchdog ne detectait pas la mort d'Electron, le service
+# systemd restait actif et un relance rapide via lomiri-app-launch plantait
+# (SIGSEGV 139) sans rien demarrer. verify_prospect_life() a DEJA son propre
+# startupGrace (20 lectures x 3 s = 60 s) pour les demarrages lents : ce
+# sommeil supplementaire etait redondant. Le premier tick arrive desormais
+# 3 s apres le lancement (mesure device : detection a +3 s au lieu de +21 s).
 while true; do
-	sleep_int 3
+	# v4.3.7 (21/11): LONG-POLL evenementiel au lieu de `sleep_int 3`.
+	# Electron garde la connexion ouverte 3 s (cmd=hold) et repond held:true.
+	# Le C (socketcli) bloque dans select() : aucun sleep externe, aucune
+	# boucle de polling dans le shell. Sur un quit propre, Electron ferme le
+	# socket -> select() rend la main IMMEDIATEMENT (plus de latence de 3 s).
+	# 4e argument "wait" : reessais de connexion pendant le demarrage froid
+	# (socket pas encore cree) sans faire tourner le shell en boucle serree.
+	# Le timeout 5 s couvre le cas d'un event-loop Electron bloque : verify()
+	# fait alors le garde-fou stagnation/hang habituel.
+	HOLD_ANS=$("${WD}"/bin/socketcli "${socketpath}" '{"cmd":"hold","ms":3000}' 4 wait 2>/dev/null || true)
+	# Electron annonce explicitement son quit des le debut de cleanupAndExit :
+	# on sort IMMEDIATEMENT, sans attendre le timer 3 s ni la fermeture du
+	# socket (qui declencherait 4 s de reessais en mode wait).
+	case "${HOLD_ANS}" in
+		*'"quitting":true'*)
+			echo "clean quit announced by Electron — wrapper exits now"
+			exit 0 ;;
+	esac
 
 	verify_prospect_life
 

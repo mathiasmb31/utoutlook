@@ -1,5 +1,5 @@
 #!/bin/bash
-# Test rapide utoutlook sur le téléphone (adb XXXX)
+# Test rapide utoutlook sur le téléphone (serial via DEVICE/ADB_DEVICE)
 # v4.1.10: PAS de `set -e` — c'est un outil de diagnostic : chaque section doit
 # s'afficher même si la précédente échoue (ex. `head -1` ferme le pipe → SIGPIPE
 # côté grep/device → adb retourne non-zéro → avec set -e le script s'arrêtait
@@ -7,7 +7,7 @@
 set +e
 
 if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
-  echo "Usage: ./test-rapide.sh [version]"
+  echo "Usage: ./test-rapide.sh"
   echo "  Affiche les zombies AVANT le kill, tue les vieux process, lance l'app, puis affiche:"
   echo "  version installée, nb de process, heartbeat, URL courante,"
   echo "  dernières pages chargées, erreurs CSP/crash, boucles post.srf,"
@@ -15,17 +15,12 @@ if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
   exit 0
 fi
 
-DEV="${DEVICE:-${ADB_SERIAL:-XXXX}}"
-V="${1:-}"
+DEV="${DEVICE:-${ADB_SERIAL:-}}"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
 echo "=== Version installée ==="
-if [ -n "$V" ]; then
-  adb -s $DEV shell "click info utoutlook.mathias | grep version"
-else
-  adb -s $DEV shell "click info utoutlook.mathias | grep version"
-fi
+adb -s $DEV shell "click info utoutlook.mathias | grep version"
 
 echo "=== Zombies avant kill ==="
 adb -s $DEV shell "ps -eo pid,stat,comm | awk '\$2 ~ /Z/ {z++} END {print \"zombies: \" (z+0)}'; echo \"process utoutlook avant kill: \$(ps aux | grep -E 'prospect-mail|command.sh' | grep -v grep | wc -l)\""

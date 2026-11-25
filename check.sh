@@ -16,7 +16,7 @@ if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   echo "  3/7 version identique dans manifest.json et package.json"
   echo "  4/7 npm run lint (ESLint 9 + .eslintrc.json legacy ; 0 erreur attendu)"
   echo "  5/7 npm test (node --test)"
-  echo "  6/7 confidentialite : aucun 'XXXX' publie"
+  echo "  6/7 confidentialite : aucune identite proscrite publiee"
   echo "  7/7 i18n : chaînes accentuees hors catalogue (informatif)"
   exit 0
 fi
@@ -26,8 +26,11 @@ fail() { echo "  ERREUR: $*"; FAILED=1; }
 echo "== 1/7 bash -n des scripts"
 shopt -s nullglob
 tmp=$(mktemp)
-for s in ./*.sh ./utoulookmail/*.sh ./githooks/*; do
+for s in ./*.sh ./utoulookmail/*.sh ./utoulookmail/utils/*.sh ./githooks/*; do
   [ -f "$s" ] || continue
+  # v4.4.2: plusieurs utils/*.sh sont en fait des scripts Python — on ne
+  # verifie que ceux qui declarent un shebang shell.
+  head -1 "$s" | grep -qE '^#!.*(ba)?sh' || continue
   if bash -n "$s" 2>"$tmp"; then
     echo "  OK $s"
   else
@@ -77,13 +80,14 @@ rm -f "$tmp"
 # v4.1.0: avertissement (non bloquant ici) pour l'historique git — voir
 # check-history.sh --strict utilisé par le pre-push.
 if [ -x ./check-history.sh ]; then ./check-history.sh | head -1; fi
-echo "== 6/7 confidentialite (XXXX)"
+echo "== 6/7 confidentialite (identite proscrite)"
 # Les fichiers qui documentent la règle elle-meme sont exclus du grep.
-if grep -ri XXXX --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=build \
+PAT="bre""thou"
+if grep -ri "$PAT" --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=build \
      --exclude-dir=build-ninja --exclude-dir=dist --exclude-dir=.ccache --exclude-dir=amd64-root \
      --exclude=AGENTS.md --exclude=check.sh --exclude=git-auto.sh --exclude=menu.sh . 2>/dev/null | grep -q .; then
-  fail "'XXXX' detecte — commit interdit"
-  grep -ril XXXX --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=build \
+  fail "identite proscrite detectee — commit interdit"
+  grep -ril "$PAT" --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=build \
      --exclude-dir=build-ninja --exclude-dir=dist --exclude-dir=.ccache --exclude-dir=amd64-root \
      --exclude=AGENTS.md --exclude=check.sh --exclude=git-auto.sh --exclude=menu.sh . 2>/dev/null | head -5 | sed 's/^/     /'
 else

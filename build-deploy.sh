@@ -1,10 +1,10 @@
 #!/bin/bash
-# Build + install utoutlook sur le téléphone (adb XXXX)
+# Build + install utoutlook sur le téléphone (serial via DEVICE/ADB_DEVICE)
 set -e
 
 if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
   echo "Usage: ./build-deploy.sh [version]"
-  echo "  Build l'app Electron (arm64) + clickable build + install sur le device adb XXXX"
+  echo "  Build l'app Electron (arm64) + clickable build + install sur le device (DEVICE/ADB_DEVICE)"
   echo "  Sans argument, lit la version dans package.json"
   echo "  Exemple: ./build-deploy.sh 4.0.51"
   exit 0
@@ -12,7 +12,23 @@ fi
 
 VERSION="${1:-$(grep '"version"' utoulookmail/utoutlookmail/package.json | head -1 | sed 's/.*"version": "//;s/".*//')}"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
+DEV="${DEVICE:-${ADB_DEVICE:-}}"
 cd "$ROOT"
+
+# v4.3.7 (debug device 2026-11-21): electron-builder NE suit PAS un
+# node_modules symlinké pour les dépendances transitives. Résultat : l'asar
+# ne contenait que `electron-store` (dépendance directe) sans `conf` /
+# `type-fest` → `ERR_MODULE_NOT_FOUND` au lancement → Electron crashait en
+# boucle et le wrapper finissait par afficher nonetwork.qml (faux "pas de
+# réseau" alors que la connexion était bonne). On force un vrai dossier
+# avant de builder — garde-fou reproductible pour tous les workspaces.
+NODE_MODULES="$ROOT/utoulookmail/utoutlookmail/node_modules"
+if [ -L "$NODE_MODULES" ]; then
+  echo "=== node_modules est un symlink — copie réelle avant build ==="
+  NM_TARGET="$(readlink -f "$NODE_MODULES")"
+  rm "$NODE_MODULES"
+  cp -a "$NM_TARGET" "$NODE_MODULES"
+fi
 
 # v4.0.110: supprimer les anciens .click du dossier de build AVANT de
 # reconstruire. clickable garde toutes les versions (103 fichiers, ~10 Go ici)
@@ -36,6 +52,14 @@ clickable build --arch arm64
 echo "=== Install sur device ==="
 clickable install
 
+# v4.4.4: apres plusieurs installs de versions differentes, le launcher Lomiri
+# garde en cache l'ancien app_id versionne et ne cree plus le service au tap
+# sur l'icone (splash bloque). On force le shell a relire la liste des apps.
+if [ -n "$DEV" ]; then
+  adb -s "$DEV" shell 'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/32011/bus XDG_RUNTIME_DIR=/run/user/32011 gdbus call --session --dest com.lomiri.Shell --object-path /com/lomiri/Shell/Launcher --method com.lomiri.Shell.Launcher.Refresh 2>/dev/null || true'
+fi
+
 echo "=== Vérification ==="
-adb -s XXXX shell 'click info utoutlook.mathias | grep version'
+[ -n "$DEV" ] || { echo "ERREUR: définir DEVICE=<serial> (ou ADB_DEVICE)"; exit 1; }
+adb -s "$DEV" shell 'click info utoutlook.mathias | grep version'
 echo "=== Fait : $VERSION ==="

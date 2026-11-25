@@ -1,20 +1,24 @@
 // app-actions.js — Barre d'actions flottante en bas de l'écran (v4.0.95)
 // Injectée par mail-window-controller (injectReloadButton) dans la page Outlook.
-// Deux boutons, au même endroit dans les deux orientations :
-//   - « Recharger les messages » : visible sur les pages mail (secours liste 0x0).
-//   - « Quitter » : TOUJOURS visible, vrai quit propre (flag exitclient) pour
-//     que le wrapper command.sh s'arrête aussi — sans gesture de swipe.
+// v4.4.5: actions de lecture uniquement — Recharger, Joindre, Parametres.
+// Les reglages, diagnostics, la reinitialisation et le quit sont dans la
+// feuille Parametres injectee par settings-sheet.js.
 // Clic en phase capture (le SPA Outlook peut stopper la propagation), avec
 // replis si le preload n'est pas disponible.
 (() => {
     const BAR_ID = 'utoutlook-app-actions';
     const RELOAD_ID = 'utoutlook-reload-btn';
-    const QUIT_ID = 'utoutlook-quit-btn';
-    // v4.1.3: deux boutons supplémentaires dans la barre de la liste :
-    //   - UBTOUCH_ID : logo Ubuntu Touch ROND, purement décoratif (aucune action).
-    //   - FIRST_ID   : « Première installation » — wipe complet + notif + relance.
+    // v4.4.5: barre reduite aux actions de lecture — Recharger, Joindre,
+    // et l'acces aux Parametres (reglages, diagnostics, reset, quit).
     const UBTOUCH_ID = 'utoutlook-ubtouch-badge';
-    const FIRST_ID = 'utoutlook-first-install-btn';
+    const ATTACH_ID = 'utoutlook-attach-btn';
+    const SETTINGS_ID = 'utoutlook-settings-btn';
+    const COMPOSE_SEL = '[class*="owaMailComposeEditorScrollContainer"], [id^="docking_InitVisiblePart_"]';
+    const ATTACH_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#E95420" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M21.4 11.6 12.3 20.7a5 5 0 0 1-7.1-7.1l9.2-9.2a3.3 3.3 0 0 1 4.7 4.7l-9.2 9.2a1.7 1.7 0 0 1-2.4-2.4l8.5-8.5"/>' +
+        '</svg>'
+    );
     // v4.1.5: VRAIE cocarde Ubuntu Touch officielle (fond orange #E95420 +
     // les 3 pastilles/arcs blancs), extraite du logo Wikimedia "Ubuntu touch
     // logo 2025 dark.svg" — pas une approximation. Cadrée sur le carré 73x73.
@@ -36,28 +40,12 @@
     // sans couper les libellés (retour device 19/11 : « Reload messa » tronqué).
     // white-space:normal + line-height permet un retour à la ligne propre.
     const BTN_STYLE =
-        'padding:7px 10px;border-radius:12px;font:13px/1.15 sans-serif;cursor:pointer;' +
+        'min-height:44px;padding:8px 12px;border-radius:12px;font:13px/1.15 sans-serif;cursor:pointer;' +
+        'display:inline-flex;align-items:center;justify-content:center;gap:4px;' +
         'white-space:normal;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.5);';
     const BTN_RELOAD_STYLE = BTN_STYLE +
         'background:rgba(15,15,26,0.92);color:#E95420;border:1px solid #E95420;';
-    const BTN_QUIT_STYLE = BTN_STYLE +
-        'background:#E95420;color:#fff;border:1px solid #E95420;';
-    // Bouton First install : même gabarit que Recharger (fond sombre, texte orange)
-    const BTN_FIRST_STYLE = BTN_STYLE +
-        'background:rgba(15,15,26,0.92);color:#E95420;border:1px solid #E95420;';
-    // v4.1.5: icône « double tap » = DEUX DOIGTS stylisés qui tapent (avec
-    // pastille de contact sous chaque doigt) + chiffre 2. Plus explicite que
-    // les flèches d'avant, qui ressemblaient à une flamme. Même dessin que le
-    // bouton de la page de login.
-    const DOUBLE_TAP_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent(
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28">' +
-        '<rect x="5" y="1" width="6" height="12" rx="3" fill="#E95420"/>' +
-        '<rect x="17" y="1" width="6" height="12" rx="3" fill="#E95420"/>' +
-        '<circle cx="8" cy="15" r="2" fill="#E95420"/>' +
-        '<circle cx="20" cy="15" r="2" fill="#E95420"/>' +
-        '<text x="14" y="27" font-family="Arial,sans-serif" font-size="12" font-weight="bold" fill="#E95420" text-anchor="middle">2</text>' +
-        '</svg>'
-    );
+
     // v4.1.8: badge UBtouch — align-self:stretch le force à prendre EXACTEMENT
     // la même hauteur que les boutons voisins (au lieu d'un height fixe qui
     // pouvait décaler). Carré, purement décoratif, pas de curseur pointer.
@@ -82,11 +70,106 @@
         return Array.from(rows).some((r) => r.getBoundingClientRect().height > 0);
     };
 
+    // v4.4.8: les inputs de fichier d'Outlook sont TOUJOURS caches (height 0).
+    // Le marqueur fiable d'une composition est le conteneur de l'editeur.
+    const composeFileInput = () => !!document.querySelector(COMPOSE_SEL);
+
+    // v4.7.0: une seule pastille flottante en bas a droite. Les actions sont
+    // dans un mini-menu qui ne s'ouvre qu'au toucher — plus rien ne recouvre
+    // le ruban ni les menus d'Outlook (retour du docking 4.6.6, jugé moche).
+    const FAB_ID = 'utoutlook-menu-btn';
+    const PANEL_ID = 'utoutlook-menu-panel';
+    const BAR_STYLE =
+        'position:fixed;right:12px;bottom:12px;display:flex;flex-direction:column;' +
+        'align-items:flex-end;gap:8px;z-index:2147483647;pointer-events:auto;';
+    const PANEL_STYLE =
+        'display:none;flex-direction:column;align-items:stretch;gap:6px;' +
+        'padding:8px;border-radius:16px;background:rgba(15,15,26,0.96);' +
+        'border:1px solid #E95420;box-shadow:0 4px 18px rgba(0,0,0,.6);' +
+        'max-width:calc(100vw - 24px);pointer-events:auto;';
+    const FAB_STYLE =
+        'width:54px;height:54px;min-height:54px;padding:0;border-radius:50%;' +
+        'background:#E95420;color:#fff;border:2px solid rgba(255,255,255,.75);' +
+        'display:flex;align-items:center;justify-content:center;cursor:pointer;' +
+        'box-shadow:0 3px 14px rgba(0,0,0,.55);pointer-events:auto;';
+    const FAB_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#fff">' +
+        '<circle cx="6" cy="12" r="2"/><circle cx="12" cy="12" r="2"/>' +
+        '<circle cx="18" cy="12" r="2"/></svg>'
+    );
+    const closeMenu = () => {
+        const p = document.getElementById(PANEL_ID);
+        if (p) p.style.setProperty('display', 'none', 'important');
+    };
+    const toggleMenu = () => {
+        const p = document.getElementById(PANEL_ID);
+        if (!p) return;
+        const open = p.style.display === 'flex';
+        p.style.setProperty('display', open ? 'none' : 'flex', 'important');
+    };
+
+    // v4.4.7: avec le clavier virtuel ouvert, un element fixed en bas passe
+    // SOUS le clavier — on decale la pastille de la hauteur reellement masquee.
+    const keyboardOverlap = () => {
+        const vv = window.visualViewport;
+        if (!vv) return 0;
+        return Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
+    };
+    if (!window.__utoutlookBarViewportBound) {
+        window.__utoutlookBarViewportBound = true;
+        const repositionBar = () => {
+            const bar = document.getElementById(BAR_ID);
+            if (bar && bar.style.top === '') {
+                bar.style.bottom = (12 + keyboardOverlap()) + 'px';
+            }
+        };
+        window.visualViewport?.addEventListener('resize', repositionBar);
+        window.visualViewport?.addEventListener('scroll', repositionBar);
+    }
+
+    // v4.7.1: sous Lomiri le clavier virtuel recouvre le bas SANS que
+    // visualViewport bouge. Pendant TOUTE la composition on monte donc la
+    // pastille en haut a droite (comportement éprouvé du 4.5.0), et le
+    // mini-menu s'ouvre alors vers le bas via column-reverse.
+    if (!window.__utoutlookComposeBarPoll) {
+        window.__utoutlookComposeBarPoll = true;
+        let barTop = false;
+        setInterval(() => {
+            const bar = document.getElementById(BAR_ID);
+            if (!bar) return;
+            const composing = composeFileInput();
+            if (composing && !barTop) {
+                bar.style.top = '12px';
+                bar.style.bottom = 'auto';
+                bar.style.flexDirection = 'column-reverse';
+                barTop = true;
+            } else if (!composing && barTop) {
+                bar.style.top = '';
+                bar.style.bottom = (12 + keyboardOverlap()) + 'px';
+                bar.style.flexDirection = 'column';
+                barTop = false;
+            }
+        }, 300);
+    }
+
+    // v4.6.3: consommer une PJ en attente sans condition de composition —
+    // le handler main garde le fichier tant que l'injection echoue.
+    if (!window.__utoutlookPendingPoll) {
+        window.__utoutlookPendingPoll = true;
+        setInterval(() => {
+            if (window.electronAPI &&
+                typeof window.electronAPI.consumePendingAttachment === 'function') {
+                window.electronAPI.consumePendingAttachment().catch(() => {});
+            }
+        }, 1000);
+    }
+
     const fire = (kind) => {
         const now = Date.now();
         if (now - lastTrigger[kind] < 800) return; // anti-double (capture + bouton)
         lastTrigger[kind] = now;
         if (kind === 'reload') {
+            closeMenu();
             // Feedback IMMÉDIAT dans la page : même si l'IPC ne part pas,
             // l'utilisateur voit que le clic a été pris en compte.
             const btn = document.getElementById(RELOAD_ID);
@@ -112,52 +195,12 @@
             setTimeout(() => { location.reload(); }, 2000);
             return;
         }
-        if (kind === 'first') {
-            // v4.1.3: wipe complet (cookies + réglages) + notification + relance,
-            // côté principal via le handler IPC 'first-install' (déjà robuste).
-            // Feedback immédiat dans la page en attendant la relance.
-            const btn = document.getElementById(FIRST_ID);
-            if (btn) {
-                btn.disabled = true;
-                setFirstLabel(btn, tr('actionFirstInstallNotify', 'Data cleared — restarting…'));
-            }
-            try {
-                if (window.electronAPI && typeof window.electronAPI.firstInstall === 'function') {
-                    window.electronAPI.firstInstall();
-                    return;
-                }
-            } catch (e) { console.warn('[utoutlook] firstInstall IPC failed:', e); }
-            // Repli sans preload : effacement page + reload (le handler principal
-            // n'est pas joignable, on ne peut pas garantir le wipe des réglages).
-            try { localStorage.clear(); sessionStorage.clear(); } catch (_) {}
-            try { location.reload(); } catch (_) {}
-            return;
-        }
-        // Quit : le process principal doit écrire exitclient puis app.quit() —
-        // c'est ce flag qui fait aussi sortir le wrapper command.sh.
-        try {
-            if (window.electronAPI && typeof window.electronAPI.quitApp === 'function') {
-                window.electronAPI.quitApp();
-                return;
-            }
-        } catch { /* fallback ci-dessous */ }
-        // Sans preload, fermer la fenêtre déclenche le handler 'close' d'Electron
-        // qui écrit lui-même exitclient (sauf si hideOnClose l'intercepte).
-        try { window.close(); } catch { /* rien de plus possible */ }
+        // v4.4.5: 'first' et 'quit' ont ete deplaces dans la feuille Parametres.
     };
 
     const setLabel = (btn, text) => {
         if (btn.textContent !== text) btn.textContent = text;
         if (btn.getAttribute('aria-label') !== text) btn.setAttribute('aria-label', text);
-    };
-
-    // v4.1.4: le bouton First install contient une icône + un span de texte.
-    // On ne modifie QUE le span, pour ne jamais écraser l'icône (contrairement
-    // à setLabel qui joue sur textContent). Les autres boutons gardent setLabel.
-    const setFirstLabel = (btn, text) => {
-        const span = btn && btn.querySelector('.ut-first-label');
-        if (span && span.textContent !== text) span.textContent = text;
-        if (btn && btn.getAttribute('aria-label') !== text) btn.setAttribute('aria-label', text);
     };
 
     // v4.0.98: Outlook ré-applique display:none / visibility:hidden sur les
@@ -202,10 +245,36 @@
         if (!bar) {
             bar = document.createElement('div');
             bar.id = BAR_ID;
-            bar.style.cssText =
-                'position:fixed;bottom:16px;left:50%;transform:translateX(-50%);' +
-                'display:flex;gap:10px;z-index:2147483647;pointer-events:auto;';
+            bar.style.cssText = BAR_STYLE;
+            bar.style.bottom = (12 + keyboardOverlap()) + 'px';
             document.body.appendChild(bar);
+        }
+        let panel = document.getElementById(PANEL_ID);
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.id = PANEL_ID;
+            panel.style.cssText = PANEL_STYLE;
+            bar.appendChild(panel);
+        }
+        let fab = document.getElementById(FAB_ID);
+        if (!fab) {
+            fab = document.createElement('button');
+            fab.id = FAB_ID;
+            fab.type = 'button';
+            fab.setAttribute('aria-label', tr('settingsTitle', 'Actions'));
+            const fabImg = document.createElement('img');
+            fabImg.src = FAB_ICON;
+            fabImg.alt = '';
+            fabImg.width = 26;
+            fabImg.height = 26;
+            fabImg.style.cssText = 'display:block;width:26px;height:26px;';
+            fab.appendChild(fabImg);
+            fab.style.cssText = FAB_STYLE;
+            fab.addEventListener('click', (e) => {
+                e.preventDefault(); e.stopPropagation();
+                toggleMenu();
+            });
+            bar.appendChild(fab);
         }
 
         let reload = document.getElementById(RELOAD_ID);
@@ -217,19 +286,63 @@
             reload.addEventListener('click', (e) => {
                 e.preventDefault(); e.stopPropagation(); fire('reload');
             });
-            bar.appendChild(reload);
+            panel.appendChild(reload);
         }
 
-        let quit = document.getElementById(QUIT_ID);
-        if (!quit) {
-            quit = document.createElement('button');
-            quit.id = QUIT_ID;
-            quit.type = 'button';
-            quit.style.cssText = BTN_QUIT_STYLE;
-            quit.addEventListener('click', (e) => {
-                e.preventDefault(); e.stopPropagation(); fire('quit');
+        // v4.4: joindre un fichier depuis ubuntu touch (Content Hub). Le
+        // transfert est fait cote main ; on n'attend que le resultat.
+        let attachBtn = document.getElementById(ATTACH_ID);
+        if (!attachBtn) {
+            attachBtn = document.createElement('button');
+            attachBtn.id = ATTACH_ID;
+            attachBtn.type = 'button';
+            const attachImg = document.createElement('img');
+            attachImg.src = ATTACH_ICON;
+            attachImg.alt = '';
+            attachImg.width = 22;
+            attachImg.height = 22;
+            attachImg.style.cssText = 'display:inline-block;width:22px;height:22px;vertical-align:middle;';
+            const attachLabel = document.createElement('span');
+            attachBtn.appendChild(attachImg);
+            attachBtn.appendChild(attachLabel);
+            const label = tr('attachFile', 'Attach a file');
+            attachLabel.textContent = label;
+            attachBtn.title = label;
+            attachBtn.setAttribute('aria-label', label);
+            attachBtn.style.cssText = BTN_STYLE +
+                'background:rgba(15,15,26,0.92);color:#E95420;border:1px solid #E95420;';
+            attachBtn.addEventListener('click', async (e) => {
+                e.preventDefault(); e.stopPropagation(); closeMenu();
+                if (!window.electronAPI ||
+                    typeof window.electronAPI.attachFromHub !== 'function') return;
+                attachBtn.disabled = true;
+                console.error('Error: UT_DBG attach click');
+                try {
+                    const added = await window.electronAPI.attachFromHub();
+                    console.error('Error: UT_DBG attach result=' + added);
+                    if (!added && window.__utoutlookToast) {
+                        window.__utoutlookToast(tr('contentHubFailed', 'Could not attach the file'));
+                    }
+                } catch (_) {
+                    if (window.__utoutlookToast) {
+                        window.__utoutlookToast(tr('contentHubFailed', 'Could not attach the file'));
+                    }
+                } finally {
+                    attachBtn.disabled = false;
+                }
             });
-            bar.appendChild(quit);
+            panel.appendChild(attachBtn);
+        }
+        // v4.7.2: le partage est declenche automatiquement a la fin du
+        // telechargement (cote main) — plus de bouton « Partager » dans le menu.
+
+        const attachEl = document.getElementById(ATTACH_ID);
+        if (attachEl) attachEl.style.display = composeFileInput() ? '' : 'none';
+        if (!window.__utoutlookAttachPoll) {
+            window.__utoutlookAttachPoll = setInterval(() => {
+                const b = document.getElementById(ATTACH_ID);
+                if (b) b.style.display = composeFileInput() ? '' : 'none';
+            }, 1000);
         }
 
         // v4.1.3: badge UBtouch — décoratif, aucune action, inséré avant les
@@ -245,68 +358,92 @@
             img.alt = '';
             img.style.cssText = 'display:block;width:100%;height:100%;border-radius:9px;object-fit:contain;';
             ubtouch.appendChild(img);
-            bar.insertBefore(ubtouch, reload);
+            panel.insertBefore(ubtouch, reload);
         }
 
-        // v4.1.3: bouton « Première installation » — double-tap 3 s pour
-        // confirmer (même modèle que le bouton de la page de login), puis
-        // appel IPC firstInstall côté principal (wipe + notif + relance).
-        let first = document.getElementById(FIRST_ID);
-        if (!first) {
-            first = document.createElement('button');
-            first.id = FIRST_ID;
-            first.type = 'button';
-            first.style.cssText = BTN_FIRST_STYLE;
-            // v4.1.4: icône « 2 » + span de texte (l'icône reste visible quand
-            // le texte change pendant la confirmation).
+        // v4.4.5: acces aux reglages — icone SVG, libelle i18n.
+        let settingsBtn = document.getElementById(SETTINGS_ID);
+        if (!settingsBtn) {
+            settingsBtn = document.createElement('button');
+            settingsBtn.id = SETTINGS_ID;
+            settingsBtn.type = 'button';
             const icon = document.createElement('img');
-            icon.src = DOUBLE_TAP_ICON;
+            icon.src = window.__utoutlookSettingsIcon || '';
             icon.alt = '';
-            icon.width = 24; icon.height = 24;
-            icon.style.cssText = 'display:inline-block;width:24px;height:24px;vertical-align:middle;margin-right:5px;';
-            const span = document.createElement('span');
-            span.className = 'ut-first-label';
-            first.appendChild(icon);
-            first.appendChild(span);
-            let armed = false, armTimer = null;
-            first.addEventListener('click', (e) => {
-                e.preventDefault(); e.stopPropagation();
-                if (!armed) {
-                    armed = true;
-                    const orig = span.textContent;
-                    span.textContent = tr('actionFirstInstallConfirm', 'Wipe everything?');
-                    first.setAttribute('aria-label', span.textContent);
-                    first.style.background = '#E95420';
-                    first.style.color = '#fff';
-                    icon.style.filter = 'brightness(0) invert(1)';
-                    armTimer = setTimeout(() => {
-                        armed = false;
-                        span.textContent = orig;
-                        first.setAttribute('aria-label', orig);
-                        first.style.background = 'rgba(15,15,26,0.92)';
-                        first.style.color = '#E95420';
-                        icon.style.filter = '';
-                    }, 3000);
-                    return;
+            icon.width = 22;
+            icon.height = 22;
+            icon.style.cssText = 'display:inline-block;width:22px;height:22px;vertical-align:middle;margin-right:4px;';
+            settingsBtn.appendChild(icon);
+            const sLabel = document.createElement('span');
+            settingsBtn.appendChild(sLabel);
+            settingsBtn.style.cssText = BTN_STYLE +
+                'background:rgba(15,15,26,0.92);color:#E95420;border:1px solid #E95420;' +
+                'min-width:44px;';
+            const sText = tr('settingsTitle', 'Settings');
+            sLabel.textContent = sText;
+            settingsBtn.title = sText;
+            settingsBtn.setAttribute('aria-label', sText);
+            settingsBtn.addEventListener('click', (e) => {
+                e.preventDefault(); e.stopPropagation(); closeMenu();
+                if (typeof window.__utoutlookOpenSettings === 'function') {
+                    window.__utoutlookOpenSettings();
                 }
-                clearTimeout(armTimer);
-                armed = false;
-                fire('first');
             });
-            bar.insertBefore(first, quit);
+            panel.appendChild(settingsBtn);
         }
 
         setLabel(reload, tr('reloadMessages', 'Reload messages'));
-        setLabel(quit, tr('quitApp', 'Quit'));
-        setFirstLabel(first, tr('actionFirstInstall', 'First install'));
-        // v4.1.0 (revue renderer #4): la barre doit rester visible SURTOUT
-        // quand la liste est cassée (0×0) — c'est le cas à secourir. On ne
-        // masque que le bouton Recharger pendant le chargement initial.
-        bar.style.display = onMailPage() ? 'flex' : 'none';
-        reload.style.display = listReady() ? '' : 'none';
+        // v4.7.0: la pastille reste visible SURTOUT quand la liste est
+        // cassee (0x0) — c'est le cas a secourir. Le mini-menu ne s'ouvre
+        // qu'au toucher et ne masque aucun menu Outlook.
+        bar.style.setProperty('display', onMailPage() ? 'flex' : 'none', 'important');
+        // v4.7.7: « Recharger » reste TOUJOURS disponible — le masquer quand
+        // listReady() est faux (liste 0x0) desactivait precisement le filet
+        // de secours. v4.3.8: pas d'effet glass (blur => relances GPU).
+        reload.style.display = '';
         unhideList(); // v4.0.98: garder la liste visible après les re-render SPA
         syncNavState(); // v4.0.118: mémoriser un masquage automatique (paysage)
     };
+
+    // v4.7.0: fermer le mini-menu au toucher hors de la pastille.
+    if (!window.__utoutlookMenuOutsideBound) {
+        window.__utoutlookMenuOutsideBound = true;
+        document.addEventListener('click', (e) => {
+            const bar = document.getElementById(BAR_ID);
+            if (bar && e.target && !bar.contains(e.target)) closeMenu();
+        }, true);
+    }
+
+    // v4.7.2: diagnostic du décalage aléatoire des clics (global à l'app).
+    // On loggue SEULEMENT un écart mesuré entre le point touché et l'élément
+    // réellement visé — jamais de texte de message ni d'adresse.
+    if (!window.__utoutlookClickDiag) {
+        window.__utoutlookClickDiag = true;
+        let lastDown = null;
+        window.addEventListener('pointerdown', (e) => {
+            lastDown = {x: e.clientX, y: e.clientY, t: Date.now()};
+        }, true);
+        window.addEventListener('click', (e) => {
+            if (!e.isTrusted) return;
+            const parts = [];
+            if (lastDown && Date.now() - lastDown.t < 1500) {
+                const dx = Math.round(e.clientX - lastDown.x);
+                const dy = Math.round(e.clientY - lastDown.y);
+                if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+                    parts.push(`down→click=${dx},${dy}`);
+                }
+            }
+            const hit = document.elementFromPoint(e.clientX, e.clientY);
+            const t = e.target;
+            if (hit && t && hit !== t && !hit.contains(t) && !t.contains(hit)) {
+                parts.push(`hit=${hit.tagName}#${hit.id} target=${t.tagName}#${t.id}`);
+            }
+            if (parts.length) {
+                console.error('Error: UT_DBG click-offset ' +
+                    `${Math.round(e.clientX)},${Math.round(e.clientY)} ${parts.join(' ')}`);
+            }
+        }, false);
+    }
 
     // Filet de sécurité : attraper les clics en capture, avant le SPA Outlook.
     if (!window.__utoutlookAppActionsCapture) {
@@ -316,12 +453,8 @@
             if (!t || !t.closest) return;
             if (t.closest('#' + RELOAD_ID)) {
                 e.preventDefault(); e.stopPropagation(); fire('reload');
-            } else if (t.closest('#' + FIRST_ID)) {
-                // v4.1.3: le bouton gère son propre double-tap (confirmation) —
                 // en capture on laisse l'événement atteindre le listener du bouton.
                 return;
-            } else if (t.closest('#' + QUIT_ID)) {
-                e.preventDefault(); e.stopPropagation(); fire('quit');
             }
         }, true);
     }

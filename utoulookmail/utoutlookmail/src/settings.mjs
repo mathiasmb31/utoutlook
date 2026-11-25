@@ -75,14 +75,12 @@ const defaults = {
         "outlook.office.com/mail/safelink.html",
         "safelinks.protection.outlook.com",
     ],
-    // v4.0.23: on Ubuntu Touch the window behaves like a native app: full-screen
-    // (no X11 frame) but hideOnClose=true — a swipe-close only HIDES the window
-    // while the process keeps running (notifications keep flowing) and the next
-    // launcher tap re-shows it instantly via the second-instance handler.
-    // Forcing hideOnClose=false (v3.3.6) made the app DIE on every swipe, leaving
-    // stale lifecycle flags that broke the next launch ("slow splash then exit").
+    // v4.4.4: hideOnClose=false. Le masquage laissait le process vivant mais
+    // sans session Mir ; Lomiri refusait ensuite de relancer l'app (splash
+    // bloque) — reproduit les 22 et 23/11. Les garde-fous de cycle de vie
+    // (exitclient frais, freshness marker) gerent desormais un vrai quit propre.
     showWindowFrame: false,
-    hideOnClose: true,
+    hideOnClose: false,
     hideOnMinimize: true,
     startMinimized: false,
     customBrowserPath: undefined,
@@ -170,13 +168,10 @@ for (const key of ['showWindowFrame', 'hideOnClose', 'hideOnMinimize', 'startMin
     }
 }
 
-// v4.0.23: force native UT window behavior — showWindowFrame=false (no X11 cross)
-// AND hideOnClose/hideOnMinimize=true so a swipe-close only hides the window and
-// the process stays alive for notifications; relaunch is instant via second-instance.
-// A persisted hideOnClose=false from an old version made the app DIE on every swipe
-// (stale lifecycle flags → next launch slow-then-exit). startMinimized is forced
-// false (a persisted true from pre-3.0 made the main window never appear).
-for (const [key, val] of [['showWindowFrame', false], ['hideOnClose', true], ['hideOnMinimize', true], ['startMinimized', false]]) {
+// v4.4.4: on force un VRAI quit a la fermeture (hideOnClose=false) pour que
+// Lomiri libere la session et puisse relancer. hideOnMinimize reste true.
+// startMinimized force false (un true persiste de pre-3.0 rendait la fenetre invisible).
+for (const [key, val] of [['showWindowFrame', false], ['hideOnClose', false], ['hideOnMinimize', true], ['startMinimized', false]]) {
     if (settings.get(key) !== val) {
         logger.warn(`Forcing ${key}=${val} (was ${settings.get(key)})`);
         settings.set(key, val);
@@ -233,10 +228,13 @@ if (settings.get('startMinimized') !== false) {
             logger.warn(`Filtered ${accounts.length - validAccounts.length} invalid account(s)`);
             settings.set('accounts', validAccounts);
         }
-        // Ensure enabled defaults to true if missing
+        // v4.4.2: settings.get() retourne un clone — la normalisation devait
+        // être réécrite, sinon le compte restait désactivé au prochain lancement.
+        let enabledFixed = false;
         for (const acct of validAccounts) {
-            if (typeof acct.enabled !== 'boolean') acct.enabled = true;
+            if (typeof acct.enabled !== 'boolean') { acct.enabled = true; enabledFixed = true; }
         }
+        if (enabledFixed) settings.set('accounts', validAccounts);
     }
 }
 

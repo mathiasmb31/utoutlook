@@ -369,30 +369,14 @@ button, [role="button"], a[role="button"] {
   overflow: hidden !important;
 }
 
-/* --- 6. Éléments avec animation (spinners CSS) dans la liste --- */
-[role="list"] [style*="animation"]:not([style*="animation-name: none"]),
-[class*="messageList"] [style*="animation"]:not([style*="animation-name: none"]),
-[class*="listView"] [style*="animation"]:not([style*="animation-name: none"]) {
-  /* Ne pas cacher aveuglément — géré par JS MutationObserver */
-}
-
-/* --- 7. Fluent UI ProgressIndicator / Spinner (tous contextes liste) --- */
-[class*="fui-ProgressIndicator"],
-[class*="fui-Spinner"],
-[class*="ms-Spinner"],
-[class*="ms-ProgressIndicator"],
-[class*="ProgressIndicator"],
-[class*="fui-ProgressRing"],
-[class*="fui-Circle"],
-[role="list"] .fui-Spinner,
-[role="list"] .fui-ProgressIndicator,
-[role="list"] .ms-Spinner,
-[role="grid"] .fui-Spinner,
-[role="grid"] .fui-ProgressIndicator,
-[class*="messageList"] .fui-Spinner,
-[class*="messageList"] .fui-ProgressIndicator,
-[class*="listView"] .fui-Spinner,
-[class*="listView"] .fui-ProgressIndicator {
+/* v4.4.2: spinners/indicateurs masques UNIQUEMENT dans les conteneurs de
+   liste. Le masquage global (§7 historique) cachait aussi la tuile Microsoft
+   sur la page select_account — regression deja corrigee en §3b. Le bloc vide
+   "elements avec animation" etait du code mort. */
+[role="list"] :is([class*="fui-Spinner"], [class*="ms-Spinner"], [class*="fui-ProgressRing"], [class*="fui-ProgressIndicator"], [class*="ms-ProgressIndicator"], [class*="ProgressIndicator"]),
+[role="grid"] :is([class*="fui-Spinner"], [class*="ms-Spinner"], [class*="fui-ProgressRing"], [class*="fui-ProgressIndicator"], [class*="ms-ProgressIndicator"], [class*="ProgressIndicator"]),
+[class*="messageList"] :is([class*="fui-Spinner"], [class*="ms-Spinner"], [class*="fui-ProgressRing"], [class*="fui-ProgressIndicator"], [class*="ms-ProgressIndicator"], [class*="ProgressIndicator"]),
+[class*="listView"] :is([class*="fui-Spinner"], [class*="ms-Spinner"], [class*="fui-ProgressRing"], [class*="fui-ProgressIndicator"], [class*="ms-ProgressIndicator"], [class*="ProgressIndicator"]) {
   display: none !important;
   visibility: hidden !important;
   opacity: 0 !important;
@@ -817,3 +801,8 @@ body [class*="fui-"]:not([class*="icon" i]):not([class*="FontIcon" i]) {
   overflow: hidden !important;
   pointer-events: none !important;
 }
+
+/* v4.3.8: l'effet « liste prête » (filter: blur sur toutes les lignes) a ete
+   retire. En rendu logiciel (SwiftShader) il surchargeait le compositing CPU,
+   bloquait le heartbeat et faisait croire au wrapper que l'app etait morte.
+   Aucune animation de liste ici — ne pas reintroduire de filter: blur. */

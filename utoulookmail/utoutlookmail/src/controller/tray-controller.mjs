@@ -546,7 +546,9 @@ export class TrayController {
         logger.info(`Deleting user data at: ${userDataPath}`);
 
         try {
-            await fs.promises.rm(userDataPath, {recursive: true, force: true});
+            // v4.4.2: fs est deja l'API promises (import {promises as fs}) —
+            // fs.promises etait undefined et le bouton 'reset' echouait toujours.
+            await fs.rm(userDataPath, {recursive: true, force: true});
 
             await dialog.showMessageBox({
                 type: "info",
