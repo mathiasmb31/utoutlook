@@ -3315,12 +3315,14 @@ test('v4.4: importFiles drives Start/Collect/Finalize and validates the path', a
 });
 
 // v4.7.0 — export d'une PJ recue vers une autre app (Content Hub)
-test('v4.7.5: Charge items are variants wrapping a struct, not bare strings', async () => {
+test('v4.7.6: Charge puts the URL in the 4th field of the Item struct', async () => {
     const {gvariantStringArray} = await import('../src/content-hub.mjs');
-    assert.strictEqual(gvariantStringArray('file:///tmp/a.pdf'), '[<("file:///tmp/a.pdf",)>]');
+    assert.strictEqual(gvariantStringArray('file:///tmp/a.pdf'),
+        '[<("", @ay [], "", "file:///tmp/a.pdf")>]');
     assert.strictEqual(
         gvariantStringArray(['file:///tmp/a b.pdf', 'file:///tmp/c.pdf']),
-        '[<("file:///tmp/a b.pdf",)>, <("file:///tmp/c.pdf",)>]');
+        '[<("", @ay [], "", "file:///tmp/a b.pdf")>, ' +
+        '<("", @ay [], "", "file:///tmp/c.pdf")>]');
 });
 
 test('v4.7.3: the 40px window nudge cannot run on focus/health-poll anymore', async () => {

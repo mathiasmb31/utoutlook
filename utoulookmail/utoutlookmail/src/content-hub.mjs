@@ -95,15 +95,18 @@ export function parseCollectedUrls(text) {
 }
 
 /**
- * v4.7.5: argument `av` de Charge() en notation GVariant.
- * Chaque item est un VARIANT entourant un STRUCT dont le 1er champ est
- * l'URL : `[<("file://…",)>]`. Une simple chaine `[<"file://…">]` est
- * acceptée par le service mais Collect() renvoie alors une URL VIDE
- * (vérifié sur device 24/11) — le destinataire voit le nom de fichier '.'.
+ * v4.7.6: argument `av` de Charge() en notation GVariant.
+ * Structure reelle de com::lomiri::content::Item (vue dans item.cpp amont) :
+ *   (streamType: s, stream: ay, name: s, url: s)
+ * L'URL est donc le 4e champ : `[<("", @ay [], "", "file://…")>]`.
+ * Les formats precedents mettaient l'URL en 1er champ (streamType) : le
+ * service chargeait un item avec une url vide, copiait rien, et le
+ * destinataire affichait le nom de fichier '.' (screenshot 25/11).
  */
 export function gvariantStringArray(items) {
     const list = (Array.isArray(items) ? items : [items]).filter(Boolean);
-    return '[' + list.map((u) => `<(${JSON.stringify(String(u))},)>`).join(', ') + ']';
+    return '[' + list.map((u) =>
+        `<("", @ay [], "", ${JSON.stringify(String(u))})>`).join(', ') + ']';
 }
 
 /** Extrait le chemin d'objet retourné par CreateImportFromPeer. */
