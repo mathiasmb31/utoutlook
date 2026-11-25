@@ -223,9 +223,12 @@ export class ContentHubBridge {
             mark('charged');
             return {ok: true};
         } catch (e) {
-            mark(`export-failed:${e.code || e.message}`);
+            // v4.7.7: e.message contient la ligne de commande gdbus avec
+            // file://<chemin> — donnée personnelle, jamais journalisée.
+            const code = e.code || 'export-failed';
+            mark(`export-failed:${code}`);
             try { await this.call('Abort', [], obj, TRANSFER_INTERFACE); } catch (_) {}
-            return {ok: false, error: e.code || e.message};
+            return {ok: false, error: code};
         }
     }
 
@@ -285,13 +288,21 @@ export class ContentHubBridge {
                     try {
                         this.fsApi.mkdirSync(this.incomingDir, {recursive: true});
                         for (const p of paths) {
-                            const dest = path.join(this.incomingDir, path.basename(p));
+                            const name = path.basename(p);
+                            const ext = path.extname(name);
+                            let dest = path.join(this.incomingDir, name);
+                            let n = 1;
+                            // v4.7.7: deux PJ homonymes ne doivent pas s'ecraser.
+                            while (this.fsApi.existsSync && this.fsApi.existsSync(dest)) {
+                                dest = path.join(this.incomingDir,
+                                    `${path.basename(name, ext)}-${n++}${ext || '.bin'}`);
+                            }
                             this.fsApi.copyFileSync(p, dest);
                             saved.push(dest);
                         }
                         mark(`saved=${saved.length}`);
                     } catch (e) {
-                        mark(`copy-failed:${e.code || e.message}`);
+                        mark(`copy-failed:${e.code || 'io-error'}`);
                         return {paths: [], error: 'copy-failed'};
                     }
                     return {paths: saved};

@@ -397,9 +397,10 @@
         // cassee (0x0) — c'est le cas a secourir. Le mini-menu ne s'ouvre
         // qu'au toucher et ne masque aucun menu Outlook.
         bar.style.setProperty('display', onMailPage() ? 'flex' : 'none', 'important');
-        // v4.3.8: plus d'effet glass (blur sur toutes les lignes) — il faisait
-        // bloquer le renderer en mode logiciel et declenchait des relances.
-        reload.style.display = listReady() ? '' : 'none';
+        // v4.7.7: « Recharger » reste TOUJOURS disponible — le masquer quand
+        // listReady() est faux (liste 0x0) desactivait precisement le filet
+        // de secours. v4.3.8: pas d'effet glass (blur => relances GPU).
+        reload.style.display = '';
         unhideList(); // v4.0.98: garder la liste visible après les re-render SPA
         syncNavState(); // v4.0.118: mémoriser un masquage automatique (paysage)
     };

@@ -34,6 +34,16 @@ const __dirnameNew = path.dirname(__filenameNew);
 const ZOOM_LEVELS = [0.75, 0.85, 1.0, 1.15, 1.3, 1.5];
 let pendingAttachTries = 0;
 
+// v4.7.7: garde d'origine partagée par les IPC de pièces jointes.
+// L'hôte doit être suivi d'un '/' ou de la fin : sans cette ancre,
+// outlook.live.com.attacker.tld passe le test. Les pages `file:` n'ont
+// aucun besoin de joindre/consommer une PJ (depuis 4.7.7).
+function trustedRenderer(event) {
+    const url = event && event.sender && event.sender.getURL
+        ? event.sender.getURL() : '';
+    return /^https?:\/\/(?:[^/]+\.)?(?:outlook\.(?:live|office|office365)\.com|outlook\.cloud\.microsoft\.com|live\.com|microsoftonline\.com)(?:\/|$)/i.test(url);
+}
+
 // v4.4.1 — confidentialite : les URLs de login contiennent des jetons
 // (state, nonce, code_challenge, parfois login_hint). On ne journalise que
 // origine + chemin, jamais la query ni le fragment.
@@ -2241,13 +2251,10 @@ class MailWindowController {
         ipcMain.removeHandler("attach-from-hub");
         ipcMain.handle("attach-from-hub", async (event) => {
             // v4.5.2: byWebContents peut ne plus contenir le sender apres une
-            // recreation de fenetre. On valide plutôt l'ORIGINE du renderer —
-            // seules les pages Outlook / locales peuvent demander un transfert.
-            const senderUrl = event.sender.getURL ? event.sender.getURL() : '';
-            const trusted = /^https?:\/\/(?:[^/]+\.)?(?:outlook\.(?:live|office|office365)\.com|outlook\.cloud\.microsoft\.com|live\.com|microsoftonline\.com)/i.test(senderUrl)
-                || /^file:/i.test(senderUrl);
-            if (!trusted) {
-                logger.warn(`v4.5.2: attach-from-hub refuse une origine non approuvée`);
+            // recreation de fenetre. On valide l'ORIGINE du renderer (v4.7.7 :
+            // garde partagée, hôte ancré, pages file: exclues).
+            if (!trustedRenderer(event)) {
+                logger.warn('v4.5.2: attach-from-hub refuse une origine non approuvée');
                 return 0;
             }
             const owner = MailWindowController.byWebContents.get(event.sender);
@@ -2284,24 +2291,35 @@ class MailWindowController {
                 return 0;
             }
         });
-        // v4.5.4: le wrapper a recu une PJ du Content Hub en argument au
-        // lancement. On la consomme une seule fois et on l'injecte dans la
-        // composition courante (ou on la garde jusqu'a ce qu'elle soit ouverte).
+        // v4.5.4: le wrapper a recu une ou plusieurs PJ du Content Hub en
+        // arguments au lancement (une ligne par fichier). On valide et injecte
+        // TOUTES les PJ valides d'un coup ; le fichier n'est supprime qu'apres.
         ipcMain.removeHandler("consume-pending-attachment");
-        ipcMain.handle("consume-pending-attachment", async () => {
-            let raw = '';
-            try { raw = fs.readFileSync(PENDING_ATTACH_FILE, 'utf-8').split(/\r?\n/)[0] || ''; }
-            catch (e) { return 0; }
-            if (!raw) return 0;
-            const resolved = validateTransferPath(normalizeContentUrl(raw));
-            if (!resolved.ok) {
-                logger.warn(`v4.5.4: PJ recue refusee (${resolved.reason})`);
+        ipcMain.handle("consume-pending-attachment", async (event) => {
+            // v4.7.7: même garde d'origine que « attach-from-hub ».
+            if (!trustedRenderer(event)) {
+                logger.warn('v4.7.7: consume-pending-attachment refuse une origine non approuvee');
+                return 0;
+            }
+            let lines = [];
+            try {
+                lines = fs.readFileSync(PENDING_ATTACH_FILE, 'utf-8')
+                    .split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+            } catch (e) { return 0; }
+            if (!lines.length) return 0;
+            const paths = [];
+            for (const line of lines) {
+                const resolved = validateTransferPath(normalizeContentUrl(line));
+                if (resolved.ok) paths.push(resolved.path);
+                else logger.warn(`v4.5.4: PJ recue refusee (${resolved.reason})`);
+            }
+            if (!paths.length) {
                 try { fs.unlinkSync(PENDING_ATTACH_FILE); } catch (e) {}
                 return 0;
             }
-            const added = await attachFilesToComposer(this.win, [resolved.path]);
+            const added = await attachFilesToComposer(this.win, paths);
             if (added > 0) {
-                logger.info('v4.5.4: PJ du Content Hub ajoutee a la composition');
+                logger.info(`v4.5.4: ${added} PJ du Content Hub ajoutee(s) a la composition`);
                 try { fs.unlinkSync(PENDING_ATTACH_FILE); } catch (e) {}
             } else {
                 pendingAttachTries += 1;
@@ -2311,36 +2329,9 @@ class MailWindowController {
             }
             return added;
         });
-        // v4.7.0: derniere PJ telechargee — le renderer l'utilise pour afficher
-        // le bouton « Partager » uniquement quand il y a quelque chose a envoyer.
-        ipcMain.removeHandler("get-last-download");
-        ipcMain.handle("get-last-download", async () => {
-            try {
-                const p = fs.readFileSync(LAST_DOWNLOAD_FILE, 'utf-8').trim();
-                if (!p.startsWith(OUTGOING_DIR + path.sep)) return null;
-                if (!fs.statSync(p).isFile()) return null;
-                return {name: path.basename(p)};
-            } catch (e) { return null; }
-        });
-        // v4.7.0: partager cette PJ via le Content Hub (sens inverse de Joindre).
-        ipcMain.removeHandler("share-last-download");
-        ipcMain.handle("share-last-download", async (event) => {
-            const senderUrl = event.sender.getURL ? event.sender.getURL() : '';
-            const trusted = /^https?:\/\/(?:[^/]+\.)?(?:outlook\.(?:live|office|office365)\.com|outlook\.cloud\.microsoft\.com|live\.com|microsoftonline\.com)/i.test(senderUrl)
-                || /^file:/i.test(senderUrl);
-            if (!trusted) {
-                logger.warn('v4.7.0: share-last-download refuse une origine non approuvee');
-                return {ok: false, error: 'untrusted'};
-            }
-            let p = '';
-            try { p = fs.readFileSync(LAST_DOWNLOAD_FILE, 'utf-8').trim(); } catch (e) {}
-            if (!p || !p.startsWith(OUTGOING_DIR + path.sep)) return {ok: false, error: 'no-file'};
-            try { if (!fs.statSync(p).isFile()) return {ok: false, error: 'no-file'}; }
-            catch (e) { return {ok: false, error: 'no-file'}; }
-            const res = await this.shareDownloadedFile(p);
-            logger.info(`v4.7.0: partage ${res.ok ? 'lance' : 'echoue (' + res.error + ')'}`);
-            return res;
-        });
+        // v4.7.7: les IPC get/share-last-download ont ete retires — le partage
+        // est declenche directement a la fin du telechargement (v4.7.2), aucun
+        // bouton renderer ne les utilise plus.
         // v3.3.66: first-install — wipe ALL session data from the main process.
         // The in-page clear (document.cookie/localStorage) only reaches the current
         // origin, and syncCookiesToLiveCom() would re-copy surviving cookies to the
@@ -3638,6 +3629,8 @@ class MailWindowController {
             reloadMessages: tr['overlay.reloadMessages'],
             reloading: tr['overlay.reloading'], // feedback immédiat au clic
             quitApp: tr['common.quit'], // bouton Quitter (déjà traduit en 8 langues)
+            // v4.7.7: la feuille Paramètres utilise `commonQuit`, pas `quitApp`.
+            commonQuit: tr['common.quit'],
             // v4.1.3: boutons de la barre — first-install + notification
             actionFirstInstall: tr['action.firstInstall'],
             actionFirstInstallConfirm: tr['action.firstInstallConfirm'],
@@ -3652,10 +3645,6 @@ class MailWindowController {
             // v4.4: bouton « joindre un fichier » via Content Hub
             attachFile: tr['action.attachFile'],
             contentHubFailed: tr['contentHub.failed'],
-            // v4.7.0: export de la derniere PJ telechargee
-            shareAttachment: tr['action.shareAttachment'],
-            shareStarted: tr['contentHub.shareStarted'],
-            shareFailed: tr['contentHub.shareFailed'],
             // v4.4.5: feuille Parametres
             settingsTitle: tr['settings.title'],
             settingsDisplay: tr['settings.display'],
@@ -3786,7 +3775,7 @@ class MailWindowController {
         if (stealFocus) {
             try { this.win.focus(); } catch (e) { /* ignore */ }
         }
-        logger.info('v4.1.0: window re-surfaced (alwaysOnTop pulse + bounds nudge + invalidate)');
+        logger.info(`v4.7.7: window re-surfaced (alwaysOnTop pulse + invalidate${nudge ? ' + bounds nudge' : ''})`);
     }
 
     /**

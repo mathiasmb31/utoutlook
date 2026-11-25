@@ -215,28 +215,6 @@ const T = {
         zh: '无法附加文件', ar: 'تعذر إرفاق الملف',
         ca: 'No s’ha pogut adjuntar el fitxer', eu: 'Ezin izan da fitxategia erantsi',
     },
-    // v4.7.0: export d'une PJ recue — bouton « Partager » (10 langues)
-    'action.shareAttachment': {
-        fr: 'Partager la pièce jointe', en: 'Share attachment',
-        es: 'Compartir el archivo adjunto', de: 'Anhang teilen',
-        it: 'Condividi l’allegato', pt: 'Compartilhar o anexo',
-        zh: '共享附件', ar: 'مشاركة المرفق',
-        ca: 'Comparteix el fitxer adjunt', eu: 'Partekatu eranskina',
-    },
-    'contentHub.shareStarted': {
-        fr: 'Partage lancé…', en: 'Sharing…',
-        es: 'Compartiendo…', de: 'Wird geteilt…',
-        it: 'Condivisione…', pt: 'A compartilhar…',
-        zh: '正在共享…', ar: 'جارٍ المشاركة…',
-        ca: 'S’està compartint…', eu: 'Partekatzen…',
-    },
-    'contentHub.shareFailed': {
-        fr: 'Impossible de partager le fichier', en: 'Could not share the file',
-        es: 'No se pudo compartir el archivo', de: 'Datei konnte nicht geteilt werden',
-        it: 'Impossibile condividere il file', pt: 'Não foi possível compartilhar o arquivo',
-        zh: '无法共享文件', ar: 'تعذرت مشاركة الملف',
-        ca: 'No s’ha pogut compartir el fitxer', eu: 'Ezin izan da fitxategia partekatu',
-    },
     'common.reload': {
         fr: 'Recharger', en: 'Reload', es: 'Recargar', de: 'Neu laden',
         it: 'Ricarica', pt: 'Recarregar', zh: '重新加载', ar: 'إعادة تحميل',

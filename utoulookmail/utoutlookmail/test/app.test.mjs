@@ -2921,10 +2921,10 @@ test('v4.1.0 (analyse approfondie): correctifs applicatifs et outillage', async 
     assert.ok(ctl.includes('static byWebContents') && ctl.includes('const owner = MailWindowController.byWebContents.get(event.sender)'),
         'IPC handlers must dispatch to the controller owning the sender (M4)');
 
-    // reload button visible when the list is broken
-    assert.ok(reload.includes("reload.style.display = listReady() ? '' : 'none'") &&
+    // reload button always visible — especially when the list is broken (0x0)
+    assert.ok(reload.includes("reload.style.display = '';") &&
               !reload.includes("a.style.setProperty('overflow', 'visible'"),
-        'reload button must be available on broken lists without breaking scroll (renderer #4/#5)');
+        'reload button must never be hidden on broken lists (v4.7.7, renderer #4/#5)');
     assert.ok(ctl.includes('render-process-gone') && ctl.includes('this.win.reload()'),
         'dead renderer must trigger a reload (M6)');
 
@@ -3478,8 +3478,12 @@ test('v4.5.2: attach-from-hub validates the renderer origin, not the controller 
     const ctl = fs.readFileSync(path.join(here, '../src/controller/mail-window-controller.mjs'), 'utf-8');
     const start = ctl.indexOf('ipcMain.handle("attach-from-hub"');
     const block = ctl.slice(start, start + 1200);
-    assert.ok(block.includes('event.sender.getURL') && block.includes('trusted'),
-        'attach must accept a trusted Outlook origin even if byWebContents lost the sender (v4.5.2)');
+    assert.ok(block.includes('trustedRenderer(event)'),
+        'attach must accept a trusted Outlook origin even if byWebContents lost the sender (v4.5.2, v4.7.7)');
+    assert.ok(ctl.includes('function trustedRenderer(event)') &&
+              ctl.includes('microsoftonline\\.com)(?:\\/|$)') &&
+              !ctl.includes('|| /^file:/i.test(url)'),
+        'the shared origin guard must anchor the host and exclude file: pages (v4.7.7)');
 });
 
 test('v4.5.1: attach/get-diagnostics are not removed by another controller destroy', async () => {

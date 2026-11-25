@@ -33,9 +33,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     attachFromHub: () => ipcRenderer.invoke("attach-from-hub"),
     // v4.5.4: PJ livree par le Content Hub au lancement du click
     consumePendingAttachment: () => ipcRenderer.invoke("consume-pending-attachment"),
-    // v4.7.0: export d'une PJ recue (telechargee depuis Outlook Web)
-    getLastDownload: () => ipcRenderer.invoke("get-last-download"),
-    shareLastDownload: () => ipcRenderer.invoke("share-last-download"),
     // Dark mode toggle
     toggleDarkMode: () => ipcRenderer.send("toggle-dark-mode"),
 });
