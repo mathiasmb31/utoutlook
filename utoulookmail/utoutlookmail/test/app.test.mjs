@@ -3090,6 +3090,9 @@ test('v4.3.7: wrapper monitor never quits on an unknown or newer wrapper', async
         pidFilePath: 'wrapper.pid', expectedPid: '4242',
         readFileSync: () => '4242\n',
         readProc: () => { throw new Error('EACCES'); },
+        // v4.7.7: sans probe injecté, le vrai signal 0 sur PID 4242 dépend
+        // de l'environnement (présent localement, absent sur le runner CI).
+        probe: () => 'unknown',
     }), 'unknown',
         'an unreadable /proc must NEVER quit Electron (v4.3.8 false positives)');
 });
